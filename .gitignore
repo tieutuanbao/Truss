@@ -1,0 +1,27 @@
+# macOS Finder metadata.
+.DS_Store
+
+# Python bytecode and tool caches.
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Rust build output for truss tooling.
+target/
+dist/
+
+# Downloaded Truss binaries for installed project instances.
+.truss-core/bin/truss
+.truss-core/bin/truss.exe
+.truss-core/bin/truss-v0-migrate
+truss.db.bk
+
+# Owner-private working content (not part of the shipped payload)
+.truss-core/docs/plans/active/*
+!.truss-core/docs/plans/active/README.md
+.truss-core/docs/plans/completed/*
+!.truss-core/docs/plans/completed/README.md
+.truss-core/docs/decisions/*
+!.truss-core/docs/decisions/README.md

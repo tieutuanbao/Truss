@@ -1,0 +1,530 @@
+---
+name: delivery
+description: Deliver a change through an approved design contract, sequential implementation, independent review, and exact-HEAD release. Use for Architectural work, public-contract changes, or any change where the user explicitly requests delivered work with design approval and independent review. Ordinary bounded work proceeds through the repository workflow without it. Not for a Spike, which investigates and recommends without starting a delivery run.
+---
+
+# Delivery
+
+Delivery accepts a request that may still be vague, brings it to an approved
+design contract, then automates sequential implementation, independent review,
+and release preparation on the Orca execution plane. It is a thin control
+protocol, not an orchestrator, SDLC framework, or second source of Git state.
+
+Read `AGENTS.md` in the repository for this project's gate commands, artifact
+paths, default branch, and per-role truss/model/effort pins. This skill
+never names them.
+
+## Two human gates
+
+1. Approve the design contract before candidate mutation.
+2. Accept the completed, reviewed candidate: merge or publish a prepared pull
+   request, or accept a local completion when the envelope authorizes no
+   publish.
+
+Delivery pauses outside those gates only for a scope or architecture change, a
+destructive action, new authority, replan, or an unavailable required runtime.
+
+## The control session
+
+The current interactive session is Control. It owns the approval invariant,
+task boundaries, exception handling, dispatch supervision, and release. It
+does not implement or review the candidate, and when the `plan` and
+`plan-review` roles are pinned it does not draft or audit the design
+contract either — it supervises those dispatches and still owns the human
+gates. Delegation never moves an approval: every gate stays Control's.
+
+Control does not prescribe question count, order, format, or skill-selection
+precedence. Delivery owns the design outcome and approval boundary, not a
+universal interview or planning method. The user, project, and truss
+determine which design skills and native modes are active.
+
+Native Plan Mode governs its enforced action constraints, question and plan
+surfaces, artifact representation, and mode transitions. Compatible active
+design skills may refine exploration and design methodology within those
+constraints. When more than one applies, normal truss instruction and tool
+precedence governs. One explicit approval satisfies Delivery's boundary for
+the same design scope; a material scope change requires renewed approval.
+Delivery does not select, activate, configure, emulate, or compose either
+mechanism.
+
+Neither one owns or can bypass the approval invariant: before candidate
+mutation, Control must obtain explicit human approval of a design contract.
+Plan Mode is defense in depth, not proof that requirements are clear or that
+no mutation is possible.
+
+Control surfaces unresolved uncertainty that could materially change intent,
+acceptance, authority, public contract, architecture, or consequential risk.
+The active design method may resolve other details from repository evidence
+and convention, but material assumptions must be explicit.
+
+## Shape: Spike, Bounded, Architectural
+
+Use the smallest contract that safely holds the change. Risk may promote an
+otherwise small change; diff size never demotes data-loss, security,
+permission, or public-compatibility risk.
+
+| Shape | Use | Artifact | Review |
+| --- | --- | --- | --- |
+| Spike | Investigation only; no candidate is delivered | Approved probe and recommendation; no delivery run | none |
+| Bounded | Small change, clear behaviour and ownership | Approved in-chat design and short execution envelope | one whole-change review |
+| Architectural | Multiple behaviours, public-contract change, architecture decision, or promoted risk | Approved decision record, task plan, execution envelope | task review per task, then one integration review |
+
+An approved design contract states intent and success criteria; scope and
+authority; affected public contract or architecture; consequential risks and
+material assumptions; and a plausible counterexample or failure mode that
+distinguishes correct behaviour from a present-but-wrong implementation. If no
+executable instrument can discriminate the requirement, the contract names the
+manual inspection and its limit.
+
+### Roles
+
+One session holds one role per run: a planner never implements or reviews,
+an implementer never reviews, and so on.
+
+When the managed block pins `plan` and `plan-review`, Architectural work is
+drafted by a fresh plan agent and audited by a fresh plan-review agent
+before Control presents it at the design gate; the audit must return its
+verdict before gate 1. Bounded work may keep its in-chat design, but Control
+may dispatch the two roles for it the same way. Without those pins, Control
+drafts the contract itself and the human gate is the only audit. The plan
+and plan-review agents never mutate the candidate: they produce and audit
+the contract, then their dispatches end.
+
+Architectural work uses `templates/decision-record.md` (durable) and
+`templates/plan.md` (transient, deleted in the release commit, before the
+release-binding review). Commit both before implementation begins — that
+commit is the review baseline.
+
+The transient delivery plan is a per-run control artifact, not a durable
+repository record. It does not live in `.truss-core/docs/plans/active/`. When the work
+also needs memory that outlives the run — multi-session recovery, decisions
+future work must inherit — that memory belongs in the durable decision record
+and, for cross-session working memory, one execution plan under
+`.truss-core/docs/plans/active/` owned by the repository workflow. Never keep the same
+progress in both places: the transient plan holds per-run task state, the
+durable record holds what survives the run.
+
+### Acceptance
+
+One table: each requirement, the instrument that proves it, the plausible
+wrong implementation that instrument rejects, and where that rejection was
+observed.
+
+**An acceptance row is invalid until you have settled that its instrument
+discriminates.** A row whose instrument passes both before and after the
+change proves nothing and will be found at review. Baseline-red is
+insufficient by itself: an instrument observed red only because the feature
+is absent says nothing about whether it can catch an implementation that is
+present, runs, returns a pass, and is wrong.
+
+Each row names a plausible wrong implementation its instrument rejects — one
+that exists, runs, and returns a pass. "The feature is absent" does not
+satisfy Counterexample. Where no counterexample exists, the row says so and
+says a human reads the diff.
+
+Record what the available instruments cannot observe. Prefer the simplest
+instrument that proves the contract. Documentation-only and configuration
+rows may name reading or diff inspection as the instrument when no executable
+one exists; they still state what that reading cannot prove.
+
+Any claim about extent — an allowed scope, a count, a set of call sites —
+states the command that produced it. Naming the command is not the
+measurement: the command must have been run, and the claim reports its
+output. Where the claim is a count or a scope, the instrument enumerates
+rather than samples.
+
+## Execution envelope
+
+Before mutation, Control resolves deployment preferences against the live
+truss surface, starts Orca and verifies its required capabilities, records
+the dirty baseline and exact-path ownership, and creates a feature branch when
+starting on the default branch.
+
+The envelope freezes owned scope and paths; protected pre-existing dirty
+paths; acceptance criteria, counterexample, and focused instruments; branch,
+base, remote, and pull-request target; resolved truss, model, and effort for
+dispatched roles; and authority to branch, commit owned paths, run gates,
+push, and open or update a pull request. It never authorises merge,
+force-push, stash, reset, cleanup, or an edit outside owned scope. A local
+delivery omits the push and pull-request authority explicitly; that omission
+is part of the approved envelope, not an interruption of it.
+
+Delivery stages and commits only contract-owned paths. It never stashes,
+resets, cleans, or silently absorbs the user's existing changes. If a path
+carries protected baseline changes and Delivery must also modify it, Control
+pauses and presents the overlap: the user either moves or commits their
+changes, grants ownership of that path to this run, or splits the path out of
+scope. Delivery proceeds on the unpause decision; it does not combine
+ownership silently.
+
+## Orca is mandatory
+
+Orca is the required execution plane. It launches and supervises fresh native
+truss TUIs with the resolved truss, model, and effort. Orchestration is a
+required Orca capability. `$delivery` starts and preflights Orca before
+execution. It stops only when the CLI is missing, the runtime cannot start,
+or a required capability is absent — there is no direct dispatch and no
+headless fallback of any kind.
+
+### CLI identity and preflight
+
+Use the configured execution-plane CLI, not a binary name guessed from the
+OS. On Linux the official desktop installation registers `orca-ide`, because
+`orca` is commonly the GNOME screen reader. The default CLI is:
+
+Before any worker dispatch, Control must also validate the consumer boundary:
+
+```bash
+DELIVERY_ROOT="$(git rev-parse --show-toplevel)"
+DELIVERY_HEAD="$(git -C "$DELIVERY_ROOT" rev-parse HEAD)"
+```
+
+A delivery requires a valid `HEAD`. If the consumer repository is an unborn
+branch, stop before dispatch and ask for a baseline commit; do not stage
+Truss-managed files, nested repositories, or unrelated user files. Resolve
+the requested repository and worktree to this exact Git root and baseline
+before creating a Run. Do not infer the target from a nested directory named
+`source`, an existing current terminal, or a stale Orca worktree registration.
+The delivery objective must name the consumer-relative path, not an absolute
+path copied from a different repository.
+
+A valid runtime does not prove worker readiness. The first worker dispatch
+must be treated as a readiness probe: inspect the actual terminal output when
+it fails. Error labels such as `codex-trust-workspace` are Orca classifications,
+not proof that Codex launched. If the terminal shows a Claude, Antigravity, or
+other agent trust prompt, trust that exact agent in that exact worktree; do not
+change a global Codex trust setting or enable a bypass. Do not dispatch the
+next role until the probe reaches agent readiness.
+
+For a truss whose model cannot be pinned by `worker-start`, bootstrap trust
+before creating the dispatch. Launch its configured interactive argv in an
+ordinary Orca terminal, settle any exact-worktree trust prompt, then launch a
+fresh terminal with the same pinned argv. Dispatch with `--terminal` only after
+`terminal wait --for tui-idle` succeeds and the terminal banner names the
+configured model. A trust-cleared terminal whose banner names another model is
+not ready for that role.
+
+Zcode uses a stricter custom-terminal boundary. Resolve and verify a standalone
+terminal client, launch `tui --mode yolo --cwd <exact-worktree>`, wait for TUI
+readiness, and inspect the rendered screen for an idle editor and active model.
+Do not treat the Electron desktop launcher or its possibly incomplete bundled
+runtime as a worker, and do not use headless prompt flags as a TUI substitute.
+When Orca does not recognize Zcode, create and dispatch the task without
+`--inject`, request the exact preamble, and submit that preamble to the ready
+terminal as one structured process argument. Supervise the returned dispatch
+ID and require `worker_done`; `worker-start --terminal` is not a fallback for
+an unrecognized agent. The complete command contract is in
+`references/trusses.md`.
+
+```bash
+DELIVERY_ORCA_CLI="${DELIVERY_ORCA_CLI:-orca-ide}"
+command -v "$DELIVERY_ORCA_CLI"
+"$DELIVERY_ORCA_CLI" --version
+"$DELIVERY_ORCA_CLI" status --json
+"$DELIVERY_ORCA_CLI" orchestration run-list --json
+```
+
+The preflight must verify the binary identity and required subcommands; a
+successful `command -v orca` is not sufficient. If the configured CLI is
+unavailable or is the GNOME accessibility application, stop and report the
+installation boundary. Do not alias, shadow, or replace the system `orca`,
+and do not fall back to direct worker execution.
+
+### Launching a worker
+
+Write the prompt to an untracked file **inside the worktree**. Never inline
+it in a shell argument: prompts carry backticks, quotes and newlines, and a
+shell argument mangles them. A path outside the workspace can trigger a
+second permission surface some trusses still prompt for even when tool
+approval is skipped. Do not stage that file. After the worker returns,
+delete it: Control owns that dispatch artifact, not `git clean`. The handoff
+is likewise a file in the worktree; its path travels as `payload.reportPath`
+and the message body stays short. `--spec` and `--body` are shell arguments,
+which this skill already forbids for prompts.
+
+The dispatch prompt carries the task, its scope and the evidence required.
+It does not define the role dispositions or the conditions for reaching
+one — those belong to this skill, and a prompt that restates them
+narrows or contradicts them. Where the design contract states an
+acceptance row — its instrument, its counterexample, and what was
+observed — the prompt carries that row as written rather than a
+restatement of it.
+
+The `worker-start` receipt records `launch.requested` and `launch.effective`;
+it does not establish that the worker can serve the request or that it
+cannot. Launch a real interactive truss TUI for the role, with the model
+and effort pinned from `AGENTS.md`. A visible shell running a headless
+truss is not a TUI;
+compose that TUI's launch using `references/trusses.md`, this skill's
+compatibility matrix of Orca agent id, permission defaults, forbidden
+headless forms, and launch notes.
+
+**Name the model and effort on every dispatch.** A worker left on a truss
+default is an unpinned environment: it lives in the truss's own config, it
+changes without announcing itself, and the dispatch that relies on it looks
+identical to one that pinned the same value deliberately.
+
+When composing the TUI launch argv yourself, carry the execution plane's
+configured permission default for that agent onto the composed argv;
+composing argv is not a request for a different permission posture. Do not
+add a sandbox the project did not pin.
+
+`check --wait` on `worker_done,escalation,question` is the completion wait,
+repeated past heartbeats until a settling message arrives for that dispatch —
+a heartbeat ends one wait but settles nothing.
+The worker reports once with `worker_done` and an `--outcome`.
+Completion comes from the worker's own `worker_done`;
+do not infer it from reading the worker's terminal.
+`worker-release` returns the terminal. `worker-read` is the bounded evidence
+read.
+
+Each delivery opens its own Run on the execution plane rather than reusing
+another's, so a stale report cannot settle a new wait. A wait acknowledges
+its settling message after handling it, or the plane redelivers that
+message to the next wait.
+
+A dispatch that does not reach `ready` is diagnosed by reading its terminal
+and handling what is actually there. It is retried into that same terminal
+with `--terminal` and `--retry-of` only when that read shows the worker is
+not already progressing; a `failed` receipt is not that showing. A
+`dispatched` receipt is not evidence the worker is alive any more than a
+`failed` receipt is evidence it is dead. A wait timeout is likewise a
+transport outcome, not a worker outcome: re-enter the wait or read the
+terminal before concluding anything about the worker. Retry is refused while
+the plane still considers the dispatch live, whether or not the worker still
+is; the live terminal is re-engaged instead. `--model` and `--effort` cannot
+combine with `--terminal`; that is not an exception to naming the model and
+effort on every dispatch, because the terminal was launched pinned and the
+retry reuses it rather than launching an unpinned one. Control does not route
+by an enumerated vendor dialog; `agent_prompt_blocked` and
+`agent_prompt_stalled` do not distinguish separate recoveries.
+
+### Consultation
+
+When a question — a domain judgement, a design input, or a blocker — is
+better answered by a dedicated read-only dispatch, Control may dispatch a
+consultant with the `consult` deployment preference. A consultant may
+reproduce, inspect, and report a diagnosis or expertise packet, but it does
+not edit the candidate, commit, launch workers, or expand scope. This is an
+exception, not a phase or mandatory round trip. Without a `consult` pin,
+the dispatch inherits the `implement` preference, and Control may instead
+answer from repository evidence.
+
+### Escalate rather than guess
+
+Stop and ask the human when: a result maps to no route or more than one; the
+worker **failed** rather than returned a stop status — a non-zero exit with no
+result, an exhausted quota, an authentication error — which is not `BLOCKED`
+and must not be treated as one; Orca is unavailable or a required capability
+is absent; an action needs authority policy reserves to the human; or the
+same worker fails twice on the same input. Say what you know, what you tried,
+and what the options are. Do not pick one.
+
+## Implementation
+
+Control creates a separate task only when that unit has its own test cycle
+and a reviewer could accept it while rejecting its neighbor. Same-shaped
+mechanical changes are batched. Tightly coupled work stays one task and one
+implementer. Each independent task gets a fresh implementer TUI.
+
+An implementer reads the decision record, the plan, and the baseline — not
+the design session's transcript. It owns only its task, runs a focused
+acceptance instrument, and creates one task-scoped commit. For behaviour with
+a deterministic executable test it uses TDD; the portable invariant is
+smaller: observe a discriminating failure for the intended reason before
+changing behaviour. A shell probe, parser fixture, or diff inspection may be
+the correct instrument for configuration, documentation, generated files, or
+environment-bound integration.
+
+The counterexample named in each acceptance row is observed red and cited.
+That observation is not the behaviour's own absence: one is the feature
+absent, the other is an implementation that is present, runs, returns a pass,
+and is wrong.
+
+Implement the whole task before handing back. Stop and return `BLOCKED` or
+`NEEDS_REPLAN` instead of a partial solution when the record contradicts the
+code, the contract is ambiguous, work outside the task becomes necessary, an
+existing test disproves an assumption, or the task cannot fit one session
+even with normal context recovery. A task that exceeds one session's real
+capacity is a decomposition failure; a worker context that fills mid-task is
+ordinary recovery, handled through dispatch supervision — not a reason to
+replan.
+
+### Handoff
+
+```text
+Status: DONE | BLOCKED | NEEDS_REPLAN
+Truss:            name, model, effort, sandbox
+Session:            the dispatch id
+Baseline:
+Changed paths:
+Contract coverage:
+Verification:
+Deviations from plan:
+Residue:
+Git state:
+END OF HANDOFF
+```
+
+`END OF HANDOFF` is the last line and load-bearing: the only thing that
+distinguishes a handoff from one cut off mid-write. Under `Residue`, a
+claim of nothing left is the thing that needs evidence: name the check
+that returned empty. Under `Verification`, cite
+the dispatch-bound command, output, and outcome that Orca recovers for that
+task — the transcript or terminal it selects, and any cursor mechanics, are
+Orca's concern, not this skill's. Do not transcribe output by hand. Where
+Orca cannot recover a dispatch item, treat the worker's own account as the
+thing under check rather than as the check, and say so.
+
+## Review
+
+Review here means code review of the candidate. The design contract was
+already audited earlier — by `plan-review` when pinned, otherwise by the
+human at gate 1.
+
+Review independence is role independence: a fresh session that did not
+implement, plan, or consult on the candidate, and does not edit it. It gets
+the decision record (or
+Bounded design), the baseline, and the diff. The phase adds no sandbox
+by default; `AGENTS.md` may pin one for a concrete risk.
+
+Review depth is adaptive: Bounded work gets one independent whole-change
+code review. Each Architectural task gets an independent task review. After all
+tasks are accepted, a different fresh reviewer performs one integration
+review of task interactions, complete-contract coverage, deferred findings,
+candidate identity, and release readiness. Only that final review is
+release-binding for Architectural work; Bounded work has no earlier task
+review and no duplicate integration review.
+
+No worker runs while a review of the same working tree runs. The working
+tree and its gate surface are shared mutable state, and a review reproduces
+gates in that tree, so a concurrent edit makes another task's work look
+like this one's result.
+
+**Reproduce, do not accept.** Run the gates yourself. A claim you did not
+reproduce is not evidence. The reviewer observes the counterexample
+discriminate for itself — an implementation that is present, runs, returns
+a pass, and is wrong. An instrument red only because the behaviour was
+absent is not that observation.
+
+Classify findings: **Blocking** — contract failure, regression, data or
+security risk. **Important** — missing required behaviour, test, or
+reconciliation. **Minor** — useful, does not block. **Out of scope** —
+recorded, not absorbed.
+
+Return exactly one role disposition: `ACCEPT`, `CHANGES_REQUESTED`, or
+`BLOCKED`. State what the review did not verify — what it did not
+reproduce or read. A contradiction you cannot resolve is `CHANGES_REQUESTED`.
+Do not open remediation over wording when deterministic checks already prove
+the contract.
+
+### Remediation
+
+One pass is one remediation pass per finding, not per review. For an
+in-contract `CHANGES_REQUESTED` finding, the **original implementer**
+verifies it, fixes the root cause, reruns the affected instruments and
+closure gates, and writes a separate remediation commit — this is the
+single original-party remediation. Control owns the plan and the decision
+record for the whole run, including remediating findings inside them.
+Amending them is not implementing the candidate. The **reviewer that raised
+the finding** checks its reproduction and the fix-only diff, and
+scope-checks a Control amendment the same way. If that scoped re-review
+does not accept, Control routes to `REPLAN_OR_SPLIT` — it does not start
+another repair loop. `BLOCKED` preserves the candidate and escalates the
+unresolved dependency or authority question to Control separately from a
+failed worker process; it is not remediated by the original implementer. A
+fresh replacement reviewer is used only when the original reviewer is
+unavailable or contested, and for the Architectural integration review.
+
+## Release
+
+Control performs release with native Git and forge tools; release dispatches
+no LLM worker and makes no post-review candidate edit.
+
+1. Complete implementation and, for Architectural work, its task reviews.
+2. Reconcile owning documentation, move anything durable out of the transient
+   plan, and commit the complete candidate.
+3. Run the focused instruments and project closure gates on exact HEAD.
+4. If the envelope authorises publishing: push the feature branch and create
+   or update a draft pull request, and run the applicable final review while
+   remote checks run on that same HEAD.
+5. Require the applicable final review's `ACCEPT` — plus required remote
+   checks green when the envelope authorises publishing — bound to that
+   exact HEAD.
+6. Report for the second human gate: mark the pull request ready for human
+   merge, or present the locally completed, reviewed candidate for human
+   acceptance.
+
+Evidence is revision-bound: a verdict earned on one HEAD validates only that
+HEAD. Any candidate mutation after the applicable final review invalidates
+that verdict; Control reruns the affected gates and review on the new exact
+HEAD. Affected gates are those that can observe the change class; a project
+may name that subset.
+
+A local delivery ends at step 6 with the candidate committed on its branch,
+gates green, and the final review accepted on that exact HEAD. Publishing
+later repeats steps 4–6 on the current HEAD; it never reuses a verdict from
+an earlier revision.
+
+Delivery never merges, force-pushes, or publishes outside the approved
+target and authority. If project policy cannot publish work in progress,
+Delivery delays the push and pull request until the applicable review
+accepts.
+
+### Maintenance log
+
+Maintenance logging is machine-local and opt-in at `~/.truss/delivery-log`.
+Delivery never creates the directory or file: a missing path is skipped
+silently, and deleting the file opts out. Only after a delivery is accepted
+and all required checks are green does Control append exactly one physical
+line; aborted or incomplete deliveries are not recorded. The line carries an
+ISO-8601 UTC timestamp and labelled fields `git-root`, `plan`,
+`pull-request` or `none`, `implementation-rounds`, `review-dispositions`,
+and `drift-cause`. Tabs separate fields; embedded tabs and newlines become
+spaces. Delivery never reads this file for routing, recovery, or runtime
+decisions, and its text layout is not a public parsing schema. An append
+failure produces a visible warning but does not invalidate or block an
+otherwise accepted release.
+
+## Evidence
+
+Evidence is a property of a dispatch, not a skill-owned journal. Control asks
+Orca for the dispatch-bound command, output, and outcome; durable candidate
+and release facts come from Git, CI, and the pull-request state. This skill
+duplicates none of those stores.
+
+## Failure and recovery
+
+Recovery uses Orca records, Git, CI, and pull-request state — never inferred
+from an ambiguous, missing, or merely transport-level outcome.
+
+A failed readiness probe does not authorize a blind retry. Confirm the exact
+agent/worktree trust prompt, the consumer Git root, and the selected baseline
+first. Released terminals may leave child worktrees or archived resources;
+inspect Orca resource accounting before deciding whether cleanup or a new Run
+is safe.
+
+| Failure | Disposition |
+| --- | --- |
+| In-contract implementation defect | Original implementer remediates |
+| Scoped remediation re-review does not accept | `REPLAN_OR_SPLIT` |
+| Scope or architecture must change | Return to the design gate |
+| New authority or destructive action is required | Ask the human |
+| Orca or a required capability is unavailable | Stop; no headless fallback |
+| Truss fails or evidence is insufficient | Preserve the candidate, report the native outcome and role disposition |
+| Dispatch wait times out or receipt is ambiguous | Treat as transport-unknown: re-enter the wait or read the terminal; retry only into the same pinned terminal with `--retry-of` when it is not progressing |
+| Plan-review rejects the drafted contract | Control routes the findings back to `plan` or redrafts in-session; gate 1 is not presented until the audit passes |
+| Control session is interrupted | Resume from Git state, the durable decision record or execution plan, and Orca run records; re-verify a live dispatch before re-engaging it; never start a competing implementer or reviewer for work already in flight |
+| Idempotent release step is interrupted | Verify Git and pull-request state, then resume |
+
+## Changing this skill
+
+Only when the same failure recurs under the current contract — one incident
+is not policy. Before adding a rule, check whether a mechanism can enforce
+the fact instead. A human decides whether to promote a proposal; this skill
+never mutates itself, `AGENTS.md`, or project instructions from telemetry.
+
+## Language
+
+Repository artifacts are English. Conversation follows the user. Enum values,
+paths, commands, branch names and SHAs are never translated.

@@ -1,0 +1,29 @@
+# Default Truss core payload embedded in the Rust `truss` binary.
+# Keep this profile generic, repository-centered, and free of hidden task state.
+.agents/skills/audit-onboarding-proposal/SKILL.md
+.agents/skills/audit-onboarding-proposal/agents/openai.yaml
+.agents/skills/audit-onboarding-proposal/scripts/validate_evidence_capsule.py
+.agents/skills/encode-invariant/SKILL.md
+.agents/skills/encode-invariant/agents/openai.yaml
+.agents/skills/improve-truss/SKILL.md
+.agents/skills/improve-truss/agents/openai.yaml
+.agents/skills/onboard-repository/SKILL.md
+.agents/skills/onboard-repository/agents/openai.yaml
+.agents/skills/onboard-repository/references/evidence-capsule-v1.md
+.agents/skills/onboard-repository/references/evidence-capsule-v2.md
+.agents/skills/onboard-repository/scripts/emit_evidence_bundle.py
+.agents/skills/onboard-repository/scripts/render_patch.py
+AGENTS.md
+.truss-core/docs/WORKFLOW.md
+.truss-core/docs/communication.md
+.truss-core/docs/README.md
+.truss-core/docs/patterns/encoding-invariants.md
+.truss-core/docs/product/README.md
+.truss-core/docs/plans/README.md
+.truss-core/docs/plans/active/README.md
+.truss-core/docs/plans/completed/README.md
+.truss-core/docs/decisions/README.md
+.truss-core/docs/templates/application-runbook.md
+.truss-core/docs/templates/decision.md
+.truss-core/docs/templates/exec-plan.md
+.truss-core/docs/templates/truss-improvement.md

@@ -1,0 +1,6 @@
+interface:
+  display_name: "Improve Truss"
+  short_description: "Test one evidence-backed Truss improvement"
+  default_prompt: "Use $improve-truss to test one authorized repository Truss improvement from baseline through a fresh rerun."
+policy:
+  allow_implicit_invocation: false

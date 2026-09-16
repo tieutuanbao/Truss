@@ -1,0 +1,9 @@
+# Optional explicit-only delivery orchestration add-on.
+# This manifest is intentionally absent from the default core manifest.
+.agents/skills/delivery/SKILL.md
+.agents/skills/delivery/agents/openai.yaml
+.agents/skills/delivery/references/trusses.md
+.agents/skills/delivery/templates/decision-record.md
+.agents/skills/delivery/templates/plan.md
+.agents/skills/delivery-setup/SKILL.md
+.agents/skills/delivery-setup/agents/openai.yaml

@@ -1,0 +1,6 @@
+# Optional explicit-only engineering-wisdom add-on.
+# This manifest is intentionally absent from the default core manifest.
+.agents/skills/engineering-wisdom/SKILL.md
+.agents/skills/engineering-wisdom/agents/openai.yaml
+.agents/skills/engineering-wisdom/references/heuristics.md
+.agents/skills/engineering-wisdom/references/sources.md

@@ -10,9 +10,20 @@ design contract, then automates sequential implementation, independent review,
 and release preparation on the Orca execution plane. It is a thin control
 protocol, not an orchestrator, SDLC framework, or second source of Git state.
 
-Read `AGENTS.md` in the repository for this project's gate commands, artifact
-paths, default branch, and per-role truss/model/effort pins. This skill
-never names them.
+Read `AGENTS.md` for repository instructions and per-role truss/model/effort
+pins. Follow repository-owned workflow, developer documentation, and native
+validation entry points for required gates and artifact conventions; those
+values need not be stored in `AGENTS.md`. Resolve the default branch from
+repository policy or verified Git/forge metadata, not the current branch.
+Record resolved paths and Git targets in the approved execution envelope.
+If required authority remains absent or materially ambiguous, ask before
+mutation; do not invent project policy.
+
+For documentation or configuration work with no executable acceptance
+instrument, use the manual inspection permitted under § Acceptance, naming
+the responsible human reader and what that inspection cannot prove.
+A missing gate command is not evidence that no gate is required, and manual
+inspection does not waive an existing required gate.
 
 ## Two human gates
 

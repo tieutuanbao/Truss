@@ -2,7 +2,17 @@
 # This manifest is intentionally absent from the default core manifest.
 .agents/skills/delivery/SKILL.md
 .agents/skills/delivery/agents/openai.yaml
+.agents/skills/delivery/references/maintenance-log.md
 .agents/skills/delivery/references/trusses.md
+.agents/skills/delivery/references/trusses/antigravity.md
+.agents/skills/delivery/references/trusses/claude.md
+.agents/skills/delivery/references/trusses/codex.md
+.agents/skills/delivery/references/trusses/copilot.md
+.agents/skills/delivery/references/trusses/cursor.md
+.agents/skills/delivery/references/trusses/grok.md
+.agents/skills/delivery/references/trusses/kiro.md
+.agents/skills/delivery/references/trusses/pi.md
+.agents/skills/delivery/references/trusses/zcode.md
 .agents/skills/delivery/templates/decision-record.md
 .agents/skills/delivery/templates/plan.md
 .agents/skills/delivery-setup/SKILL.md

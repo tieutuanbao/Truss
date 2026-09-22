@@ -6,7 +6,12 @@ block work.
 
 ## Level
 
-Not configured.
+`layperson`
+
+Selected by the repository owner on 2026-09-22, in conversation, naming the
+level explicitly. Conversation replies use plain language with no unexplained
+term or abbreviation, and state cause, effect, and next step. Repository
+artifacts remain English.
 
 The repository owner selects one level; an agent proposes all three with a
 worked example of the same answer at each level. Record the choice here with
@@ -23,3 +28,7 @@ its date and source.
 
 Optional. The owner may add constraints here, such as a preferred language
 or response length. Unspecified preferences impose no requirement.
+
+Conversation follows the language the owner writes in. Repository artifacts
+remain English. Identifiers, paths, commands, and error strings are never
+translated.

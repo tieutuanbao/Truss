@@ -1,6 +1,6 @@
 ---
 name: delivery
-description: Deliver a change through an approved design contract, sequential implementation, independent review, and exact-HEAD release. Use for Architectural work, public-contract changes, or any change where the user explicitly requests delivered work with design approval and independent review. Ordinary bounded work proceeds through the repository workflow without it. Not for a Spike, which investigates and recommends without starting a delivery run.
+description: Approved design, sequential implementation, independent review, and exact-HEAD release via Orca. For Architectural work, public-contract changes, or explicitly requested deliveries. Ordinary bounded work uses repository workflow without delivery. Spikes investigate without starting a delivery run.
 ---
 
 # Delivery
@@ -119,8 +119,9 @@ present, runs, returns a pass, and is wrong.
 
 Each row names a plausible wrong implementation its instrument rejects — one
 that exists, runs, and returns a pass. "The feature is absent" does not
-satisfy Counterexample. Where no counterexample exists, the row says so and
-says a human reads the diff.
+satisfy Counterexample. Where no counterexample exists, the row says so,
+names the responsible human reader, and states what reading the diff cannot
+prove.
 
 Record what the available instruments cannot observe. Prefer the simplest
 instrument that proves the contract. Documentation-only and configuration
@@ -140,14 +141,28 @@ truss surface, starts Orca and verifies its required capabilities, records
 the dirty baseline and exact-path ownership, and creates a feature branch when
 starting on the default branch.
 
-The envelope freezes owned scope and paths; protected pre-existing dirty
-paths; acceptance criteria, counterexample, and focused instruments; branch,
-base, remote, and pull-request target; resolved truss, model, and effort for
-dispatched roles; and authority to branch, commit owned paths, run gates,
-push, and open or update a pull request. It never authorises merge,
-force-push, stash, reset, cleanup, or an edit outside owned scope. A local
-delivery omits the push and pull-request authority explicitly; that omission
-is part of the approved envelope, not an interruption of it.
+Every delivered shape freezes the same safeguards in its approved envelope:
+
+- Scope: owned paths, forbidden scope, and protected pre-existing dirty paths.
+- Proof: acceptance criteria, counterexample or permitted manual inspection,
+  focused instruments, and applicable gates.
+- Git target: worktree, branch, baseline, base, remote, and pull-request
+  target; state when publishing is not authorized.
+- Deployment: resolved truss, model, and effort for each dispatched role.
+- Authority: granted branch, owned-path commit, gate, push, and pull-request
+  actions; local delivery explicitly excludes push and pull-request authority.
+- Never authorized: merge, force-push, stash, reset, clean or other cleanup,
+  and edits outside owned scope.
+
+Shape changes representation and review depth, not safeguards:
+
+- Bounded: approved in-chat design and compact envelope; no Architectural
+  transient plan or separate task reviews; one whole-change review.
+- Architectural: committed decision record and transient plan carrying the
+  envelope; task review per task, then integration review.
+
+The repository workflow's durable-memory requirement still applies when
+work spans sessions or needs recovery; neither shape duplicates progress.
 
 Delivery stages and commits only contract-owned paths. It never stashes,
 resets, cleans, or silently absorbs the user's existing changes. If a path
@@ -170,7 +185,15 @@ headless fallback of any kind.
 
 Use the configured execution-plane CLI, not a binary name guessed from the
 OS. On Linux the official desktop installation registers `orca-ide`, because
-`orca` is commonly the GNOME screen reader. The default CLI is:
+`orca` is commonly the GNOME screen reader. Verify the configured CLI:
+
+```bash
+DELIVERY_ORCA_CLI="${DELIVERY_ORCA_CLI:-orca-ide}"
+command -v "$DELIVERY_ORCA_CLI"
+"$DELIVERY_ORCA_CLI" --version
+"$DELIVERY_ORCA_CLI" status --json
+"$DELIVERY_ORCA_CLI" orchestration run-list --json
+```
 
 Before any worker dispatch, Control must also validate the consumer boundary:
 
@@ -204,25 +227,9 @@ fresh terminal with the same pinned argv. Dispatch with `--terminal` only after
 configured model. A trust-cleared terminal whose banner names another model is
 not ready for that role.
 
-Zcode uses a stricter custom-terminal boundary. Resolve and verify a standalone
-terminal client, launch `tui --mode yolo --cwd <exact-worktree>`, wait for TUI
-readiness, and inspect the rendered screen for an idle editor and active model.
-Do not treat the Electron desktop launcher or its possibly incomplete bundled
-runtime as a worker, and do not use headless prompt flags as a TUI substitute.
-When Orca does not recognize Zcode, create and dispatch the task without
-`--inject`, request the exact preamble, and submit that preamble to the ready
-terminal as one structured process argument. Supervise the returned dispatch
-ID and require `worker_done`; `worker-start --terminal` is not a fallback for
-an unrecognized agent. The complete command contract is in
-`references/trusses.md`.
-
-```bash
-DELIVERY_ORCA_CLI="${DELIVERY_ORCA_CLI:-orca-ide}"
-command -v "$DELIVERY_ORCA_CLI"
-"$DELIVERY_ORCA_CLI" --version
-"$DELIVERY_ORCA_CLI" status --json
-"$DELIVERY_ORCA_CLI" orchestration run-list --json
-```
+For Zcode, read `references/trusses/zcode.md` before launch. Its standalone
+TUI verification and custom-terminal dispatch procedure apply; neither a
+desktop launcher nor a headless prompt is a worker substitute.
 
 The preflight must verify the binary identity and required subcommands; a
 successful `command -v orca` is not sufficient. If the configured CLI is
@@ -255,14 +262,14 @@ it does not establish that the worker can serve the request or that it
 cannot. Launch a real interactive truss TUI for the role, with the model
 and effort pinned from `AGENTS.md`. A visible shell running a headless
 truss is not a TUI;
-compose that TUI's launch using `references/trusses.md`, this skill's
-compatibility matrix of Orca agent id, permission defaults, forbidden
-headless forms, and launch notes.
+use `references/trusses.md` to select and read only the resolved truss's
+launch reference before composing its argv.
 
 **Name the model and effort on every dispatch.** A worker left on a truss
 default is an unpinned environment: it lives in the truss's own config, it
 changes without announcing itself, and the dispatch that relies on it looks
-identical to one that pinned the same value deliberately.
+identical to one that pinned the same value deliberately. `--effort` on a
+launch argv requires `--model`.
 
 When composing the TUI launch argv yourself, carry the execution plane's
 configured permission default for that agent onto the composed argv;
@@ -339,7 +346,8 @@ environment-bound integration.
 The counterexample named in each acceptance row is observed red and cited.
 That observation is not the behaviour's own absence: one is the feature
 absent, the other is an implementation that is present, runs, returns a pass,
-and is wrong.
+and is wrong. For a row using the permitted manual exception under
+§ Acceptance, cite the completed inspection and its stated limit instead.
 
 Implement the whole task before handing back. Stop and return `BLOCKED` or
 `NEEDS_REPLAN` instead of a partial solution when the record contradicts the
@@ -354,27 +362,45 @@ replan.
 
 ```text
 Status: DONE | BLOCKED | NEEDS_REPLAN
-Truss:            name, model, effort, sandbox
-Session:            the dispatch id
-Baseline:
-Changed paths:
-Contract coverage:
-Verification:
+Task:                approved task identifier or exact task heading
+Truss:               name, model, effort, sandbox
+Dispatch:            dispatch id
+Repository:          exact Git root
+Worktree:            exact worktree path
+Branch:              branch name
+Baseline:            approved baseline SHA
+HEAD:                observed current HEAD SHA
+Task commits:        task and remediation SHAs, or none with reason
+Changed paths:       contract-owned paths changed by this task
+Contract coverage:   each applicable acceptance row, quoted or identified by
+                     its exact requirement
+Verification:        commands, working directories, reported outcomes, and
+                     evidence locators
 Deviations from plan:
-Residue:
-Git state:
+Residue:             remaining work or the check that returned empty
+Git state:           observed status, including protected baseline changes
 END OF HANDOFF
 ```
 
-`END OF HANDOFF` is the last line and load-bearing: the only thing that
-distinguishes a handoff from one cut off mid-write. Under `Residue`, a
-claim of nothing left is the thing that needs evidence: name the check
-that returned empty. Under `Verification`, cite
-the dispatch-bound command, output, and outcome that Orca recovers for that
-task — the transcript or terminal it selects, and any cursor mechanics, are
-Orca's concern, not this skill's. Do not transcribe output by hand. Where
-Orca cannot recover a dispatch item, treat the worker's own account as the
-thing under check rather than as the check, and say so.
+`END OF HANDOFF` must be the last line; a missing sentinel means the handoff
+may be truncated. Resolve SHAs from Git, not from a planned commit.
+Identify acceptance rows using existing identifiers or exact requirement
+text; do not create another acceptance table or numbering system.
+
+The worker identifies the commands it ran, their working directories,
+reported outcomes, and available evidence locators. It does not transcribe
+terminal output by hand or claim that its own account is independently
+verified. If no recoverable locator is available, say so.
+
+Control retrieves and cites the dispatch-bound command, output, and outcome
+from Orca under § Evidence. Orca owns transcript selection and cursor
+mechanics. Where Orca cannot recover an item, Control labels the worker's
+account as unverified; that account remains the thing under check, not proof.
+Reviewers still reproduce the required instruments themselves.
+
+Under `Residue`, a claim of nothing left names the check that returned empty.
+`Git state` distinguishes task changes from protected baseline changes;
+a clean HEAD identity alone does not establish a clean working tree.
 
 ## Review
 
@@ -405,7 +431,9 @@ like this one's result.
 reproduce is not evidence. The reviewer observes the counterexample
 discriminate for itself — an implementation that is present, runs, returns
 a pass, and is wrong. An instrument red only because the behaviour was
-absent is not that observation.
+absent is not that observation. For a row using the permitted manual
+exception under § Acceptance, verify that the named human's inspection was
+completed and report its stated limit.
 
 Classify findings: **Blocking** — contract failure, regression, data or
 security risk. **Important** — missing required behaviour, test, or
@@ -474,17 +502,11 @@ accepts.
 ### Maintenance log
 
 Maintenance logging is machine-local and opt-in at `~/.truss/delivery-log`.
-Delivery never creates the directory or file: a missing path is skipped
-silently, and deleting the file opts out. Only after a delivery is accepted
-and all required checks are green does Control append exactly one physical
-line; aborted or incomplete deliveries are not recorded. The line carries an
-ISO-8601 UTC timestamp and labelled fields `git-root`, `plan`,
-`pull-request` or `none`, `implementation-rounds`, `review-dispositions`,
-and `drift-cause`. Tabs separate fields; embedded tabs and newlines become
-spaces. Delivery never reads this file for routing, recovery, or runtime
-decisions, and its text layout is not a public parsing schema. An append
-failure produces a visible warning but does not invalidate or block an
-otherwise accepted release.
+Never create the directory or file; a missing path is skipped silently.
+After acceptance and all required checks are green, append one line only
+when the path exists, using `references/maintenance-log.md`.
+Never use this log for routing, recovery, or runtime decisions.
+An append failure warns but does not invalidate or block release.
 
 ## Evidence
 
@@ -513,7 +535,7 @@ is safe.
 | Orca or a required capability is unavailable | Stop; no headless fallback |
 | Truss fails or evidence is insufficient | Preserve the candidate, report the native outcome and role disposition |
 | Dispatch wait times out or receipt is ambiguous | Treat as transport-unknown: re-enter the wait or read the terminal; retry only into the same pinned terminal with `--retry-of` when it is not progressing |
-| Plan-review rejects the drafted contract | Control routes the findings back to `plan` or redrafts in-session; gate 1 is not presented until the audit passes |
+| Plan-review rejects the drafted contract | Control routes findings back to `plan` when `plan` and `plan-review` are pinned; only without those pins may Control redraft in-session. Gate 1 is not presented until the audit passes |
 | Control session is interrupted | Resume from Git state, the durable decision record or execution plan, and Orca run records; re-verify a live dispatch before re-engaging it; never start a competing implementer or reviewer for work already in flight |
 | Idempotent release step is interrupted | Verify Git and pull-request state, then resume |
 

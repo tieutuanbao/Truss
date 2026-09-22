@@ -4,7 +4,9 @@ Transient. Deleted in the release commit, before the release-binding review,
 after anything durable has moved into the decision record or the documents
 that own the changed paths.
 
-Three to five tightly related tasks. One coherent contract. One acceptance table.
+One coherent contract. One acceptance table. Split tasks only when each has
+its own test cycle and can be reviewed independently; batch same-shaped
+mechanical changes and keep tightly coupled work together.
 No status duplicated anywhere else.
 
 ---
@@ -26,12 +28,12 @@ One paragraph. What is true when this is done, and what is out of reach.
 <paths that may change>
 ```
 
-Carried without being listed: the colocated test of any allowed source file, any
-registry test enumerating what this plan adds, and any document owning an allowed
-path. State here which of those apply and which yielded nothing — checked, not
-assumed. State the command that produced the listed paths and any count or
-scope; the claim reports that command's output, and a count or a scope
-enumerates rather than samples.
+Before approval, enumerate the source paths, applicable colocated tests,
+registry tests, and owning documents this plan needs to change. Include
+those paths in allowed scope; relevance alone does not grant ownership.
+State which searches yielded nothing — checked, not assumed. Report each
+enumeration command and its output. Check all proposed paths against
+protected pre-existing dirty changes under the execution envelope.
 
 ## Forbidden scope
 
@@ -40,18 +42,23 @@ whose filename suggests relevance but whose contents do not.
 
 ## Execution envelope
 
-Protected dirty paths: pre-existing uncommitted changes this plan must not stage,
-overwrite, stash, or reset — name them, or say the tree was clean at baseline.
+Record the approved common envelope from `../SKILL.md` § Execution envelope.
+Use this plan's Allowed scope, Forbidden scope, Acceptance, and Closure gates
+sections by reference; do not duplicate their contents.
 
-Branch, base, remote, and pull-request target: the feature branch this plan
-commits to, the branch and remote it targets, and where its pull request goes.
+Protected dirty paths: name pre-existing changes and their ownership, or
+record that the worktree was clean at baseline.
 
-Resolved role pins: the truss, model, and effort each dispatched role runs
-under, taken from `AGENTS.md` — not a default left implicit.
+Git target: exact worktree, feature branch, baseline, base, remote, and
+pull-request target. For local delivery, state that publishing is not authorized.
 
-Authority: this plan may branch, commit only its own owned paths, run gates,
-push the named branch, and open or update the named pull request. It may not
-merge, force-push, stash, reset, clean, or edit anything outside owned scope.
+Resolved role pins: the truss, model, and effort for each dispatched role,
+taken from `AGENTS.md` and resolved against the live truss surface.
+
+Authority: record only granted branch, owned-path commit, gate, push, and
+pull-request actions. Local delivery explicitly excludes push and pull-request
+authority. Never authorized: merge, force-push, stash, reset, clean or other
+cleanup, or edits outside owned scope.
 
 ## Tasks
 
@@ -79,8 +86,9 @@ why each one — ownership, not habit.
 
 Design fills Counterexample; implement fills Observed red. An empty cell is an
 unfinished row. "The feature is absent" does not satisfy Counterexample. A row
-with no counterexample must say so and say a human reads the diff — that escape
-stays legal and is worth keeping only when someone actually reads it.
+with no counterexample must say so, name the responsible human reader, and
+state what reading the diff cannot prove. Its Observed red cell records the
+completed manual inspection and its limit instead of an executable failure.
 
 Every row's instrument must tell a pass from a failure. A row that cannot
 discriminate is not acceptance; either replace the instrument or record that no

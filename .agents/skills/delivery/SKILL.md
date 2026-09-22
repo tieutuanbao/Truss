@@ -143,7 +143,10 @@ Any claim about extent — an allowed scope, a count, a set of call sites —
 states the command that produced it. Naming the command is not the
 measurement: the command must have been run, and the claim reports its
 output. Where the claim is a count or a scope, the instrument enumerates
-rather than samples.
+rather than samples. A set comparison names both populations, any approved
+exclusions, and the expected relation. A mismatch goes back to Control for
+contract reconciliation; a dispatch prompt must not silently narrow the
+approved requirement or its instrument.
 
 ## Execution envelope
 
@@ -238,6 +241,13 @@ fresh terminal with the same pinned argv. Dispatch with `--terminal` only after
 configured model. A trust-cleared terminal whose banner names another model is
 not ready for that role.
 
+For a composed launch, cite the terminal handle, requested model/effort argv,
+and the readiness read showing the active model in the existing dispatch
+handoff or Control report. Distinguish requested settings from settings the
+TUI actually exposes; a model banner alone does not verify effective effort.
+Null launch fields on a reused-terminal receipt prove neither an unpinned
+launch nor the requested pin.
+
 For Zcode, read `references/trusses/zcode.md` before launch. Its standalone
 TUI verification and custom-terminal dispatch procedure apply; neither a
 desktop launcher nor a headless prompt is a worker substitute.
@@ -293,13 +303,20 @@ a heartbeat ends one wait but settles nothing.
 The worker reports once with `worker_done` and an `--outcome`.
 Completion comes from the worker's own `worker_done`;
 do not infer it from reading the worker's terminal.
-`worker-release` returns the terminal. `worker-read` is the bounded evidence
-read.
+`worker-read` is the bounded evidence read. After settlement, request
+`worker-release` and inspect its result; success does not always mean the
+terminal closed. Reused or external terminals may be retained without
+process action. Control may close an exact retained terminal only after
+verifying that this run created and still owns it, no work is active there,
+and required evidence has been recovered or its gap reported. Do not close
+user-owned, taken-over, or uncertain terminals.
 
 Each delivery opens its own Run on the execution plane rather than reusing
-another's, so a stale report cannot settle a new wait. A wait acknowledges
-its settling message after handling it, or the plane redelivers that
-message to the next wait.
+another's, so a stale report cannot settle a new wait. Control handles every
+message in a returned batch, then acknowledges that batch with
+`check --ack <deliveryId>` using its returned ID and the same Run and
+coordinator. Otherwise the plane redelivers it. A wait's type filter controls
+wakeup, not which messages belong to the returned batch.
 
 A dispatch that does not reach `ready` is diagnosed by reading its terminal
 and handling what is actually there. It is retried into that same terminal
@@ -393,8 +410,11 @@ Git state:           observed status, including protected baseline changes
 END OF HANDOFF
 ```
 
-`END OF HANDOFF` must be the last line; a missing sentinel means the handoff
-may be truncated. Resolve SHAs from Git, not from a planned commit.
+Write this handoff to the worktree file designated by Control and send its
+path as `payload.reportPath`, as required under § Launching a worker; an
+inline final message does not replace the file. `END OF HANDOFF` must be
+the file's last line; a missing sentinel means the handoff may be truncated.
+Resolve SHAs from Git, not from a planned commit.
 Identify acceptance rows using existing identifiers or exact requirement
 text; do not create another acceptance table or numbering system.
 
@@ -403,11 +423,9 @@ reported outcomes, and available evidence locators. It does not transcribe
 terminal output by hand or claim that its own account is independently
 verified. If no recoverable locator is available, say so.
 
-Control retrieves and cites the dispatch-bound command, output, and outcome
-from Orca under § Evidence. Orca owns transcript selection and cursor
-mechanics. Where Orca cannot recover an item, Control labels the worker's
-account as unverified; that account remains the thing under check, not proof.
-Reviewers still reproduce the required instruments themselves.
+Control retrieves and cites available dispatch-bound evidence under
+§ Evidence, including its stated limits. Reviewers still reproduce the
+required instruments themselves.
 
 Under `Residue`, a claim of nothing left names the check that returned empty.
 `Git state` distinguishes task changes from protected baseline changes;
@@ -522,9 +540,19 @@ An append failure warns but does not invalidate or block release.
 ## Evidence
 
 Evidence is a property of a dispatch, not a skill-owned journal. Control asks
-Orca for the dispatch-bound command, output, and outcome; durable candidate
-and release facts come from Git, CI, and the pull-request state. This skill
-duplicates none of those stores.
+Orca for the dispatch-bound command, output, and outcome. Orca owns transcript
+selection and cursor mechanics. For each cited read, report its source,
+exactness, completeness, and any fallback or clipping the response identifies.
+
+When required evidence is unavailable, Control must name the missing item
+and label the worker's account unverified. Neither a clipped terminal tail
+nor worker_done proves an unseen command, output, or counterexample check.
+Cite any independent reproduction separately, with its actor and revision;
+it does not establish that the worker performed the claimed check. Keep
+unresolved required evidence visible rather than declaring evidence complete.
+
+Durable candidate and release facts come from Git, CI, and the pull-request
+state. This skill duplicates none of those stores.
 
 ## Failure and recovery
 

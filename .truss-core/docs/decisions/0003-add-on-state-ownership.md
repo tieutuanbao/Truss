@@ -78,15 +78,23 @@ Specifically:
    only, because an older binary reads a session there as a core session.
    `.truss-core/lock` serializes every core and add-on mutation, and one
    active update transaction per repository is allowed.
-8. **The merge owner does not change.** Three-way merge stays with
+8. **Core-state prerequisite.** Add-on state operations require a valid
+   pre-existing core installation state. Core install and core update
+   exclusively own creation and repair of `.truss-core/`,
+   `.truss-core/.gitignore`, and `.truss-core/lock`. An add-on operation
+   validates those artifacts and refuses without mutation when any is absent,
+   invalid, or unsafe. It never creates or repairs them. Authoritative add-on
+   state loading, workspace observation, and commit all execute while holding
+   the existing shared lock.
+9. **The merge owner does not change.** Three-way merge stays with
    `git merge-file -p --diff3` through `GitThreeWayMerge`. No second merge
    implementation is written, in Rust or in shell.
-9. **`AGENTS.md` stays outside add-on scope.** No add-on file list includes
-   it, and the updater does not inspect, classify, or diagnose the Delivery
-   activation wording. That wording is owned by `$delivery-setup` under
-   decision 0001. An add-on update must leave `AGENTS.md` byte-identical and
-   may report only that the block was not touched.
-10. **Cross-platform before publishing.** Both installers advertise the same
+10. **`AGENTS.md` stays outside add-on scope.** No add-on file list includes
+    it, and the updater does not inspect, classify, or diagnose the Delivery
+    activation wording. That wording is owned by `$delivery-setup` under
+    decision 0001. An add-on update must leave `AGENTS.md` byte-identical and
+    may report only that the block was not touched.
+11. **Cross-platform before publishing.** Both installers advertise the same
     add-on flags, so the update path ships on Bash and PowerShell together,
     or on neither. PowerShell must never fall back to the old skip or force
     behaviour once a shared update option exists.
@@ -119,6 +127,16 @@ Specifically:
    templates a consumer may legitimately edit and upstream changed existing
    paths in an observed release. Acceptable only as an internal milestone
    that stops on any local/upstream overlap.
+7. **Roll back a state root that the add-on path created.** Rejected. It adds
+   cleanup logic around a lock file inside the directory being removed, it
+   differs across platforms (notably a Windows lock handle), it must tell
+   CLI-created content from core-owned content, and a cleanup failure turns a
+   refusal into a recovery state. The root cause is add-on code performing
+   core bootstrap it does not own.
+8. **Permit the state-root residue on refusal.** Rejected as invariant
+   weakening rather than clarification. It would relax both the
+   whole-tree-equality requirement and validation-before-write to make an
+   implementation pass.
 
 ## Consequences
 
@@ -145,6 +163,11 @@ Tradeoffs:
 
 - Implement through `$delivery` as Architectural work, following the approved
   slices in `.truss-core/docs/plans/active/addon-update.md`.
+- Amended 2026-09-23: clause 8 was added after the S2 scoped re-review found
+  that `FileSystemAddOnState::apply` created `.truss-core/`, patched
+  `.truss-core/.gitignore`, and created `.truss-core/lock` before its
+  authoritative locked refusal. The add-on path was acting as a second core
+  bootstrap owner.
 - The payload descriptor publication mechanism is selected during the design
   phase: staged bytes from the existing source modes, with release assets
   deferred.

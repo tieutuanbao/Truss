@@ -96,7 +96,7 @@ impl CoreDistributionPort for EmbeddedCoreDistribution {
         add(
             &mut files,
             ".truss-core/docs/communication.md",
-            include_bytes!("../../../../.truss-core/docs/communication.md"),
+            include_bytes!("../../assets/.truss-core/docs/communication.md"),
         )?;
         add(
             &mut files,

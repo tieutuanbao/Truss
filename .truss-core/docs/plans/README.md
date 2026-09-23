@@ -1,27 +1,33 @@
 # Execution Plans
 
-Plans are Git-native working memory for complex tasks.
+Execution plans are Git-native working memory for complex tasks. They preserve
+enough context for another agent or human to resume work without reconstructing
+intent from chat history or a partial diff.
 
-Use an ephemeral plan for bounded, single-session work. Create one file under
-`active/` when work spans sessions, coordinates contributors, has meaningful
-dependencies, needs recovery, or cannot safely resume from its diff.
+## When To Create A Plan
+
+Use an ephemeral plan for bounded, single-session work.
+
+Create one durable plan when work spans sessions, coordinates contributors, has
+meaningful dependencies or ordering, requires recovery steps, or would be unsafe
+to resume from the diff alone.
+
+Use `.truss-core/docs/templates/exec-plan.md` and place the file under `active/`.
+For an explicitly authorized baseline-to-rerun Truss experiment, use
+`.truss-core/docs/templates/truss-improvement.md` instead.
+
+## Lifecycle
 
 ```text
 .truss-core/docs/plans/active/<slug>.md
-  -> keep progress, decisions, recovery, and validation current
-  -> record the verified result
+  -> update progress and decisions during implementation
+  -> record final validation and result
   -> move to .truss-core/docs/plans/completed/<slug>.md
 ```
 
-Use `.truss-core/docs/templates/exec-plan.md`. Do not split one task into story, design,
-trace, and validation records without an independent audience.
+The plan is the primary task artifact. Promote a lasting product or architecture
+decision into `.truss-core/docs/decisions/`; keep task-local choices in the plan.
 
-## Active
+## Active Plans
 
-No durable work is currently active.
-
-## History
-
-Completed plans may be removed from the current tree when decisions, code,
-tests, and Git history preserve their lasting result. This keeps current
-retrieval focused without deleting provenance.
+No active execution plans are currently indexed.

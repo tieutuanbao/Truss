@@ -7,10 +7,10 @@ use fs2::FileExt;
 use serde::{Deserialize, Serialize};
 
 use super::state_io::{
-    acquire_lock, copy_bytes, copy_bytes_atomic, domain_error, ensure_state_ignore,
-    ensure_workspace_root, hash_bytes, io_error, read_json, reject_symlink, remove_dir_if_exists,
-    state_root, transaction_id, validate_path, validate_state_path, validate_workspace_root,
-    write_json_atomic,
+    acquire_existing_lock, copy_bytes, copy_bytes_atomic, domain_error, ensure_workspace_root,
+    hash_bytes, io_error, read_json, reject_symlink, remove_dir_if_exists, state_root,
+    transaction_id, validate_core_state, validate_path, validate_state_path,
+    validate_workspace_root, write_json_atomic,
 };
 use crate::application::{AddOnInstallRequest, AddOnRecordReceipt, AddOnStatePort, PortError};
 use crate::domain::{
@@ -52,25 +52,20 @@ impl AddOnStatePort for FileSystemAddOnState {
         ensure_workspace_root(root)?;
         request.descriptor.validate().map_err(domain_error)?;
         let state_root = state_root(root);
-        if state_root.exists() {
-            reject_symlink(&state_root, ".truss-core")?;
-        } else {
-            // The shared lock lives at `.truss-core/lock`, so it cannot be
-            // taken before the state root exists. Acceptance row 3 requires a
-            // stop to leave the tree byte-identical, so a request that will be
-            // refused must be refused before the state root is created. This
-            // preflight only refuses: it reads consumer paths and compares them
-            // with the descriptor, never payload bytes, and its verdict never
-            // authorizes a write. The observation that authorizes `commit`
-            // always runs under the shared lock below.
-            preflight(root, request.descriptor)?;
-        }
-        fs::create_dir_all(&state_root).map_err(io_error)?;
-        ensure_state_ignore(&state_root)?;
-        let lock = acquire_lock(&state_root)?;
-        // State loading and workspace observation run under the shared lock,
-        // and `commit` consumes exactly this locked observation, so no other
-        // writer can change a managed path between observation and write.
+        // Core install and core update exclusively own `.truss-core/`, its
+        // `.gitignore`, and its `lock`. This read-only prerequisite check runs
+        // before any payload or workspace observation and refuses without
+        // creating or repairing anything.
+        validate_core_state(&state_root)?;
+        // Fast-fail only: the locked observation below re-derives the verdict
+        // and is the only one that authorizes `commit`.
+        preflight(root, request.descriptor)?;
+        addon_observation_witness::run_barrier(root);
+        let lock = acquire_existing_lock(&state_root)?;
+        // State loading, workspace observation, and commit run under the
+        // existing shared lock, and `commit` consumes exactly this locked
+        // observation, so no other writer can change a managed path between
+        // observation and write.
         let observed = locked_apply(root, &state_root, request);
         FileExt::unlock(&lock).map_err(io_error)?;
         let plan = observed?;
@@ -87,13 +82,13 @@ struct AddOnPlan {
     fresh: bool,
 }
 
-/// Refuse, without touching the workspace, a request the locked observation is
-/// certain to refuse.
+/// Fast-fail refusal before the shared lock is taken.
 ///
-/// The locked observation re-derives this verdict, so a race can only make the
-/// locked observation refuse more, never authorize a write. This exists only
-/// so that a refusal does not have to create the state root in order to take
-/// the shared lock.
+/// The locked observation re-derives this verdict and is the only one that
+/// authorizes a write, so a race here can only make the locked observation
+/// refuse more. The preflight exists so an obviously refused request does not
+/// take the lock at all; it never creates or repairs core state, and it never
+/// authorizes a mutation.
 fn preflight(root: &Path, descriptor: &AddOnDescriptor) -> Result<(), PortError> {
     assess_local(root, descriptor)?.adopted(descriptor)?;
     Ok(())
@@ -495,21 +490,23 @@ struct AddOnFileDto {
     upstream_sha256: String,
 }
 
-/// Test-only synchronization witness for the locked observation.
+/// Test-only hooks for the synchronization contract around the shared lock.
 ///
 /// Integration tests cannot reach into a production process to place a
-/// competing writer, so a test arms a probe for one workspace root here. When
-/// the observation that authorizes `commit` starts, the probe spawns a
-/// competing writer that tries the shared `.truss-core/lock` without blocking.
+/// competing writer, so this module exposes two root-keyed hooks:
 ///
-/// If observation is not under the lock, that writer obtains the lock and
-/// overwrites `target` with [`COMPETING_BYTES`], recording
-/// [`COMPETING_WRITER_MUTATED`]; if observation is under the lock, the writer
-/// is refused and the outcome records [`SHARED_LOCK_HELD`]. The outcome is
-/// written to `witness`, which is the evidence the test asserts on.
+/// * [`arm`] and [`disarm`]: a witness run at the entry of the observation
+///   that authorizes `commit`, which is only ever entered while the shared lock
+///   is held. It spawns and joins a competing writer that tries the lock
+///   without blocking; [`SHARED_LOCK_HELD`] proves the observation ran under
+///   the lock, and [`COMPETING_WRITER_MUTATED`] proves it did not.
+/// * [`arm_barrier`] and [`disarm_barrier`]: an action run between the
+///   fast-fail preflight and existing-lock acquisition, which forces the
+///   interleaving amended acceptance row 3 requires ("preflight passes, then a
+///   competing writer changes a managed path before the lock is taken").
 ///
-/// The probe is inert unless a test arms it, and arming is keyed by the exact
-/// workspace root so parallel tests in one process cannot interfere.
+/// Both hooks are inert unless a test arms them, and arming is keyed by the
+/// exact workspace root so parallel tests in one process cannot interfere.
 #[doc(hidden)]
 pub mod addon_observation_witness {
     use super::{fs, io_error, state_root, FileExt, OpenOptions, Path, PathBuf, PortError};
@@ -531,7 +528,12 @@ pub mod addon_observation_witness {
 
     static ARMED: Mutex<Vec<Armed>> = Mutex::new(Vec::new());
 
-    /// Arm the probe for `root`; the outcome is written to `witness`.
+    type BarrierAction = Box<dyn FnOnce() + Send + 'static>;
+
+    static BARRIER: Mutex<Vec<(PathBuf, BarrierAction)>> = Mutex::new(Vec::new());
+
+    /// Arm the lock-holding witness for `root`; the outcome is written to
+    /// `witness`.
     pub fn arm(root: &Path, witness: &Path, target: &Path) {
         let mut armed = ARMED.lock().unwrap_or_else(|error| error.into_inner());
         armed.retain(|entry| entry.root != root);
@@ -542,10 +544,27 @@ pub mod addon_observation_witness {
         });
     }
 
-    /// Disarm the probe for `root`.
+    /// Disarm the lock-holding witness for `root`.
     pub fn disarm(root: &Path) {
         let mut armed = ARMED.lock().unwrap_or_else(|error| error.into_inner());
         armed.retain(|entry| entry.root != root);
+    }
+
+    /// Arm `action` to run once, after preflight and before lock acquisition,
+    /// for `root`.
+    pub fn arm_barrier<F>(root: &Path, action: F)
+    where
+        F: FnOnce() + Send + 'static,
+    {
+        let mut armed = BARRIER.lock().unwrap_or_else(|error| error.into_inner());
+        armed.retain(|(armed_root, _)| armed_root != root);
+        armed.push((root.to_path_buf(), Box::new(action)));
+    }
+
+    /// Disarm any barrier action armed for `root`.
+    pub fn disarm_barrier(root: &Path) {
+        let mut armed = BARRIER.lock().unwrap_or_else(|error| error.into_inner());
+        armed.retain(|(armed_root, _)| armed_root != root);
     }
 
     pub(super) fn run(root: &Path) -> Result<(), PortError> {
@@ -587,5 +606,16 @@ pub mod addon_observation_witness {
         .join()
         .unwrap_or("witness_thread_failed");
         fs::write(&entry.witness, format!("{outcome}\n")).map_err(io_error)
+    }
+
+    pub(super) fn run_barrier(root: &Path) {
+        let action = {
+            let mut armed = BARRIER.lock().unwrap_or_else(|error| error.into_inner());
+            match armed.iter().position(|(armed_root, _)| armed_root == root) {
+                Some(index) => armed.remove(index).1,
+                None => return,
+            }
+        };
+        action();
     }
 }

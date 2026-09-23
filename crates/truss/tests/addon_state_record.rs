@@ -102,21 +102,18 @@ fn assert_record_matches_payload(
     Ok(())
 }
 
-/// A canonical digest of the whole fixture tree, used to prove that a stop
-/// mutates nothing.
-fn tree_digest(root: &Path) -> String {
+/// A complete workspace snapshot: every path with its type and, for a file,
+/// its content digest; for a symlink, its target. The amended acceptance row 3
+/// compares path set, type, and content, so a refusal must leave this string
+/// byte-identical.
+fn workspace_snapshot(root: &Path) -> String {
     let mut lines = Vec::new();
-    walk(root, root, &mut lines);
+    walk_snapshot(root, root, &mut lines);
     lines.sort();
-    let mut hasher = Sha256::new();
-    for line in lines {
-        hasher.update(line.as_bytes());
-        hasher.update(b"\n");
-    }
-    format!("{:x}", hasher.finalize())
+    lines.join("\n")
 }
 
-fn walk(root: &Path, directory: &Path, lines: &mut Vec<String>) {
+fn walk_snapshot(root: &Path, directory: &Path, lines: &mut Vec<String>) {
     let mut entries = fs::read_dir(directory)
         .unwrap()
         .map(|entry| entry.unwrap())
@@ -130,9 +127,12 @@ fn walk(root: &Path, directory: &Path, lines: &mut Vec<String>) {
             .to_string_lossy()
             .replace('\\', "/");
         let metadata = fs::symlink_metadata(&path).unwrap();
-        if metadata.is_dir() {
+        if metadata.file_type().is_symlink() {
+            let target = fs::read_link(&path).unwrap();
+            lines.push(format!("symlink {relative} -> {}", target.display()));
+        } else if metadata.is_dir() {
             lines.push(format!("dir {relative}"));
-            walk(root, &path, lines);
+            walk_snapshot(root, &path, lines);
         } else if metadata.is_file() {
             let bytes = fs::read(&path).unwrap();
             lines.push(format!("file {relative} {:x}", Sha256::digest(&bytes)));
@@ -140,6 +140,10 @@ fn walk(root: &Path, directory: &Path, lines: &mut Vec<String>) {
             lines.push(format!("other {relative}"));
         }
     }
+}
+
+fn snapshot_digest(snapshot: &str) -> String {
+    format!("{:x}", Sha256::digest(snapshot.as_bytes()))
 }
 
 fn evidence(name: &str, body: &str) {
@@ -153,7 +157,28 @@ fn evidence(name: &str, body: &str) {
     fs::write(directory.join(name), body).unwrap();
 }
 
+/// The core-owned shared artifacts decision 0003 clause 8 requires before an
+/// add-on operation. A real core install writes exactly these rules through
+/// `state_io::ensure_state_ignore`; add-on apply validates them read-only and
+/// never creates or repairs them.
+const CORE_STATE_IGNORE: &str =
+    "/lock\n/transaction.json\n/base.next-*\n/update/\n/update-candidate/\n";
+
+fn seed_core_state(workspace: &Path) {
+    let state_root = workspace.join(".truss-core");
+    fs::create_dir_all(&state_root).unwrap();
+    fs::write(state_root.join(".gitignore"), CORE_STATE_IGNORE).unwrap();
+    fs::write(state_root.join("lock"), b"").unwrap();
+}
+
 fn fixture(tmp: &Path, name: &str) -> (PathBuf, PathBuf, PathBuf) {
+    let fixture = bare_fixture(tmp, name);
+    seed_core_state(&fixture.1);
+    fixture
+}
+
+/// A workspace with no core state yet; add-on apply must refuse it untouched.
+fn bare_fixture(tmp: &Path, name: &str) -> (PathBuf, PathBuf, PathBuf) {
     let payload = tmp.join(format!("{name}-payload"));
     let workspace = tmp.join(format!("{name}-workspace"));
     let manifest = tmp.join(format!("{name}-install-files.txt"));
@@ -300,7 +325,8 @@ fn legacy_install_with_one_edited_byte_is_refused() {
     );
 }
 
-/// Acceptance row 3: a stop mutates nothing.
+/// Acceptance row 3 (direct refusal): a refusal reached during preflight
+/// performs no mutation, including no change to the pre-existing core state.
 #[test]
 fn adoption_stop_writes_no_record_and_leaves_the_tree_unchanged() {
     let tmp = tempfile::tempdir().unwrap();
@@ -309,30 +335,211 @@ fn adoption_stop_writes_no_record_and_leaves_the_tree_unchanged() {
     write_file(&workspace, FIXTURE_FILES[1].0, "consumer edit\n");
     let descriptor = describe(&payload, &manifest, "demo");
 
-    let before = tree_digest(&workspace);
+    assert!(
+        workspace.join(".truss-core/lock").is_file(),
+        "the fixture must start from a valid core state"
+    );
+    let before = workspace_snapshot(&workspace);
     let error = FileSystemAddOnState
         .apply(&workspace, &request(&descriptor, &payload))
         .unwrap_err()
         .to_string();
-    let after = tree_digest(&workspace);
+    let after = workspace_snapshot(&workspace);
 
     assert_eq!(
         before, after,
         "a refused adoption must leave the fixture tree unchanged"
     );
-    assert!(!workspace.join(".truss-core/addons.json").exists());
     assert!(
-        !workspace.join(".truss-core").exists(),
-        "a stop must not create the state root"
+        workspace.join(".truss-core").exists(),
+        "the pre-existing core state must be untouched, not removed"
     );
+    assert!(!workspace.join(".truss-core/addons.json").exists());
+    assert!(!workspace.join(".truss-core/base-addons").exists());
 
     evidence(
         "s2-stop-tree-hashes.txt",
         &format!(
-            "before={before}\nafter={after}\nrefusal={error}\naddons_json_present={}\n",
+            "before={}\nafter={}\nrefusal={error}\naddons_json_present={}\n",
+            snapshot_digest(&before),
+            snapshot_digest(&after),
             workspace.join(".truss-core/addons.json").exists()
         ),
     );
+}
+
+/// Acceptance row 3, first amended fixture: with no core state at all, add-on
+/// apply refuses and creates nothing.
+///
+/// This is the fixture that rejects the bootstrap-on-refusal implementation:
+/// `2968c03` called `fs::create_dir_all(&state_root)` and
+/// `ensure_state_ignore(&state_root)` before its locked refusal, so it left
+/// `.truss-core/`, `.truss-core/.gitignore`, and normally
+/// `.truss-core/lock` behind and changes this snapshot.
+#[test]
+fn addon_apply_without_core_state_refuses_without_mutation() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (payload, workspace, manifest) = bare_fixture(tmp.path(), "no-core");
+    write_fixture_payload(&workspace);
+    let descriptor = describe(&payload, &manifest, "demo");
+
+    let before = workspace_snapshot(&workspace);
+    let error = FileSystemAddOnState
+        .apply(&workspace, &request(&descriptor, &payload))
+        .unwrap_err()
+        .to_string();
+    let after = workspace_snapshot(&workspace);
+
+    assert_eq!(
+        before, after,
+        "a missing core state must be refused without mutation"
+    );
+    assert!(
+        !workspace.join(".truss-core").exists(),
+        "add-on apply must never create the core state root"
+    );
+    assert!(!workspace.join(".truss-core/addons.json").exists());
+
+    evidence(
+        "s2b-row3-no-core-state.txt",
+        &format!(
+            "before={}\nafter={}\nrefusal={error}\ncore_state_present_after={}\n",
+            snapshot_digest(&before),
+            snapshot_digest(&after),
+            workspace.join(".truss-core").exists()
+        ),
+    );
+}
+
+/// Acceptance row 3, second amended fixture: valid core state, preflight
+/// passes, then a competing writer changes one managed path before the
+/// existing lock is acquired. The authoritative locked observation must refuse
+/// and the workspace must end exactly as the competing writer left it, with no
+/// `addons.json`, no baseline, and no managed-file write.
+///
+/// This rejects a preflight-authoritative implementation: one that commits
+/// from the preflight verdict writes provenance for the competing edit (or
+/// overwrites the edit) and so changes the post-change snapshot.
+#[test]
+fn locked_observation_refuses_after_preflight_passes_and_preserves_the_competing_change() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (payload, workspace, manifest) = fixture(tmp.path(), "locked-refuse");
+    write_fixture_payload(&workspace);
+    let descriptor = describe(&payload, &manifest, "demo");
+    let barrier_workspace = workspace.clone();
+    let (tx, rx) = std::sync::mpsc::channel();
+
+    addon_observation_witness::arm_barrier(&workspace, move || {
+        write_file(&barrier_workspace, FIXTURE_FILES[0].0, "competing edit\n");
+        tx.send(workspace_snapshot(&barrier_workspace))
+            .expect("the snapshot receiver must still be open");
+    });
+    let error = FileSystemAddOnState
+        .apply(&workspace, &request(&descriptor, &payload))
+        .unwrap_err()
+        .to_string();
+    addon_observation_witness::disarm_barrier(&workspace);
+
+    let post_change = rx
+        .try_recv()
+        .expect("the barrier must run after preflight and before lock acquisition");
+    let after = workspace_snapshot(&workspace);
+    assert_eq!(
+        after, post_change,
+        "the locked refusal must preserve the competing change exactly"
+    );
+    assert!(
+        error.contains("add-on adoption mismatch"),
+        "the locked observation must refuse the competing edit, got: {error}"
+    );
+    assert!(!workspace.join(".truss-core/addons.json").exists());
+    assert!(!workspace.join(".truss-core/base-addons").exists());
+
+    evidence(
+        "s2b-row3-locked-refusal.txt",
+        &format!(
+            "post_change={}\nafter={}\nrefusal={error}\naddons_json_present={}\nbase_addons_present={}\n",
+            snapshot_digest(&post_change),
+            snapshot_digest(&after),
+            workspace.join(".truss-core/addons.json").exists(),
+            workspace.join(".truss-core/base-addons").exists()
+        ),
+    );
+}
+
+/// Decision 0003 clause 8: a missing, unsafe, or incomplete core state is
+/// refused without mutation. Every case starts from an exact legacy install so
+/// that a valid core state would adopt; only the prerequisite is broken.
+#[test]
+fn invalid_core_state_is_refused_without_mutation() {
+    /// One broken core-state prerequisite: a label and the mutation that
+    /// breaks it.
+    type Case = (&'static str, fn(&Path));
+
+    let mut cases: Vec<Case> = Vec::new();
+    cases.push(("missing-ignore-file", |workspace: &Path| {
+        fs::remove_file(workspace.join(".truss-core/.gitignore")).unwrap();
+    }));
+    cases.push(("missing-ignore-rule", |workspace: &Path| {
+        fs::write(workspace.join(".truss-core/.gitignore"), "/lock\n").unwrap();
+    }));
+    cases.push(("missing-lock", |workspace: &Path| {
+        fs::remove_file(workspace.join(".truss-core/lock")).unwrap();
+    }));
+    cases.push(("non-regular-lock", |workspace: &Path| {
+        let lock = workspace.join(".truss-core/lock");
+        fs::remove_file(&lock).unwrap();
+        fs::create_dir(&lock).unwrap();
+    }));
+    cases.push(("state-root-is-a-file", |workspace: &Path| {
+        fs::remove_dir_all(workspace.join(".truss-core")).unwrap();
+        fs::write(workspace.join(".truss-core"), b"not a state root").unwrap();
+    }));
+    #[cfg(unix)]
+    {
+        cases.push(("symlinked-lock", |workspace: &Path| {
+            let lock = workspace.join(".truss-core/lock");
+            fs::remove_file(&lock).unwrap();
+            std::os::unix::fs::symlink("real-lock", &lock).unwrap();
+        }));
+        cases.push(("symlinked-state-root", |workspace: &Path| {
+            let state_root = workspace.join(".truss-core");
+            let real = workspace.join(".truss-core-real");
+            fs::rename(&state_root, &real).unwrap();
+            std::os::unix::fs::symlink(&real, &state_root).unwrap();
+        }));
+    }
+
+    let mut observed = String::new();
+    for (label, break_it) in cases {
+        let tmp = tempfile::tempdir().unwrap();
+        let (payload, workspace, manifest) = fixture(tmp.path(), label);
+        write_fixture_payload(&workspace);
+        let descriptor = describe(&payload, &manifest, "demo");
+        break_it(&workspace);
+
+        let before = workspace_snapshot(&workspace);
+        let error = FileSystemAddOnState
+            .apply(&workspace, &request(&descriptor, &payload))
+            .unwrap_err()
+            .to_string();
+        let after = workspace_snapshot(&workspace);
+
+        assert_eq!(
+            before, after,
+            "{label}: an invalid core state must be refused without mutation"
+        );
+        assert!(
+            !workspace.join(".truss-core/addons.json").exists(),
+            "{label}"
+        );
+        assert!(
+            !workspace.join(".truss-core/base-addons").exists(),
+            "{label}"
+        );
+        observed.push_str(&format!("{label}: {error}\n"));
+    }
+    evidence("s2b-invalid-core-state.txt", &observed);
 }
 
 /// Acceptance row 2: an extra managed local path the payload does not declare
@@ -501,6 +708,7 @@ fn install_with_wrong_writer(tmp: &Path) -> (AddOnState, PathBuf) {
     let manifest = tmp.join("wrong-install-files.txt");
     write_fixture_payload(&real_payload);
     write_fixture_payload(&workspace);
+    seed_core_state(&workspace);
     fs::write(&manifest, FIXTURE_MANIFEST).unwrap();
     // The consumer edits one managed file.
     write_file(&workspace, FIXTURE_FILES[0].0, "consumer edit\n");

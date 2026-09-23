@@ -20,15 +20,22 @@ pub(crate) fn state_root(root: &Path) -> PathBuf {
     root.join(".truss-core")
 }
 
+/// Rules the core-owned shared `.truss-core/.gitignore` must carry.
+///
+/// Core install and core update are the only writers of this file. Add-on
+/// operations validate the rules are present and refuse when one is missing;
+/// they never patch the file.
+pub(crate) const STATE_IGNORE_RULES: [&str; 5] = [
+    "/lock",
+    "/transaction.json",
+    "/base.next-*",
+    "/update/",
+    "/update-candidate/",
+];
+
 pub(crate) fn ensure_state_ignore(state_root: &Path) -> Result<(), PortError> {
     let path = state_root.join(".gitignore");
-    let rules = [
-        "/lock",
-        "/transaction.json",
-        "/base.next-*",
-        "/update/",
-        "/update-candidate/",
-    ];
+    let rules = STATE_IGNORE_RULES;
     if path.exists() {
         reject_symlink(&path, ".truss-core/.gitignore")?;
         let metadata = fs::metadata(&path).map_err(io_error)?;
@@ -54,10 +61,69 @@ pub(crate) fn ensure_state_ignore(state_root: &Path) -> Result<(), PortError> {
         }
         return Ok(());
     }
-    copy_bytes(
-        b"/lock\n/transaction.json\n/base.next-*\n/update/\n/update-candidate/\n",
-        &path,
-    )
+    let mut content = String::new();
+    for rule in STATE_IGNORE_RULES {
+        content.push_str(rule);
+        content.push('\n');
+    }
+    copy_bytes(content.as_bytes(), &path)
+}
+
+/// Validate the pre-existing core state that an add-on operation requires.
+///
+/// Core install and core update exclusively create and repair `.truss-core/`,
+/// its `.gitignore`, and its `lock`. This check is read-only on purpose: a
+/// missing, unsafe, or incomplete artifact is a refusal, and nothing here ever
+/// creates or repairs one. It runs before any payload or workspace
+/// observation.
+pub(crate) fn validate_core_state(state_root: &Path) -> Result<(), PortError> {
+    let metadata = fs::symlink_metadata(state_root).map_err(|error| {
+        PortError::new(format!(
+            "add-on state operations require an existing core state at .truss-core: {error}"
+        ))
+    })?;
+    if metadata.file_type().is_symlink() {
+        return Err(PortError::new(format!(
+            "refusing symlink for managed path .truss-core: {}",
+            state_root.display()
+        )));
+    }
+    if !metadata.is_dir() {
+        return Err(PortError::new(
+            "core state .truss-core is not a directory".to_owned(),
+        ));
+    }
+    let ignore = state_root.join(".gitignore");
+    require_regular_file(&ignore, ".truss-core/.gitignore")?;
+    let content = fs::read_to_string(&ignore).map_err(io_error)?;
+    for rule in STATE_IGNORE_RULES {
+        if !content.lines().any(|line| line.trim() == rule) {
+            return Err(PortError::new(format!(
+                "core state .truss-core/.gitignore is missing the rule {rule}"
+            )));
+        }
+    }
+    let lock = state_root.join("lock");
+    require_regular_file(&lock, ".truss-core/lock")?;
+    Ok(())
+}
+
+fn require_regular_file(path: &Path, label: &str) -> Result<(), PortError> {
+    let metadata = fs::symlink_metadata(path).map_err(|error| {
+        PortError::new(format!(
+            "{label} is required for add-on state operations: {error}"
+        ))
+    })?;
+    if metadata.file_type().is_symlink() {
+        return Err(PortError::new(format!(
+            "refusing symlink for managed path {label}: {}",
+            path.display()
+        )));
+    }
+    if !metadata.is_file() {
+        return Err(PortError::new(format!("{label} is not a regular file")));
+    }
+    Ok(())
 }
 
 pub(crate) fn validate_path(root: &Path, path: &RelativePath) -> Result<(), PortError> {
@@ -159,6 +225,26 @@ pub(crate) fn acquire_lock(state_root: &Path) -> Result<File, PortError> {
         .truncate(false)
         .open(state_root.join("lock"))
         .map_err(io_error)?;
+    FileExt::lock_exclusive(&lock).map_err(io_error)?;
+    Ok(lock)
+}
+
+/// Open and exclusively lock the existing shared `.truss-core/lock`.
+///
+/// Unlike `acquire_lock`, this never creates the lock file: add-on state
+/// operations require the core to have created it, and a missing lock is a
+/// refusal rather than a reason to bootstrap core state.
+pub(crate) fn acquire_existing_lock(state_root: &Path) -> Result<File, PortError> {
+    let path = state_root.join("lock");
+    let lock = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(&path)
+        .map_err(|error| {
+            PortError::new(format!(
+                ".truss-core/lock is required for add-on state operations: {error}"
+            ))
+        })?;
     FileExt::lock_exclusive(&lock).map_err(io_error)?;
     Ok(lock)
 }

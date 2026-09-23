@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
+use std::fs::OpenOptions;
 use std::path::{Path, PathBuf};
 
 use fs2::FileExt;
@@ -13,8 +14,8 @@ use super::state_io::{
 };
 use crate::application::{AddOnInstallRequest, AddOnRecordReceipt, AddOnStatePort, PortError};
 use crate::domain::{
-    AddOnInstallation, AddOnName, AddOnState, BaselineFile, ContentHash, DomainError, RelativePath,
-    SourceRef,
+    AddOnDescriptor, AddOnInstallation, AddOnName, AddOnPayloadFile, AddOnState, BaselineFile,
+    ContentHash, DomainError, RelativePath, SourceRef,
 };
 
 const ADDONS_FILE: &str = "addons.json";
@@ -51,23 +52,28 @@ impl AddOnStatePort for FileSystemAddOnState {
         ensure_workspace_root(root)?;
         request.descriptor.validate().map_err(domain_error)?;
         let state_root = state_root(root);
-        let existing = if state_root.exists() {
+        if state_root.exists() {
             reject_symlink(&state_root, ".truss-core")?;
-            load_state(&state_root)?
         } else {
-            None
-        };
-        // Observation and the exact-match rule run before any write, so a
-        // stop leaves the workspace and the state root byte-identical.
-        let plan = observe(root, request, existing)?;
-        if !state_root.exists() {
-            fs::create_dir_all(&state_root).map_err(io_error)?;
+            // The shared lock lives at `.truss-core/lock`, so it cannot be
+            // taken before the state root exists. Acceptance row 3 requires a
+            // stop to leave the tree byte-identical, so a request that will be
+            // refused must be refused before the state root is created. This
+            // preflight only refuses: it reads consumer paths and compares them
+            // with the descriptor, never payload bytes, and its verdict never
+            // authorizes a write. The observation that authorizes `commit`
+            // always runs under the shared lock below.
+            preflight(root, request.descriptor)?;
         }
+        fs::create_dir_all(&state_root).map_err(io_error)?;
         ensure_state_ignore(&state_root)?;
         let lock = acquire_lock(&state_root)?;
-        let result = commit(root, &state_root, &plan);
+        // State loading and workspace observation run under the shared lock,
+        // and `commit` consumes exactly this locked observation, so no other
+        // writer can change a managed path between observation and write.
+        let observed = locked_apply(root, &state_root, request);
         FileExt::unlock(&lock).map_err(io_error)?;
-        result?;
+        let plan = observed?;
         Ok(AddOnRecordReceipt {
             adopted: plan.adopted,
         })
@@ -81,11 +87,102 @@ struct AddOnPlan {
     fresh: bool,
 }
 
+/// Refuse, without touching the workspace, a request the locked observation is
+/// certain to refuse.
+///
+/// The locked observation re-derives this verdict, so a race can only make the
+/// locked observation refuse more, never authorize a write. This exists only
+/// so that a refusal does not have to create the state root in order to take
+/// the shared lock.
+fn preflight(root: &Path, descriptor: &AddOnDescriptor) -> Result<(), PortError> {
+    assess_local(root, descriptor)?.adopted(descriptor)?;
+    Ok(())
+}
+
+/// The consumer side of an observation: which managed paths are present,
+/// which are edited, and which extra paths the payload does not declare.
+struct LocalAssessment {
+    local: BTreeMap<RelativePath, Option<ContentHash>>,
+    extra: Vec<RelativePath>,
+    present: usize,
+}
+
+impl LocalAssessment {
+    /// `Ok(false)` is a fresh install, `Ok(true)` is an exact adoption, and an
+    /// error is a refusal. Payload bytes are not needed for this verdict.
+    fn adopted(&self, descriptor: &AddOnDescriptor) -> Result<bool, PortError> {
+        if self.present == 0 {
+            if let Some(path) = self.extra.first() {
+                return Err(domain_error(DomainError::ExtraAddOnPath(path.clone())));
+            }
+            return Ok(false);
+        }
+        descriptor
+            .require_exact_local_match(&self.local, &self.extra)
+            .map_err(domain_error)?;
+        Ok(true)
+    }
+}
+
+fn assess_local(root: &Path, descriptor: &AddOnDescriptor) -> Result<LocalAssessment, PortError> {
+    let extra = collect_extra_managed_paths(root, &descriptor.files)?;
+    let mut local = BTreeMap::new();
+    let mut present = 0usize;
+    for file in &descriptor.files {
+        validate_path(root, &file.path)?;
+        let target = root.join(file.path.as_str());
+        match fs::symlink_metadata(&target) {
+            Ok(metadata) => {
+                if metadata.file_type().is_symlink() {
+                    return Err(PortError::new(format!(
+                        "refusing symlink for add-on managed path: {}",
+                        file.path
+                    )));
+                }
+                if !metadata.is_file() {
+                    return Err(PortError::new(format!(
+                        "add-on managed path is not a regular file: {}",
+                        file.path
+                    )));
+                }
+                let bytes = fs::read(&target).map_err(io_error)?;
+                local.insert(file.path.clone(), Some(hash_bytes(&bytes)?));
+                present += 1;
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                local.insert(file.path.clone(), None);
+            }
+            Err(error) => return Err(io_error(error)),
+        }
+    }
+    Ok(LocalAssessment {
+        local,
+        extra,
+        present,
+    })
+}
+
+/// Load state, observe the workspace, and commit, all under the shared lock
+/// the caller already holds.
+fn locked_apply(
+    root: &Path,
+    state_root: &Path,
+    request: &AddOnInstallRequest<'_>,
+) -> Result<AddOnPlan, PortError> {
+    let existing = load_state(state_root)?;
+    let plan = observe(root, request, existing)?;
+    commit(root, state_root, &plan)?;
+    Ok(plan)
+}
+
 fn observe(
     root: &Path,
     request: &AddOnInstallRequest<'_>,
     existing: Option<AddOnState>,
 ) -> Result<AddOnPlan, PortError> {
+    // Runs at the entry of the observation that authorizes `commit`, which is
+    // always entered while the shared lock is held.
+    addon_observation_witness::run(root)?;
     let descriptor = request.descriptor;
     let name = descriptor.name.clone();
 
@@ -130,49 +227,8 @@ fn observe(
         )));
     }
 
-    let extra = collect_extra_managed_paths(root, &installation.files)?;
-    let mut local = BTreeMap::new();
-    let mut present = 0usize;
-    for file in &installation.files {
-        validate_path(root, &file.path)?;
-        let target = root.join(file.path.as_str());
-        match fs::symlink_metadata(&target) {
-            Ok(metadata) => {
-                if metadata.file_type().is_symlink() {
-                    return Err(PortError::new(format!(
-                        "refusing symlink for add-on managed path: {}",
-                        file.path
-                    )));
-                }
-                if !metadata.is_file() {
-                    return Err(PortError::new(format!(
-                        "add-on managed path is not a regular file: {}",
-                        file.path
-                    )));
-                }
-                let bytes = fs::read(&target).map_err(io_error)?;
-                local.insert(file.path.clone(), Some(hash_bytes(&bytes)?));
-                present += 1;
-            }
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                local.insert(file.path.clone(), None);
-            }
-            Err(error) => return Err(io_error(error)),
-        }
-    }
-
-    let fresh = present == 0;
-    let adopted = if fresh {
-        if let Some(path) = extra.first() {
-            return Err(domain_error(DomainError::ExtraAddOnPath(path.clone())));
-        }
-        false
-    } else {
-        descriptor
-            .require_exact_local_match(&local, &extra)
-            .map_err(domain_error)?;
-        true
-    };
+    let assessment = assess_local(root, descriptor)?;
+    let adopted = assessment.adopted(descriptor)?;
 
     let mut state = existing.unwrap_or(AddOnState {
         schema_version: AddOnState::SCHEMA_VERSION,
@@ -184,7 +240,7 @@ fn observe(
         installation,
         state,
         adopted,
-        fresh,
+        fresh: assessment.present == 0,
     })
 }
 
@@ -299,7 +355,7 @@ fn load_state(state_root: &Path) -> Result<Option<AddOnState>, PortError> {
 /// anything else is an extra managed path.
 fn collect_extra_managed_paths(
     root: &Path,
-    files: &[BaselineFile],
+    files: &[AddOnPayloadFile],
 ) -> Result<Vec<RelativePath>, PortError> {
     let mut declared_paths = BTreeSet::new();
     let mut declared_dirs = BTreeSet::new();
@@ -437,4 +493,99 @@ struct AddOnDto {
 struct AddOnFileDto {
     path: String,
     upstream_sha256: String,
+}
+
+/// Test-only synchronization witness for the locked observation.
+///
+/// Integration tests cannot reach into a production process to place a
+/// competing writer, so a test arms a probe for one workspace root here. When
+/// the observation that authorizes `commit` starts, the probe spawns a
+/// competing writer that tries the shared `.truss-core/lock` without blocking.
+///
+/// If observation is not under the lock, that writer obtains the lock and
+/// overwrites `target` with [`COMPETING_BYTES`], recording
+/// [`COMPETING_WRITER_MUTATED`]; if observation is under the lock, the writer
+/// is refused and the outcome records [`SHARED_LOCK_HELD`]. The outcome is
+/// written to `witness`, which is the evidence the test asserts on.
+///
+/// The probe is inert unless a test arms it, and arming is keyed by the exact
+/// workspace root so parallel tests in one process cannot interfere.
+#[doc(hidden)]
+pub mod addon_observation_witness {
+    use super::{fs, io_error, state_root, FileExt, OpenOptions, Path, PathBuf, PortError};
+    use std::sync::Mutex;
+
+    /// Bytes the competing writer would write if it could bypass the lock.
+    pub const COMPETING_BYTES: &[u8] = b"competing writer\n";
+    /// Outcome recorded when the shared lock was held during observation.
+    pub const SHARED_LOCK_HELD: &str = "shared_lock_held";
+    /// Outcome recorded when the competing writer bypassed the lock.
+    pub const COMPETING_WRITER_MUTATED: &str = "competing_writer_mutated";
+
+    #[derive(Clone)]
+    struct Armed {
+        root: PathBuf,
+        witness: PathBuf,
+        target: PathBuf,
+    }
+
+    static ARMED: Mutex<Vec<Armed>> = Mutex::new(Vec::new());
+
+    /// Arm the probe for `root`; the outcome is written to `witness`.
+    pub fn arm(root: &Path, witness: &Path, target: &Path) {
+        let mut armed = ARMED.lock().unwrap_or_else(|error| error.into_inner());
+        armed.retain(|entry| entry.root != root);
+        armed.push(Armed {
+            root: root.to_path_buf(),
+            witness: witness.to_path_buf(),
+            target: target.to_path_buf(),
+        });
+    }
+
+    /// Disarm the probe for `root`.
+    pub fn disarm(root: &Path) {
+        let mut armed = ARMED.lock().unwrap_or_else(|error| error.into_inner());
+        armed.retain(|entry| entry.root != root);
+    }
+
+    pub(super) fn run(root: &Path) -> Result<(), PortError> {
+        let entry = {
+            let armed = ARMED.lock().unwrap_or_else(|error| error.into_inner());
+            armed.iter().find(|entry| entry.root == root).cloned()
+        };
+        let Some(entry) = entry else {
+            return Ok(());
+        };
+        let state_root = state_root(root);
+        let target = entry.target.clone();
+        let outcome = std::thread::spawn(move || {
+            if fs::create_dir_all(&state_root).is_err() {
+                return "state_root_unavailable";
+            }
+            let Ok(lock) = OpenOptions::new()
+                .create(true)
+                .read(true)
+                .write(true)
+                .truncate(false)
+                .open(state_root.join("lock"))
+            else {
+                return "lock_file_unavailable";
+            };
+            match FileExt::try_lock_exclusive(&lock) {
+                Ok(()) => {
+                    if let Some(parent) = target.parent() {
+                        let _ = fs::create_dir_all(parent);
+                    }
+                    let _ = fs::write(&target, COMPETING_BYTES);
+                    let _ = FileExt::unlock(&lock);
+                    COMPETING_WRITER_MUTATED
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => SHARED_LOCK_HELD,
+                Err(_) => "lock_try_failed",
+            }
+        })
+        .join()
+        .unwrap_or("witness_thread_failed");
+        fs::write(&entry.witness, format!("{outcome}\n")).map_err(io_error)
+    }
 }

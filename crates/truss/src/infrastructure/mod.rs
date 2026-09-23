@@ -7,6 +7,7 @@ mod release_handoff;
 mod state_io;
 
 pub use addon_payload::FileSystemAddOnPayload;
+pub use addon_state::addon_observation_witness;
 pub use addon_state::FileSystemAddOnState;
 pub use embedded_distribution::EmbeddedCoreDistribution;
 pub use filesystem_state::FileSystemInstallationState;

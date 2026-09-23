@@ -4,7 +4,9 @@ use std::path::{Path, PathBuf};
 use sha2::{Digest, Sha256};
 use truss::application::{AddOnInstallRequest, AddOnPayloadPort, AddOnPayloadSpec, AddOnStatePort};
 use truss::domain::{AddOnDescriptor, AddOnName, AddOnState};
-use truss::infrastructure::{FileSystemAddOnPayload, FileSystemAddOnState};
+use truss::infrastructure::{
+    addon_observation_witness, FileSystemAddOnPayload, FileSystemAddOnState,
+};
 
 /// Fixture payload: three files across three directories.
 const FIXTURE_FILES: &[(&str, &str)] = &[
@@ -356,6 +358,100 @@ fn legacy_install_with_an_extra_managed_path_is_refused() {
         "expected an extra-path refusal, got: {error}"
     );
     assert!(!workspace.join(".truss-core/addons.json").exists());
+}
+
+/// Synchronization proof for the Blocking finding: the observation that
+/// authorizes `commit` runs while the shared `.truss-core/lock` is held, so a
+/// competing writer cannot slip a consumer edit between observation and write.
+///
+/// The witness spawns the competing writer from inside `observe` and joins it
+/// before the observation reads the workspace, so the test does not depend on
+/// thread timing: the writer either finds the lock held and is refused, or it
+/// takes the lock and mutates the managed path, which the observation must
+/// then refuse. The present-but-wrong implementation it rejects is the one
+/// that observes before acquiring the lock, where the competing writer takes
+/// the free lock and the exact fixture is refused instead of adopted.
+#[test]
+fn adoption_observation_holds_the_shared_lock_against_a_competing_writer() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (payload, workspace, manifest) = fixture(tmp.path(), "locked-adopt");
+    write_fixture_payload(&workspace);
+    let descriptor = describe(&payload, &manifest, "demo");
+    let witness = tmp.path().join("s2-lock-witness.txt");
+    let target = workspace.join(FIXTURE_FILES[0].0);
+    let original = fs::read(&target).unwrap();
+
+    addon_observation_witness::arm(&workspace, &witness, &target);
+    let receipt = FileSystemAddOnState
+        .apply(&workspace, &request(&descriptor, &payload))
+        .unwrap();
+    addon_observation_witness::disarm(&workspace);
+
+    assert!(receipt.adopted, "an exact legacy install must be adopted");
+    let outcome = fs::read_to_string(&witness).unwrap();
+    assert_eq!(
+        outcome.trim(),
+        addon_observation_witness::SHARED_LOCK_HELD,
+        "a competing writer reached the workspace during observation"
+    );
+    assert_eq!(
+        fs::read(&target).unwrap(),
+        original,
+        "the competing writer must not alter a managed consumer file"
+    );
+    let record = FileSystemAddOnState.load(&workspace).unwrap().unwrap();
+    assert_record_matches_payload(&record, &workspace, &payload, "demo").unwrap();
+
+    evidence(
+        "s2-lock-witness.txt",
+        &format!(
+            "competing_writer={}\nconsumer_file_unchanged=true\nadopted={}\n",
+            outcome.trim(),
+            receipt.adopted
+        ),
+    );
+}
+
+/// The same proof for the fresh-install half of the finding: a file that
+/// appears during observation could be overwritten by the commit, so the
+/// observation that decides `fresh` must run under the lock too.
+#[test]
+fn fresh_install_observation_holds_the_shared_lock_against_a_competing_writer() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (payload, workspace, manifest) = fixture(tmp.path(), "locked-fresh");
+    let descriptor = describe(&payload, &manifest, "demo");
+    let witness = tmp.path().join("s2-lock-witness-fresh.txt");
+    let target = workspace.join(FIXTURE_FILES[0].0);
+
+    addon_observation_witness::arm(&workspace, &witness, &target);
+    let receipt = FileSystemAddOnState
+        .apply(&workspace, &request(&descriptor, &payload))
+        .unwrap();
+    addon_observation_witness::disarm(&workspace);
+
+    assert!(!receipt.adopted, "an empty workspace is a fresh install");
+    let outcome = fs::read_to_string(&witness).unwrap();
+    assert_eq!(
+        outcome.trim(),
+        addon_observation_witness::SHARED_LOCK_HELD,
+        "a competing writer reached the workspace during observation"
+    );
+    assert_eq!(
+        fs::read(&target).unwrap(),
+        fs::read(payload.join(FIXTURE_FILES[0].0)).unwrap(),
+        "the installed file must be the payload bytes, not competing bytes"
+    );
+    let record = FileSystemAddOnState.load(&workspace).unwrap().unwrap();
+    assert_record_matches_payload(&record, &workspace, &payload, "demo").unwrap();
+
+    evidence(
+        "s2-lock-witness-fresh.txt",
+        &format!(
+            "competing_writer={}\ninstalled_bytes_are_payload=true\nadopted={}\n",
+            outcome.trim(),
+            receipt.adopted
+        ),
+    );
 }
 
 /// Acceptance row 1 counterexample, first form: the wrong writer records the

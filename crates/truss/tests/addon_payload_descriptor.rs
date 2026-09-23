@@ -77,8 +77,9 @@ fn flipped(hash: &ContentHash) -> ContentHash {
 ///
 /// The two path sets are compared both as ordered lists and as sets, and every
 /// descriptor digest is re-derived from the payload bytes. The descriptor path
-/// set and `path sha256` pair are also written under `CARGO_TARGET_TMPDIR` so
-/// the `comm`/`sha256sum` instrument can be replayed from a shell.
+/// set and `path sha256` pair are also written to the stable, git-ignored
+/// `target/s1-evidence/` directory so the `comm`/`sha256sum` instrument can be
+/// replayed from a shell after the test run.
 #[test]
 fn descriptor_from_real_delivery_manifest_carries_manifest_order_and_payload_digests() {
     let crate_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -121,7 +122,8 @@ fn descriptor_from_real_delivery_manifest_carries_manifest_order_and_payload_dig
         );
     }
 
-    let evidence = PathBuf::from(env!("CARGO_TARGET_TMPDIR"));
+    let evidence = repository.join("target/s1-evidence");
+    fs::create_dir_all(&evidence).unwrap();
     let mut sorted_paths = descriptor_set.iter().cloned().collect::<Vec<_>>();
     sorted_paths.sort();
     fs::write(

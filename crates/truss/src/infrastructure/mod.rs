@@ -1,4 +1,5 @@
 mod addon_payload;
+mod addon_plan;
 mod addon_state;
 mod embedded_distribution;
 mod filesystem_state;
@@ -7,6 +8,7 @@ mod release_handoff;
 mod state_io;
 
 pub use addon_payload::FileSystemAddOnPayload;
+pub use addon_plan::FileSystemAddOnPlanner;
 pub use addon_state::addon_observation_witness;
 pub use addon_state::FileSystemAddOnState;
 pub use embedded_distribution::EmbeddedCoreDistribution;

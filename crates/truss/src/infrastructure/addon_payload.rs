@@ -99,6 +99,31 @@ impl AddOnPayloadPort for FileSystemAddOnPayload {
     }
 }
 
+/// Read one payload path declared by `descriptor` and require its bytes to
+/// match the descriptor digest.
+///
+/// This is the smallest reader an adapter needs: path safety, regular-file,
+/// and restricted-mode checks stay owned by [`read_payload_file`], and digest
+/// agreement stays owned by the descriptor, so no caller re-implements payload
+/// state logic.
+pub(crate) fn read_declared_file(
+    root: &Path,
+    name: &AddOnName,
+    file: &AddOnPayloadFile,
+) -> Result<Vec<u8>, PortError> {
+    let bytes = read_payload_file(root, name, &file.path)?;
+    let actual = hash_content(&bytes)?;
+    if actual != file.sha256 {
+        return Err(PortError::new(format!(
+            "add-on payload digest mismatch for {name}: {} hashes to {} in the payload but {} in the descriptor",
+            file.path,
+            actual.as_str(),
+            file.sha256.as_str()
+        )));
+    }
+    Ok(bytes)
+}
+
 fn read_manifest(manifest: &Path) -> Result<Vec<String>, PortError> {
     let content = fs::read_to_string(manifest).map_err(|error| {
         PortError::new(format!(

@@ -1,3 +1,5 @@
+mod common;
+
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -7,6 +9,8 @@ use truss::domain::{AddOnDescriptor, AddOnName, AddOnState};
 use truss::infrastructure::{
     addon_observation_witness, FileSystemAddOnPayload, FileSystemAddOnState,
 };
+
+use common::{seed_core_state, snapshot_digest, workspace_snapshot, write_file};
 
 /// Fixture payload: three files across three directories.
 const FIXTURE_FILES: &[(&str, &str)] = &[
@@ -23,12 +27,6 @@ const FIXTURE_MANIFEST: &str = "\
 .agents/skills/demo/references/notes.md\n";
 
 const SOURCE_REF: &str = "truss-v0.1.13";
-
-fn write_file(root: &Path, relative: &str, content: &str) {
-    let target = root.join(relative);
-    fs::create_dir_all(target.parent().unwrap()).unwrap();
-    fs::write(target, content).unwrap();
-}
 
 fn write_fixture_payload(root: &Path) {
     for (relative, content) in FIXTURE_FILES {
@@ -102,50 +100,8 @@ fn assert_record_matches_payload(
     Ok(())
 }
 
-/// A complete workspace snapshot: every path with its type and, for a file,
-/// its content digest; for a symlink, its target. The amended acceptance row 3
-/// compares path set, type, and content, so a refusal must leave this string
-/// byte-identical.
-fn workspace_snapshot(root: &Path) -> String {
-    let mut lines = Vec::new();
-    walk_snapshot(root, root, &mut lines);
-    lines.sort();
-    lines.join("\n")
-}
-
-fn walk_snapshot(root: &Path, directory: &Path, lines: &mut Vec<String>) {
-    let mut entries = fs::read_dir(directory)
-        .unwrap()
-        .map(|entry| entry.unwrap())
-        .collect::<Vec<_>>();
-    entries.sort_by_key(|entry| entry.file_name());
-    for entry in entries {
-        let path = entry.path();
-        let relative = path
-            .strip_prefix(root)
-            .unwrap()
-            .to_string_lossy()
-            .replace('\\', "/");
-        let metadata = fs::symlink_metadata(&path).unwrap();
-        if metadata.file_type().is_symlink() {
-            let target = fs::read_link(&path).unwrap();
-            lines.push(format!("symlink {relative} -> {}", target.display()));
-        } else if metadata.is_dir() {
-            lines.push(format!("dir {relative}"));
-            walk_snapshot(root, &path, lines);
-        } else if metadata.is_file() {
-            let bytes = fs::read(&path).unwrap();
-            lines.push(format!("file {relative} {:x}", Sha256::digest(&bytes)));
-        } else {
-            lines.push(format!("other {relative}"));
-        }
-    }
-}
-
-fn snapshot_digest(snapshot: &str) -> String {
-    format!("{:x}", Sha256::digest(snapshot.as_bytes()))
-}
-
+/// Write a durable evidence file under the git-ignored `target/s2-evidence/`
+/// directory so the recorded output outlives the test run.
 fn evidence(name: &str, body: &str) {
     let directory = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
@@ -157,20 +113,9 @@ fn evidence(name: &str, body: &str) {
     fs::write(directory.join(name), body).unwrap();
 }
 
-/// The core-owned shared artifacts decision 0003 clause 8 requires before an
-/// add-on operation. A real core install writes exactly these rules through
-/// `state_io::ensure_state_ignore`; add-on apply validates them read-only and
-/// never creates or repairs them.
-const CORE_STATE_IGNORE: &str =
-    "/lock\n/transaction.json\n/base.next-*\n/update/\n/update-candidate/\n";
-
-fn seed_core_state(workspace: &Path) {
-    let state_root = workspace.join(".truss-core");
-    fs::create_dir_all(&state_root).unwrap();
-    fs::write(state_root.join(".gitignore"), CORE_STATE_IGNORE).unwrap();
-    fs::write(state_root.join("lock"), b"").unwrap();
-}
-
+/// A fixture with the valid pre-existing core state decision 0003 clause 8
+/// requires. The state root, `.gitignore`, and lock are written by
+/// `common::seed_core_state`.
 fn fixture(tmp: &Path, name: &str) -> (PathBuf, PathBuf, PathBuf) {
     let fixture = bare_fixture(tmp, name);
     seed_core_state(&fixture.1);

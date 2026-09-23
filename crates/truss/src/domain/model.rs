@@ -1,6 +1,8 @@
 use std::collections::BTreeSet;
 use std::fmt::{Display, Formatter};
 
+use super::AddOnName;
+
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct RelativePath(String);
 
@@ -267,6 +269,10 @@ pub enum DomainError {
     EmptyVersion,
     DuplicatePath(RelativePath),
     UnsupportedSchema(u32),
+    InvalidAddOnName(String),
+    MutableSourceRef(String),
+    EmptyAddOnPayload(AddOnName),
+    OverlappingDistributionPath { owner: String, path: RelativePath },
 }
 
 impl Display for DomainError {
@@ -286,6 +292,18 @@ impl Display for DomainError {
                     "unsupported installation-state schema: {version}"
                 )
             }
+            Self::InvalidAddOnName(value) => write!(formatter, "invalid add-on name: {value}"),
+            Self::MutableSourceRef(value) => write!(
+                formatter,
+                "add-on source ref must be an immutable release tag or exact commit SHA, not {value}"
+            ),
+            Self::EmptyAddOnPayload(name) => {
+                write!(formatter, "add-on payload declares no files: {name}")
+            }
+            Self::OverlappingDistributionPath { owner, path } => write!(
+                formatter,
+                "add-on payload path {path} is already owned by {owner}"
+            ),
         }
     }
 }

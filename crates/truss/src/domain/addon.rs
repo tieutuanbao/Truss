@@ -1,7 +1,7 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{Display, Formatter};
 
-use super::{ContentHash, DomainError, RelativePath};
+use super::{BaselineFile, ContentHash, DomainError, RelativePath};
 
 /// Name of an optional add-on distribution.
 ///
@@ -134,6 +134,121 @@ impl AddOnDescriptor {
         }
         Ok(())
     }
+
+    /// Require a legacy install to equal this payload exactly.
+    ///
+    /// Every declared path must be present locally with the payload digest,
+    /// and no managed local path may exist that the payload does not declare.
+    /// A `None` entry means the path is absent; an entry whose digest differs
+    /// from the payload digest is a consumer edit. Adoption never treats local
+    /// bytes as upstream, so any disagreement is refused rather than recorded.
+    pub fn require_exact_local_match(
+        &self,
+        local: &BTreeMap<RelativePath, Option<ContentHash>>,
+        extra: &[RelativePath],
+    ) -> Result<(), DomainError> {
+        for file in &self.files {
+            match local.get(&file.path) {
+                None | Some(None) => {
+                    return Err(DomainError::MissingAddOnPath(file.path.clone()));
+                }
+                Some(Some(actual)) if actual != &file.sha256 => {
+                    return Err(DomainError::AddOnAdoptionMismatch {
+                        path: file.path.clone(),
+                        expected: file.sha256.clone(),
+                        actual: actual.clone(),
+                    });
+                }
+                Some(Some(_)) => {}
+            }
+        }
+        if let Some(path) = extra.first() {
+            return Err(DomainError::ExtraAddOnPath(path.clone()));
+        }
+        Ok(())
+    }
+}
+
+/// One installed add-on: the immutable payload identity plus the baseline
+/// bytes of every managed file.
+///
+/// The baseline bytes are the payload bytes, never the consumer workspace
+/// bytes, so a consumer edit is never blessed as upstream
+/// (decision `.truss-core/docs/decisions/0003-add-on-state-ownership.md`,
+/// item 5).
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AddOnInstallation {
+    pub name: AddOnName,
+    pub source_ref: SourceRef,
+    pub source_core_version: String,
+    pub files: Vec<BaselineFile>,
+}
+
+impl AddOnInstallation {
+    pub fn validate(&self) -> Result<(), DomainError> {
+        if self.source_core_version.trim().is_empty() {
+            return Err(DomainError::EmptyVersion);
+        }
+        if self.files.is_empty() {
+            return Err(DomainError::EmptyAddOnPayload(self.name.clone()));
+        }
+        let mut paths = BTreeSet::new();
+        for file in &self.files {
+            if !paths.insert(file.path.clone()) {
+                return Err(DomainError::DuplicatePath(file.path.clone()));
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Installed add-on provenance, persisted in `.truss-core/addons.json`.
+///
+/// This document has its own schema version. It is deliberately separate from
+/// the core `.truss-core/manifest.json`, whose schema version must not move so
+/// that an older binary keeps reading it (decision
+/// `.truss-core/docs/decisions/0003-add-on-state-ownership.md`, item 2).
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AddOnState {
+    pub schema_version: u32,
+    pub addons: Vec<AddOnInstallation>,
+}
+
+impl AddOnState {
+    pub const SCHEMA_VERSION: u32 = 1;
+
+    pub fn validate(&self) -> Result<(), DomainError> {
+        if self.schema_version != Self::SCHEMA_VERSION {
+            return Err(DomainError::UnsupportedAddOnSchema(self.schema_version));
+        }
+        let mut names = BTreeSet::new();
+        for addon in &self.addons {
+            if !names.insert(addon.name.clone()) {
+                return Err(DomainError::DuplicateAddOnRecord(addon.name.clone()));
+            }
+            addon.validate()?;
+        }
+        Ok(())
+    }
+
+    pub fn installation(&self, name: &AddOnName) -> Option<&AddOnInstallation> {
+        self.addons.iter().find(|addon| &addon.name == name)
+    }
+
+    /// Insert or replace one add-on record, keeping the document ordered by
+    /// add-on name so the persisted bytes are deterministic.
+    pub fn upsert(&mut self, installation: AddOnInstallation) {
+        match self
+            .addons
+            .iter_mut()
+            .find(|addon| addon.name == installation.name)
+        {
+            Some(existing) => *existing = installation,
+            None => self.addons.push(installation),
+        }
+        self.addons
+            .sort_by(|left, right| left.name.cmp(&right.name));
+    }
 }
 
 #[cfg(test)]
@@ -247,5 +362,107 @@ mod tests {
             vec![RelativePath::parse("AGENTS.md").unwrap()],
         )];
         descriptor.reject_owned_paths(&unrelated).unwrap();
+    }
+
+    fn baseline(path: &str, content: &str, digest: &str) -> BaselineFile {
+        BaselineFile {
+            path: RelativePath::parse(path).unwrap(),
+            content: content.as_bytes().to_vec(),
+            hash: hash(digest),
+        }
+    }
+
+    fn installation(files: Vec<BaselineFile>) -> AddOnInstallation {
+        AddOnInstallation {
+            name: AddOnName::parse("demo").unwrap(),
+            source_ref: SourceRef::parse("truss-v0.1.13").unwrap(),
+            source_core_version: "0.1.13".to_owned(),
+            files,
+        }
+    }
+
+    #[test]
+    fn add_on_state_requires_its_own_schema_and_unique_records() {
+        let record = installation(vec![baseline(
+            ".agents/skills/demo/SKILL.md",
+            "demo\n",
+            "a",
+        )]);
+        let empty = AddOnState {
+            schema_version: AddOnState::SCHEMA_VERSION,
+            addons: Vec::new(),
+        };
+        empty.validate().unwrap();
+        let wrong_schema = AddOnState {
+            schema_version: AddOnState::SCHEMA_VERSION + 1,
+            addons: Vec::new(),
+        };
+        assert!(matches!(
+            wrong_schema.validate(),
+            Err(DomainError::UnsupportedAddOnSchema(_))
+        ));
+        let duplicate = AddOnState {
+            schema_version: AddOnState::SCHEMA_VERSION,
+            addons: vec![record.clone(), record.clone()],
+        };
+        assert!(matches!(
+            duplicate.validate(),
+            Err(DomainError::DuplicateAddOnRecord(_))
+        ));
+        let mut state = empty;
+        state.upsert(record.clone());
+        state.upsert(record);
+        assert_eq!(state.addons.len(), 1);
+    }
+
+    #[test]
+    fn exact_adoption_refuses_missing_edited_and_extra_paths() {
+        let record = installation(vec![
+            baseline(".agents/skills/demo/SKILL.md", "demo\n", "a"),
+            baseline(
+                ".agents/skills/demo/agents/openai.yaml",
+                "name: demo\n",
+                "c",
+            ),
+        ]);
+        let descriptor = AddOnDescriptor {
+            name: record.name.clone(),
+            source_ref: record.source_ref.clone(),
+            source_core_version: record.source_core_version.clone(),
+            files: record
+                .files
+                .iter()
+                .map(|file| AddOnPayloadFile {
+                    path: file.path.clone(),
+                    sha256: file.hash.clone(),
+                })
+                .collect(),
+        };
+        let matched = record
+            .files
+            .iter()
+            .map(|file| (file.path.clone(), Some(file.hash.clone())))
+            .collect::<BTreeMap<_, _>>();
+        descriptor.require_exact_local_match(&matched, &[]).unwrap();
+
+        let mut missing = matched.clone();
+        missing.insert(record.files[1].path.clone(), None);
+        assert!(matches!(
+            descriptor.require_exact_local_match(&missing, &[]),
+            Err(DomainError::MissingAddOnPath(_))
+        ));
+
+        let mut edited = matched.clone();
+        edited.insert(record.files[0].path.clone(), Some(hash("b")));
+        assert!(matches!(
+            descriptor.require_exact_local_match(&edited, &[]),
+            Err(DomainError::AddOnAdoptionMismatch { .. })
+        ));
+
+        let extra = vec![RelativePath::parse(".agents/skills/demo/NOTES.md").unwrap()];
+        assert!(matches!(
+            descriptor.require_exact_local_match(&matched, &extra),
+            Err(DomainError::ExtraAddOnPath(_))
+        ));
     }
 }

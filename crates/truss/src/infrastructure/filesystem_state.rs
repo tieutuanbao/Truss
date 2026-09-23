@@ -1,12 +1,15 @@
-use std::fs::{self, File, OpenOptions};
-use std::io::Write;
+use std::fs;
 use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use fs2::FileExt;
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 
+use super::state_io::{
+    acquire_lock, copy_bytes, copy_bytes_atomic, copy_file, copy_tree, ensure_state_ignore,
+    ensure_workspace_root, hash_bytes, io_error, read_json, reject_symlink, remove_dir_if_exists,
+    remove_if_exists, state_root, transaction_id, validate_path, validate_state_path,
+    validate_workspace_root, write_json_atomic,
+};
 use crate::application::{InstallationStatePort, PortError};
 use crate::domain::{
     ApplyReceipt, BaselineFile, ContentHash, FrozenWorkspaceFile, InstallationState, RelativePath,
@@ -361,46 +364,6 @@ fn validate_resolution_path(update_root: &Path, path: &RelativePath) -> Result<(
     Ok(())
 }
 
-fn ensure_state_ignore(state_root: &Path) -> Result<(), PortError> {
-    let path = state_root.join(".gitignore");
-    let rules = [
-        "/lock",
-        "/transaction.json",
-        "/base.next-*",
-        "/update/",
-        "/update-candidate/",
-    ];
-    if path.exists() {
-        reject_symlink(&path, ".truss-core/.gitignore")?;
-        let metadata = fs::metadata(&path).map_err(io_error)?;
-        if !metadata.is_file() {
-            return Err(PortError::new(
-                ".truss-core/.gitignore is not a regular file",
-            ));
-        }
-        let mut content = fs::read_to_string(&path).map_err(io_error)?;
-        let mut changed = false;
-        for rule in rules {
-            if !content.lines().any(|line| line.trim() == rule) {
-                if !content.is_empty() && !content.ends_with('\n') {
-                    content.push('\n');
-                }
-                content.push_str(rule);
-                content.push('\n');
-                changed = true;
-            }
-        }
-        if changed {
-            copy_bytes_atomic(content.as_bytes(), &path, "ignore")?;
-        }
-        return Ok(());
-    }
-    copy_bytes(
-        b"/lock\n/transaction.json\n/base.next-*\n/update/\n/update-candidate/\n",
-        &path,
-    )
-}
-
 fn verify_frozen_locked(root: &Path, expected: &[FrozenWorkspaceFile]) -> Result<(), PortError> {
     for frozen in expected {
         validate_path(root, &frozen.path)?;
@@ -591,7 +554,7 @@ fn load_state(root: &Path) -> Result<Option<InstallationState>, PortError> {
         let expected = ContentHash::parse(file.upstream_sha256)
             .map_err(|error| PortError::new(error.to_string()))?;
         let base_path = state_root.join("base").join(path.as_str());
-        validate_state_base_path(&state_root, &base_path)?;
+        validate_state_path(&state_root, &base_path)?;
         let content = fs::read(&base_path).map_err(|error| {
             PortError::new(format!("could not read base {}: {error}", path.as_str()))
         })?;
@@ -652,31 +615,6 @@ fn write_state(state_root: &Path, state: &InstallationState, id: &str) -> Result
     write_json_atomic(&state_root.join("manifest.json"), &manifest, id)
 }
 
-fn validate_path(root: &Path, path: &RelativePath) -> Result<(), PortError> {
-    let mut current = root.to_path_buf();
-    for component in path.as_str().split('/') {
-        current.push(component);
-        if current.exists() {
-            reject_symlink(&current, path.as_str())?;
-        }
-    }
-    Ok(())
-}
-
-fn validate_state_base_path(state_root: &Path, target: &Path) -> Result<(), PortError> {
-    let relative = target
-        .strip_prefix(state_root)
-        .map_err(|_| PortError::new("base path escaped state root"))?;
-    let mut current = state_root.to_path_buf();
-    for component in relative.components() {
-        current.push(component);
-        if current.exists() {
-            reject_symlink(&current, &target.display().to_string())?;
-        }
-    }
-    Ok(())
-}
-
 fn write_workspace_atomic(
     root: &Path,
     path: &RelativePath,
@@ -693,146 +631,8 @@ fn copy_file_atomic(source: &Path, target: &Path, id: &str) -> Result<(), PortEr
     copy_bytes_atomic(&bytes, target, id)
 }
 
-fn copy_bytes_atomic(content: &[u8], target: &Path, id: &str) -> Result<(), PortError> {
-    let parent = target
-        .parent()
-        .ok_or_else(|| PortError::new(format!("target has no parent: {}", target.display())))?;
-    fs::create_dir_all(parent).map_err(io_error)?;
-    let name = target
-        .file_name()
-        .and_then(|value| value.to_str())
-        .ok_or_else(|| PortError::new(format!("invalid target filename: {}", target.display())))?;
-    let temp = parent.join(format!(".{name}.truss-{id}.tmp"));
-    copy_bytes(content, &temp)?;
-    fs::rename(&temp, target).map_err(io_error)
-}
-
-fn copy_bytes(content: &[u8], target: &Path) -> Result<(), PortError> {
-    if let Some(parent) = target.parent() {
-        fs::create_dir_all(parent).map_err(io_error)?;
-    }
-    let mut file = File::create(target).map_err(io_error)?;
-    file.write_all(content).map_err(io_error)?;
-    file.sync_all().map_err(io_error)
-}
-
-fn copy_file(source: &Path, target: &Path) -> Result<(), PortError> {
-    let bytes = fs::read(source).map_err(io_error)?;
-    copy_bytes(&bytes, target)
-}
-
-fn copy_tree(source: &Path, target: &Path) -> Result<(), PortError> {
-    fs::create_dir_all(target).map_err(io_error)?;
-    for entry in fs::read_dir(source).map_err(io_error)? {
-        let entry = entry.map_err(io_error)?;
-        let source_path = entry.path();
-        let target_path = target.join(entry.file_name());
-        let metadata = fs::symlink_metadata(&source_path).map_err(io_error)?;
-        if metadata.file_type().is_symlink() {
-            return Err(PortError::new(format!(
-                "refusing symlink in state tree: {}",
-                source_path.display()
-            )));
-        }
-        if metadata.is_dir() {
-            copy_tree(&source_path, &target_path)?;
-        } else if metadata.is_file() {
-            copy_file(&source_path, &target_path)?;
-        }
-    }
-    Ok(())
-}
-
-fn write_json_atomic<T: Serialize>(target: &Path, value: &T, id: &str) -> Result<(), PortError> {
-    let bytes = serde_json::to_vec_pretty(value)
-        .map_err(|error| PortError::new(format!("could not encode JSON: {error}")))?;
-    copy_bytes_atomic(&bytes, target, id)
-}
-
-fn read_json<T: for<'de> Deserialize<'de>>(path: &Path) -> Result<T, PortError> {
-    let bytes = fs::read(path).map_err(io_error)?;
-    serde_json::from_slice(&bytes)
-        .map_err(|error| PortError::new(format!("could not parse {}: {error}", path.display())))
-}
-
-fn acquire_lock(state_root: &Path) -> Result<File, PortError> {
-    let lock = OpenOptions::new()
-        .create(true)
-        .read(true)
-        .write(true)
-        .truncate(false)
-        .open(state_root.join("lock"))
-        .map_err(io_error)?;
-    FileExt::lock_exclusive(&lock).map_err(io_error)?;
-    Ok(lock)
-}
-
-fn ensure_workspace_root(root: &Path) -> Result<(), PortError> {
-    if !root.exists() {
-        fs::create_dir_all(root).map_err(io_error)?;
-    }
-    validate_workspace_root(root)
-}
-
-fn validate_workspace_root(root: &Path) -> Result<(), PortError> {
-    let metadata = fs::metadata(root).map_err(io_error)?;
-    if !metadata.is_dir() {
-        return Err(PortError::new(format!(
-            "workspace root is not a directory: {}",
-            root.display()
-        )));
-    }
-    Ok(())
-}
-
-fn reject_symlink(path: &Path, label: &str) -> Result<(), PortError> {
-    let metadata = fs::symlink_metadata(path).map_err(io_error)?;
-    if metadata.file_type().is_symlink() {
-        return Err(PortError::new(format!(
-            "refusing symlink for managed path {label}: {}",
-            path.display()
-        )));
-    }
-    Ok(())
-}
-
-fn remove_if_exists(path: &Path) -> Result<(), PortError> {
-    if fs::symlink_metadata(path).is_ok() {
-        fs::remove_file(path).map_err(io_error)?;
-    }
-    Ok(())
-}
-
-fn remove_dir_if_exists(path: &Path) -> Result<(), PortError> {
-    if fs::symlink_metadata(path).is_ok() {
-        fs::remove_dir_all(path).map_err(io_error)?;
-    }
-    Ok(())
-}
-
-fn state_root(root: &Path) -> PathBuf {
-    root.join(".truss-core")
-}
-
 fn update_root(state_root: &Path) -> PathBuf {
     state_root.join("update")
-}
-
-fn transaction_id() -> Result<String, PortError> {
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_err(|error| PortError::new(error.to_string()))?
-        .as_nanos();
-    Ok(format!("{nanos}-{}", std::process::id()))
-}
-
-fn hash_bytes(content: &[u8]) -> Result<ContentHash, PortError> {
-    ContentHash::parse(format!("{:x}", Sha256::digest(content)))
-        .map_err(|error| PortError::new(error.to_string()))
-}
-
-fn io_error(error: std::io::Error) -> PortError {
-    PortError::new(error.to_string())
 }
 
 #[derive(Debug, Deserialize, Serialize)]

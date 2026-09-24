@@ -18,8 +18,8 @@ use crate::domain::{
     ContentHash, DomainError, RelativePath, SourceRef,
 };
 
-const ADDONS_FILE: &str = "addons.json";
-const BASE_ADDONS_DIR: &str = "base-addons";
+pub(crate) const ADDONS_FILE: &str = "addons.json";
+pub(crate) const BASE_ADDONS_DIR: &str = "base-addons";
 
 /// Filesystem implementation of the installed add-on record.
 ///
@@ -257,6 +257,17 @@ fn write_provenance(
     state: &AddOnState,
     id: &str,
 ) -> Result<(), PortError> {
+    publish_baseline(state_root, installation, id)?;
+    write_addons_record(state_root, state, id)
+}
+
+/// Publish `.truss-core/base-addons/<name>/` from the payload bytes and only
+/// then make it visible, so the baseline never reflects a partial payload.
+pub(crate) fn publish_baseline(
+    state_root: &Path,
+    installation: &AddOnInstallation,
+    id: &str,
+) -> Result<(), PortError> {
     let base_root = base_addons_root(state_root);
     let next = base_root.join(format!("{}.next-{id}", installation.name));
     remove_dir_if_exists(&next)?;
@@ -272,7 +283,16 @@ fn write_provenance(
     }
     let published = base_root.join(installation.name.as_str());
     remove_dir_if_exists(&published)?;
-    fs::rename(&next, &published).map_err(io_error)?;
+    fs::rename(&next, &published).map_err(io_error)
+}
+
+/// Write `.truss-core/addons.json` last, after the workspace and the baseline
+/// are already in place.
+pub(crate) fn write_addons_record(
+    state_root: &Path,
+    state: &AddOnState,
+    id: &str,
+) -> Result<(), PortError> {
     write_json_atomic(&state_root.join(ADDONS_FILE), &state_to_dto(state), id)
 }
 
@@ -443,7 +463,7 @@ fn walk_managed_dir(
     Ok(())
 }
 
-fn base_addons_root(state_root: &Path) -> PathBuf {
+pub(crate) fn base_addons_root(state_root: &Path) -> PathBuf {
     state_root.join(BASE_ADDONS_DIR)
 }
 

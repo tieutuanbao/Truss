@@ -179,6 +179,11 @@ pub(crate) fn copy_file(source: &Path, target: &Path) -> Result<(), PortError> {
     copy_bytes(&bytes, target)
 }
 
+pub(crate) fn copy_file_atomic(source: &Path, target: &Path, id: &str) -> Result<(), PortError> {
+    let bytes = fs::read(source).map_err(io_error)?;
+    copy_bytes_atomic(&bytes, target, id)
+}
+
 pub(crate) fn copy_tree(source: &Path, target: &Path) -> Result<(), PortError> {
     fs::create_dir_all(target).map_err(io_error)?;
     for entry in fs::read_dir(source).map_err(io_error)? {

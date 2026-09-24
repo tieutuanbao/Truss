@@ -5,11 +5,11 @@ use fs2::FileExt;
 use serde::{Deserialize, Serialize};
 
 use super::state_io::{
-    acquire_lock, copy_bytes, copy_bytes_atomic, copy_file, copy_tree, ensure_state_ignore,
-    ensure_workspace_root, hash_bytes, io_error, read_json, reject_symlink, remove_dir_if_exists,
-    remove_if_exists, state_root, transaction_id, validate_path, validate_state_path,
-    validate_workspace_root, write_json_atomic,
+    acquire_lock, copy_bytes, copy_file, copy_tree, ensure_state_ignore, ensure_workspace_root,
+    hash_bytes, io_error, read_json, reject_symlink, remove_dir_if_exists, state_root,
+    validate_path, validate_state_path, validate_workspace_root, write_json_atomic,
 };
+use super::transaction::{self, ProvenanceKind, ProvenanceWriter};
 use crate::application::{InstallationStatePort, PortError};
 use crate::domain::{
     ApplyReceipt, BaselineFile, ContentHash, FrozenWorkspaceFile, InstallationState, RelativePath,
@@ -30,7 +30,7 @@ impl InstallationStatePort for FileSystemInstallationState {
         fs::create_dir_all(&state_root).map_err(io_error)?;
         ensure_state_ignore(&state_root)?;
         let lock = acquire_lock(&state_root)?;
-        let result = recover_locked(root, &state_root);
+        let result = transaction::recover(root, &state_root);
         FileExt::unlock(&lock).map_err(io_error)?;
         result
     }
@@ -101,17 +101,8 @@ impl InstallationStatePort for FileSystemInstallationState {
         fs::create_dir_all(&state_root).map_err(io_error)?;
         ensure_state_ignore(&state_root)?;
         let lock = acquire_lock(&state_root)?;
-        recover_locked(root, &state_root)?;
-        let result = apply_locked(root, &state_root, state, mutations);
-        let result = match result {
-            Ok(receipt) => Ok(receipt),
-            Err(error) => match recover_locked(root, &state_root) {
-                Ok(_) => Err(error),
-                Err(recovery_error) => Err(PortError::new(format!(
-                    "{error}; automatic recovery also failed: {recovery_error}"
-                ))),
-            },
-        };
+        let result = transaction::recover(root, &state_root);
+        let result = result.and_then(|_| apply_locked(root, &state_root, state, mutations));
         FileExt::unlock(&lock).map_err(io_error)?;
         result
     }
@@ -134,18 +125,10 @@ impl InstallationStatePort for FileSystemInstallationState {
         fs::create_dir_all(&state_root).map_err(io_error)?;
         ensure_state_ignore(&state_root)?;
         let lock = acquire_lock(&state_root)?;
-        recover_locked(root, &state_root)?;
-        let result = verify_frozen_locked(root, expected)
-            .and_then(|_| apply_locked(root, &state_root, state, mutations));
-        let result = match result {
-            Ok(receipt) => Ok(receipt),
-            Err(error) => match recover_locked(root, &state_root) {
-                Ok(_) => Err(error),
-                Err(recovery_error) => Err(PortError::new(format!(
-                    "{error}; automatic recovery also failed: {recovery_error}"
-                ))),
-            },
-        };
+        let result = transaction::recover(root, &state_root).and_then(|_| {
+            verify_frozen_locked(root, expected)
+                .and_then(|_| apply_locked(root, &state_root, state, mutations))
+        });
         FileExt::unlock(&lock).map_err(io_error)?;
         result
     }
@@ -396,144 +379,46 @@ fn apply_locked(
     state: &InstallationState,
     mutations: &[WorkspaceMutation],
 ) -> Result<ApplyReceipt, PortError> {
-    let id = transaction_id()?;
-    let backup_relative = format!(".truss-backup/truss-core-{id}");
-    let backup_root = root.join(&backup_relative);
-    let state_existed =
-        state_root.join("manifest.json").exists() || state_root.join("base").exists();
-    let mut records = Vec::new();
-
-    for mutation in mutations {
-        let path = mutation.path();
-        validate_path(root, path)?;
-        let target = root.join(path.as_str());
-        let existed = target.exists();
-        if existed {
-            let metadata = fs::symlink_metadata(&target).map_err(io_error)?;
-            if !metadata.is_file() {
-                return Err(PortError::new(format!(
-                    "cannot back up non-file managed path: {path}"
-                )));
-            }
-            let backup = backup_root.join("files").join(path.as_str());
-            copy_file(&target, &backup)?;
-        }
-        records.push(JournalFile {
-            path: path.as_str().to_owned(),
-            existed,
-        });
-    }
-
-    if state_existed {
-        let state_backup = backup_root.join("state");
-        fs::create_dir_all(&state_backup).map_err(io_error)?;
-        let manifest = state_root.join("manifest.json");
-        if manifest.exists() {
-            copy_file(&manifest, &state_backup.join("manifest.json"))?;
-        }
-        let base = state_root.join("base");
-        if base.exists() {
-            copy_tree(&base, &state_backup.join("base"))?;
-        }
-    }
-
-    let mut journal = TransactionJournal {
-        schema_version: 1,
-        id: id.clone(),
-        phase: TransactionPhase::Applying,
-        backup_relative: backup_relative.clone(),
-        state_existed,
-        files: records,
-    };
-    write_json_atomic(&state_root.join("transaction.json"), &journal, &id)?;
-
-    for mutation in mutations {
-        match mutation {
-            WorkspaceMutation::Write { path, content } => {
-                write_workspace_atomic(root, path, content, &id)?;
-            }
-            WorkspaceMutation::Delete { path } => {
-                let target = root.join(path.as_str());
-                if target.exists() {
-                    fs::remove_file(target).map_err(io_error)?;
-                }
-            }
-        }
-    }
-
-    write_state(state_root, state, &id)?;
-    journal.phase = TransactionPhase::Committed;
-    write_json_atomic(&state_root.join("transaction.json"), &journal, &id)?;
-    fs::remove_file(state_root.join("transaction.json")).map_err(io_error)?;
-
-    let backup_has_content = state_existed
-        || mutations.iter().any(|mutation| {
-            backup_root
-                .join("files")
-                .join(mutation.path().as_str())
-                .exists()
-        });
-    if !backup_has_content && backup_root.exists() {
-        fs::remove_dir_all(&backup_root).map_err(io_error)?;
-    }
-    Ok(ApplyReceipt {
-        backup_path: backup_has_content.then_some(backup_relative),
-    })
+    transaction::run(
+        root,
+        state_root,
+        mutations,
+        &CoreProvenanceWriter { state_root, state },
+    )
 }
 
-fn recover_locked(root: &Path, state_root: &Path) -> Result<bool, PortError> {
-    let journal_path = state_root.join("transaction.json");
-    if !journal_path.exists() {
-        return Ok(false);
-    }
-    let journal: TransactionJournal = read_json(&journal_path)?;
-    if journal.schema_version != 1 {
-        return Err(PortError::new(format!(
-            "unsupported transaction journal schema: {}",
-            journal.schema_version
-        )));
-    }
-    if journal.phase == TransactionPhase::Committed {
-        fs::remove_file(journal_path).map_err(io_error)?;
-        return Ok(true);
+/// The core state half of a transaction: `.truss-core/manifest.json` plus the
+/// `.truss-core/base/` baseline tree.
+struct CoreProvenanceWriter<'a> {
+    state_root: &'a Path,
+    state: &'a InstallationState,
+}
+
+impl ProvenanceWriter for CoreProvenanceWriter<'_> {
+    fn kind(&self) -> ProvenanceKind {
+        ProvenanceKind::Core
     }
 
-    let backup_root = root.join(&journal.backup_relative);
-    for record in &journal.files {
-        let path = RelativePath::parse(record.path.clone())
-            .map_err(|error| PortError::new(error.to_string()))?;
-        validate_path(root, &path)?;
-        let target = root.join(path.as_str());
-        if record.existed {
-            let backup = backup_root.join("files").join(path.as_str());
-            if !backup.is_file() {
-                return Err(PortError::new(format!(
-                    "transaction backup is missing: {}",
-                    backup.display()
-                )));
-            }
-            copy_file_atomic(&backup, &target, &journal.id)?;
-        } else if target.exists() {
-            fs::remove_file(target).map_err(io_error)?;
-        }
+    fn exists(&self) -> bool {
+        self.state_root.join("manifest.json").exists() || self.state_root.join("base").exists()
     }
 
-    let manifest = state_root.join("manifest.json");
-    let base = state_root.join("base");
-    remove_if_exists(&manifest)?;
-    remove_dir_if_exists(&base)?;
-    if journal.state_existed {
-        let state_backup = backup_root.join("state");
-        if state_backup.join("manifest.json").exists() {
-            copy_file_atomic(&state_backup.join("manifest.json"), &manifest, &journal.id)?;
+    fn backup(&self, target: &Path) -> Result<(), PortError> {
+        fs::create_dir_all(target).map_err(io_error)?;
+        let manifest = self.state_root.join("manifest.json");
+        if manifest.exists() {
+            copy_file(&manifest, &target.join("manifest.json"))?;
         }
-        if state_backup.join("base").exists() {
-            copy_tree(&state_backup.join("base"), &base)?;
+        let base = self.state_root.join("base");
+        if base.exists() {
+            copy_tree(&base, &target.join("base"))?;
         }
+        Ok(())
     }
-    remove_dir_if_exists(&state_root.join(format!("base.next-{}", journal.id)))?;
-    fs::remove_file(journal_path).map_err(io_error)?;
-    Ok(true)
+
+    fn write(&self, id: &str) -> Result<(), PortError> {
+        write_state(self.state_root, self.state, id)
+    }
 }
 
 fn load_state(root: &Path) -> Result<Option<InstallationState>, PortError> {
@@ -615,22 +500,6 @@ fn write_state(state_root: &Path, state: &InstallationState, id: &str) -> Result
     write_json_atomic(&state_root.join("manifest.json"), &manifest, id)
 }
 
-fn write_workspace_atomic(
-    root: &Path,
-    path: &RelativePath,
-    content: &[u8],
-    id: &str,
-) -> Result<(), PortError> {
-    validate_path(root, path)?;
-    let target = root.join(path.as_str());
-    copy_bytes_atomic(content, &target, id)
-}
-
-fn copy_file_atomic(source: &Path, target: &Path, id: &str) -> Result<(), PortError> {
-    let bytes = fs::read(source).map_err(io_error)?;
-    copy_bytes_atomic(&bytes, target, id)
-}
-
 fn update_root(state_root: &Path) -> PathBuf {
     state_root.join("update")
 }
@@ -646,29 +515,6 @@ struct ManifestDto {
 struct ManifestFileDto {
     path: String,
     upstream_sha256: String,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-struct TransactionJournal {
-    schema_version: u32,
-    id: String,
-    phase: TransactionPhase,
-    backup_relative: String,
-    state_existed: bool,
-    files: Vec<JournalFile>,
-}
-
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "snake_case")]
-enum TransactionPhase {
-    Applying,
-    Committed,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-struct JournalFile {
-    path: String,
-    existed: bool,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -694,6 +540,9 @@ struct FrozenWorkspaceFileDto {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::infrastructure::transaction::{
+        JournalFile, ProvenanceKind, TransactionJournal, TransactionPhase,
+    };
 
     fn state(content: &[u8]) -> InstallationState {
         InstallationState {
@@ -762,6 +611,7 @@ mod tests {
             phase: TransactionPhase::Applying,
             backup_relative: backup_relative.to_owned(),
             state_existed: true,
+            provenance: ProvenanceKind::Core,
             files: vec![JournalFile {
                 path: path.as_str().to_owned(),
                 existed: true,

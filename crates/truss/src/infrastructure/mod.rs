@@ -1,3 +1,4 @@
+mod addon_apply;
 mod addon_payload;
 mod addon_plan;
 mod addon_state;
@@ -6,7 +7,9 @@ mod filesystem_state;
 mod git_merge;
 mod release_handoff;
 mod state_io;
+mod transaction;
 
+pub use addon_apply::FileSystemAddOnApplier;
 pub use addon_payload::FileSystemAddOnPayload;
 pub use addon_plan::FileSystemAddOnPlanner;
 pub use addon_state::addon_observation_witness;

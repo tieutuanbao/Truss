@@ -35,7 +35,7 @@ respect that repository-owned truth.
 | Long-running work | Active and completed execution-plan directories |
 | Safer changes | Authority checks and behavior-matched proof |
 | Safe maintenance | Checksums, provenance, backup, and three-way updates |
-| Multi-agent delivery | Optional planning, implementation, and independent review through Orca |
+| Multi-agent delivery | Optional seven-role delivery with independent acceptance through Orca |
 
 <a id="quick-start"></a>
 
@@ -228,9 +228,10 @@ $delivery-setup configure the delivery roles for this repository.
 ```
 
 Choose the quick path to use the current harness defaults, or customize the
-five roles: `plan`, `plan-review`, `implement`, `review`, and `consult`.
-Delivery also requires the Orca execution plane; see
-[Delivery with Orca](#delivery-with-orca).
+six dispatched roles: `ba`, `architect`, `planner`, `implement`,
+`visual-engineering`, and `tester-debugger`. `project-manager` is the current
+interactive session and is never dispatched. Delivery also requires the Orca
+execution plane; see [Delivery with Orca](#delivery-with-orca).
 
 This setup is repository configuration. Run it again only when the available
 harnesses or role preferences change.
@@ -250,7 +251,7 @@ be copied and adapted.
 | Continue multi-session work | `Create or resume one execution plan in .truss-core/docs/plans/active/ for <outcome>, then work from it.` | Durable progress, decisions, recovery, and validation in one plan |
 | Enforce an accepted rule | `$encode-invariant enforce <documented rule> from <authority path>. Include positive and negative proof.` | Small repository-native guard without inventing policy |
 | Get engineering advice | `$engineering-wisdom review <scope>. Keep advice separate from repository policy and name trade-offs.` | Contextual review based on observed code and explicit heuristics |
-| Deliver with independent review | `$delivery implement <outcome> under <scope and acceptance criteria>.` | Approved design, separate implementation, exact-HEAD review, and release preparation |
+| Deliver with independent acceptance | `$delivery implement <outcome> under <scope and acceptance criteria>.` | Approved design, separate implementation, exact-HEAD tester-debugger acceptance, and release preparation |
 | Improve agent effectiveness | `$improve-truss improve <observed recurring friction> using the recorded failed trajectory.` | One evidence-backed intervention followed by a fresh-agent rerun |
 
 ### When should work get a durable plan?
@@ -298,19 +299,20 @@ The agent should:
 ### The same change through Delivery
 
 Use Delivery when the contract is public, the change is architectural, or the
-implementer should not review its own work:
+implementer should not accept its own work:
 
 ```text
 $delivery change the order API to reject the invalid state documented in
 .truss-core/docs/product/orders.md. The public error contract must remain compatible, the
 focused test must distinguish the old and new behavior, and an independent
-reviewer must approve the exact final commit.
+tester-debugger session must accept the exact final commit.
 ```
 
-Delivery should produce an approved design contract, dispatch implementation
-to a separate worker, run repository proof, obtain an independent review bound
-to the exact final revision, and prepare only the release action authorized by
-the user.
+Delivery should produce an approved design contract, dispatch BA, architecture,
+and planning, then an isolated implementation to separate workers, run
+repository proof, obtain an independent tester-debugger acceptance bound to the
+exact final revision, and prepare only the release action authorized by the
+user.
 
 ## 📦 Installation profiles
 
@@ -319,7 +321,7 @@ the user.
 | Core | default | Agent instructions, workflow, documentation structure, planning templates, onboarding, invariant, and improvement skills | Every repository |
 | Engineering Wisdom | `--with-engineering-wisdom` | Advisory heuristics and engineering references | You want an explicitly requested, repository-grounded engineering review |
 | Planning | `--with-planning` | Explicit-only skill that turns an idea into user-approved product authority and a first implementation slice | A new project starts from an idea rather than an existing body of product truth |
-| Delivery | `--with-delivery` | Role configuration, design approval, implementation, independent review, and release coordination through Orca | A change needs supervised separation of responsibilities |
+| Delivery | `--with-delivery` | Role configuration, design approval, isolated implementation, independent tester-debugger acceptance, and release coordination through Orca | A change needs supervised separation of responsibilities |
 
 Add-ons are explicit and independent. Installation alone does not activate a
 skill, and omitting an add-on flag does not remove an existing copy.
@@ -459,8 +461,9 @@ safe updates.
 ## 🤝 Delivery with Orca
 
 The Delivery add-on uses Orca as its required execution plane. The current
-session remains in control of approvals and release authority while Orca runs
-separate planning, consultation, implementation, and review workers.
+session is the `project-manager`: it keeps approvals and release authority
+while Orca runs separate BA, architecture, planning, implementation, and
+tester-debugger workers.
 
 On Linux:
 

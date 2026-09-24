@@ -38,10 +38,10 @@ default, and neither activates without an explicit request:
 
 - **Engineering wisdom**: an advisory skill for engineering judgment.
 - **Delivery**: a control protocol that takes one change through an approved
-  design contract, sequentially implemented tasks, independent review, and
-  release on the Orca execution plane. It is invoked per change; it is not a
-  standing lifecycle, task database, or background process, and the repository
-  remains the system of record for everything it produces.
+  design contract, isolated implementation tasks, independent tester-debugger
+  acceptance, and release on the Orca execution plane. It is invoked per change;
+  it is not a standing lifecycle, task database, or background process, and the
+  repository remains the system of record for everything it produces.
 
 ## Evidence
 

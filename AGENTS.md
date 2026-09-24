@@ -36,11 +36,17 @@ and behavior-level proof; do not create parallel control-plane state.
 Architectural work and explicitly requested deliveries invoke
 `$delivery`; ordinary bounded work does not. Spike starts no delivery run.
 
+Seven roles share the run. `project-manager` is the current interactive
+session and is never dispatched; the other six rows are dispatched with these
+preferences.
+
 | Role | Truss | Model | Effort |
 | --- | --- | --- | --- |
-| `plan` | Pi | `tao-router/thinking-high` | `high` |
-| `plan-review` | Pi | `tao-router/thinking` | `high` |
+| `project-manager` | current | current | current |
+| `ba` | Pi | `tao-router/explore` | `medium` |
+| `architect` | Pi | `tao-router/thinking` | `high` |
+| `planner` | Pi | `tao-router/thinking-high` | `high` |
 | `implement` | Pi | `tao-router/code-writer` | `medium` |
-| `review` | Pi | `tao-router/code-reviewer` | `high` |
-| `consult` | Pi | `tao-router/explore` | `medium` |
+| `visual-engineering` | Pi | `tao-router/code-writer` | `medium` |
+| `tester-debugger` | Pi | `tao-router/code-reviewer` | `high` |
 <!-- delivery:end -->

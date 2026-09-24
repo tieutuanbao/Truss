@@ -37,7 +37,7 @@ Advice cannot establish consumer policy or authorize an architecture rewrite.
 `--with-delivery` or `-WithDelivery` copies the explicit-only delivery
 control protocol declared in `scripts/delivery-install-files.txt`: the
 `$delivery` and `$delivery-setup` skills, their supporting references,
-and their decision-record and plan templates.
+and their business-analysis, decision-record, and plan templates.
 
 Omitting the flag does not install or activate the add-on. A later install
 without the flag leaves an existing copy untouched. Removal is explicit and

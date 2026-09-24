@@ -143,12 +143,12 @@ the result and move the plan to `.truss-core/docs/plans/completed/`.
 
 ### Delivered Change
 
-When the work needs design approval before mutation and independent review
+When the work needs design approval before mutation and independent acceptance
 before completion — Architectural work, public-contract changes, or any change
 where one implementer should not grade its own homework — invoke the delivery
 skill when it is installed: `$delivery`. It wraps a Bounded or Architectural
-change in an approved design contract, sequential implementation, independent
-review, and release on the Orca execution plane.
+change in an approved design contract, isolated implementation, independent
+tester-debugger acceptance, and release on the Orca execution plane.
 
 Delivery is explicit-only. Ordinary bounded work never requires it, and a
 delivered change still obeys this workflow: authority gates, durable plans

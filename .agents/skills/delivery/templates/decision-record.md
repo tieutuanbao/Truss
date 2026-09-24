@@ -25,6 +25,17 @@ What is now true. Written so a reader can tell whether an implementation complie
 Where the decision replaces an earlier one, say which and how — amend the earlier
 record in place rather than deleting its reasoning.
 
+## Requirements traceability
+
+Map each technical choice to the business requirement it serves. Use the stable
+requirement IDs the approved business analysis defines (see
+`business-analysis.md`); do not invent a second numbering system. A requirement
+with no technical decision is deferred explicitly, not silently dropped.
+
+| Requirement ID | Technical decision | Interface or boundary |
+| --- | --- | --- |
+| | | |
+
 ## Alternatives considered
 
 Each one that was genuinely considered, and the reason it lost. An alternative

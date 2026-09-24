@@ -1,6 +1,6 @@
 interface:
   display_name: "Delivery Setup"
-  short_description: "Configure per-role truss, model, and effort pins"
-  default_prompt: "Use $delivery-setup to write this project's managed delivery deployment block into AGENTS.md."
+  short_description: "Configure the six dispatched per-role truss, model, and effort pins"
+  default_prompt: "Use $delivery-setup to write this project's managed seven-role delivery deployment block into AGENTS.md."
 policy:
   allow_implicit_invocation: false

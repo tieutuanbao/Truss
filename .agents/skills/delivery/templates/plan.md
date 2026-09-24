@@ -75,14 +75,44 @@ cleanup, or edits outside owned scope.
 **Direction.** Enough for an implementer to start without re-deciding the contract.
 Not a pasted implementation.
 
-**Files.** Expected owners. If a task needs a file outside allowed scope, the plan
-is wrong — fix it now, not at review.
+**Inputs.** The approved artifacts this task consumes — business analysis,
+decision record, plans, existing code — and the permitted interaction with each.
 
-**Focused verification.** The command or check that proves this task, and how it
-fails if the task is not done.
+**Outputs.** The artifacts and behaviour this task produces, including the
+commit it owns.
+
+**Owned paths.** Exact paths this task may change. If a task needs a file
+outside allowed scope, the plan is wrong — fix it now, not at acceptance.
+Exact ownership means no two tasks in one wave own the same path.
+
+**Dependencies.** Task numbers that must be integrated first, or `none`.
+
+**Focused verification.** The command or check that proves this task, its
+expected result, and how it fails if the task is not done.
+
+**Worktree / branch / base.** The worktree, branch, and base commit the task
+runs in. Concurrent writers get separately approved isolated worktrees; coupled
+work is serialized in one checkout.
+
+**Wave.** The parallel wave that may run this task, and which tasks share it.
+
+**Acceptance owner.** The fresh `tester-debugger` session expected to accept
+this task. The author, fixer, planner, or advisor for a candidate cannot accept
+it.
 
 **Document impact.** Which owning documents this task obliges you to reconcile, and
 why each one — ownership, not habit.
+
+## Integration, waves, and recovery
+
+- **Integration order:** the exact order tasks integrate, and who integrates
+  (the `project-manager`), before fresh exact-HEAD integration acceptance.
+- **Waves:** which tasks may run concurrently in separately approved worktrees,
+  and which are serialized because they share a checkout or a path.
+- **Conflict and recovery:** how overlapping or failing work is recovered from
+  the task's base and recorded commits, without reset, stash, or clean.
+- **Acceptance owner:** the fresh `tester-debugger` session for integration
+  acceptance of the combined candidate at its exact final HEAD.
 
 ## Acceptance
 

@@ -1,6 +1,6 @@
 interface:
   display_name: "Delivery"
-  short_description: "Deliver a change through an approved contract, implementation, review, and release"
-  default_prompt: "Use $delivery to take the requested change through design approval, implementation, independent review, and release."
+  short_description: "Deliver a change through an approved contract, seven-role implementation, independent acceptance, and release"
+  default_prompt: "Use $delivery to take the requested change through design approval, seven-role implementation, independent tester-debugger acceptance, and release."
 policy:
   allow_implicit_invocation: false

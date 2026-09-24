@@ -440,9 +440,10 @@ mod tests {
     use super::{AddOnApplyRequest, FileSystemAddOnApplier};
     use crate::application::{
         AddOnInstallRequest, AddOnPayloadPort, AddOnPayloadSpec, AddOnPlanRequest,
-        AddOnStageRequest, AddOnStatePort,
+        AddOnStageRequest, AddOnStatePort, CoreDistributionPort,
     };
     use crate::domain::AddOnDescriptor;
+    use crate::infrastructure::EmbeddedCoreDistribution;
 
     const ADDON: &str = "demo";
     const OLD_REF: &str = "truss-v0.1.13";
@@ -463,6 +464,34 @@ mod tests {
         fs::create_dir_all(&state_root).unwrap();
         fs::write(state_root.join(".gitignore"), CORE_STATE_IGNORE).unwrap();
         fs::write(state_root.join("lock"), b"").unwrap();
+        // Decision 0003 clause 13 makes `.truss-core/manifest.json` part of a
+        // valid pre-existing core state, so this fixture is the real installed
+        // shape (embedded core payload, core skill trees, digest-checked
+        // `.truss-core/base/` copies), not a `.gitignore` + `lock` placeholder.
+        let distribution = EmbeddedCoreDistribution.current().unwrap();
+        let mut files = Vec::new();
+        for file in &distribution.files {
+            write_bytes(workspace, file.path.as_str(), &file.content);
+            write_bytes(
+                workspace,
+                &format!(".truss-core/base/{}", file.path.as_str()),
+                &file.content,
+            );
+            files.push(serde_json::json!({
+                "path": file.path.as_str(),
+                "upstream_sha256": file.hash.as_str(),
+            }));
+        }
+        let manifest = serde_json::json!({
+            "schema_version": 1,
+            "core_version": distribution.version,
+            "files": files,
+        });
+        fs::write(
+            state_root.join("manifest.json"),
+            serde_json::to_vec_pretty(&manifest).unwrap(),
+        )
+        .unwrap();
     }
 
     fn manifest(files: &[&str]) -> String {

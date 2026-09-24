@@ -10,7 +10,10 @@
 use std::fs;
 use std::path::Path;
 
+use serde_json::json;
 use sha2::{Digest, Sha256};
+use truss::application::CoreDistributionPort;
+use truss::infrastructure::EmbeddedCoreDistribution;
 
 /// The core-owned shared artifacts decision 0003 clause 8 requires before an
 /// add-on operation. A real core install writes exactly these rules through
@@ -34,6 +37,35 @@ pub fn seed_core_state(workspace: &Path) {
     fs::create_dir_all(&state_root).unwrap();
     fs::write(state_root.join(".gitignore"), CORE_STATE_IGNORE).unwrap();
     fs::write(state_root.join("lock"), b"").unwrap();
+    // Decision 0003 clause 13 makes `.truss-core/manifest.json` part of a
+    // valid pre-existing core state, so the fixture must be the real installed
+    // shape: the embedded core payload, the four core skill trees, and the
+    // digest-checked `.truss-core/base/` copies. A `.gitignore` + `lock` only
+    // fixture is the incomplete state the add-on path must refuse.
+    let distribution = EmbeddedCoreDistribution.current().unwrap();
+    let mut files = Vec::new();
+    for file in &distribution.files {
+        write_bytes(workspace, file.path.as_str(), &file.content);
+        write_bytes(
+            workspace,
+            &format!(".truss-core/base/{}", file.path.as_str()),
+            &file.content,
+        );
+        files.push(json!({
+            "path": file.path.as_str(),
+            "upstream_sha256": file.hash.as_str(),
+        }));
+    }
+    let manifest = json!({
+        "schema_version": 1,
+        "core_version": distribution.version,
+        "files": files,
+    });
+    fs::write(
+        state_root.join("manifest.json"),
+        serde_json::to_vec_pretty(&manifest).unwrap(),
+    )
+    .unwrap();
 }
 
 /// A complete workspace snapshot: every path with its type and, for a file,

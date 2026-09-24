@@ -12,10 +12,13 @@ use super::state_io::{
     transaction_id, validate_core_state, validate_path, validate_state_path,
     validate_workspace_root, write_json_atomic,
 };
-use crate::application::{AddOnInstallRequest, AddOnRecordReceipt, AddOnStatePort, PortError};
+use super::FileSystemInstallationState;
+use crate::application::{
+    AddOnInstallRequest, AddOnRecordReceipt, AddOnStatePort, InstallationStatePort, PortError,
+};
 use crate::domain::{
-    AddOnDescriptor, AddOnInstallation, AddOnName, AddOnPayloadFile, AddOnState, BaselineFile,
-    ContentHash, DomainError, RelativePath, SourceRef,
+    AddOnDescriptor, AddOnInstallation, AddOnName, AddOnState, BaselineFile, ContentHash,
+    DomainError, RelativePath, SourceRef,
 };
 
 pub(crate) const ADDONS_FILE: &str = "addons.json";
@@ -120,7 +123,7 @@ impl LocalAssessment {
 }
 
 fn assess_local(root: &Path, descriptor: &AddOnDescriptor) -> Result<LocalAssessment, PortError> {
-    let extra = collect_extra_managed_paths(root, &descriptor.files)?;
+    let extra = collect_extra_managed_paths(root, descriptor)?;
     let mut local = BTreeMap::new();
     let mut present = 0usize;
     for file in &descriptor.files {
@@ -363,18 +366,22 @@ fn load_state(state_root: &Path) -> Result<Option<AddOnState>, PortError> {
 
 /// A managed local path the payload does not declare stops adoption.
 ///
-/// The payload's own directories are the only enumerable managed scope before
-/// a record exists: a directory is payload-owned when it is an ancestor of a
-/// declared path and no other declared directory is above it. Files and
-/// directories below such a root are compared against the declared path set;
-/// anything else is an extra managed path.
+/// Decision 0003 clause 13: the extra-path validation runs only inside the
+/// add-on's scan roots. A declared directory is a scan root when it is not an
+/// ancestor-or-equal of any path owned by another owner, where ownership means
+/// the core `.truss-core/manifest.json` entry list or another add-on's recorded
+/// paths in `.truss-core/addons.json`. A shared ancestor is demoted, so the
+/// content of another owner under it is never an extra path for this add-on,
+/// while the hazard check still covers the add-on's own subtree.
 fn collect_extra_managed_paths(
     root: &Path,
-    files: &[AddOnPayloadFile],
+    descriptor: &AddOnDescriptor,
 ) -> Result<Vec<RelativePath>, PortError> {
+    let state_root = state_root(root);
+    let foreign = foreign_owned_paths(root, &state_root, &descriptor.name)?;
     let mut declared_paths = BTreeSet::new();
     let mut declared_dirs = BTreeSet::new();
-    for file in files {
+    for file in &descriptor.files {
         declared_paths.insert(file.path.as_str().to_owned());
         let mut parts = file.path.as_str().split('/').collect::<Vec<_>>();
         parts.pop();
@@ -387,10 +394,19 @@ fn collect_extra_managed_paths(
             declared_dirs.insert(prefix.clone());
         }
     }
-    let roots = declared_dirs
+    let eligible = declared_dirs
         .iter()
         .filter(|directory| {
-            !declared_dirs.iter().any(|other| {
+            !foreign
+                .iter()
+                .any(|owned| is_ancestor_or_equal(directory, owned.as_str()))
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+    let roots = eligible
+        .iter()
+        .filter(|directory| {
+            !eligible.iter().any(|other| {
                 other.len() < directory.len()
                     && directory.starts_with(other.as_str())
                     && directory.as_bytes().get(other.len()) == Some(&b'/')
@@ -411,6 +427,47 @@ fn collect_extra_managed_paths(
     extra.sort();
     extra.dedup();
     Ok(extra)
+}
+
+/// `directory` is `path` itself or a real ancestor of `path`.
+fn is_ancestor_or_equal(directory: &str, path: &str) -> bool {
+    path == directory
+        || (path.len() > directory.len()
+            && path.starts_with(directory)
+            && path.as_bytes().get(directory.len()) == Some(&b'/'))
+}
+
+/// Every path owned by an owner other than `own_name`: the core installation
+/// state's manifest entries and the other recorded add-ons' paths.
+///
+/// The core set is read through the same state reader the rest of the code
+/// uses, so a missing `.truss-core/manifest.json` is a refusal and the foreign
+/// set is never silently empty. The other add-ons come from the recorded paths
+/// in `.truss-core/addons.json`, and this add-on's own record is not foreign.
+fn foreign_owned_paths(
+    root: &Path,
+    state_root: &Path,
+    own_name: &AddOnName,
+) -> Result<Vec<RelativePath>, PortError> {
+    let Some(core) = FileSystemInstallationState.load(root)? else {
+        return Err(PortError::new(
+            "the core installation state has no .truss-core/manifest.json; add-on operations refuse"
+                .to_owned(),
+        ));
+    };
+    let mut owned = core
+        .files
+        .into_iter()
+        .map(|file| file.path)
+        .collect::<Vec<_>>();
+    if let Some(state) = load_state(state_root)? {
+        for installation in state.addons {
+            if &installation.name != own_name {
+                owned.extend(installation.files.into_iter().map(|file| file.path));
+            }
+        }
+    }
+    Ok(owned)
 }
 
 fn walk_managed_dir(

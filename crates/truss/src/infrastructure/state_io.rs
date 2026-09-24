@@ -106,6 +106,11 @@ pub(crate) fn validate_core_state(state_root: &Path) -> Result<(), PortError> {
     }
     let lock = state_root.join("lock");
     require_regular_file(&lock, ".truss-core/lock")?;
+    // Decision 0003 clause 13: the core installation state that owns the
+    // foreign paths set must be present. A state without the manifest is
+    // invalid, so the foreign set can never be silently empty.
+    let manifest = state_root.join("manifest.json");
+    require_regular_file(&manifest, ".truss-core/manifest.json")?;
     Ok(())
 }
 

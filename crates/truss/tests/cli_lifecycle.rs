@@ -770,3 +770,521 @@ fn cli_addon_continue_is_payload_free_and_mutable_refs_are_rejected() {
 
     evidence("s4b3-row1-parser.txt", &transcript);
 }
+
+// ---------------------------------------------------------------------------
+// S4b4 — the real delivery add-on at its real location.
+//
+// The payload is the repository's own 17 delivery paths, staged from
+// `scripts/delivery-install-files.txt`, and every workspace is built by the
+// shipped `truss install`, so the scan-root rule is exercised against the real
+// installed shape that made `.agents` an over-broad root.
+// ---------------------------------------------------------------------------
+
+const DELIVERY: &str = "delivery";
+const DELIVERY_SUBJECT: &str = ".agents/skills/delivery/SKILL.md";
+const DELIVERY_CLEAN: &str = ".agents/skills/delivery/references/trusses/pi.md";
+const DELIVERY_STRAY: &str = ".agents/skills/delivery/stray.md";
+const DELIVERY_REF_A: &str = "truss-v0.1.13";
+const DELIVERY_REF_B: &str = "truss-v0.1.14";
+const DELIVERY_REF_C: &str = "truss-v0.1.15";
+const DELIVERY_REF_D: &str = "truss-v0.1.16";
+const DELIVERY_CORE_VERSION: &str = "0.1.14";
+const DELIVERY_RESOLVED: &[u8] = b"resolved delivery skill\n";
+
+fn repository_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .to_path_buf()
+}
+
+fn delivery_manifest() -> PathBuf {
+    repository_root().join("scripts/delivery-install-files.txt")
+}
+
+fn delivery_paths() -> Vec<String> {
+    fs::read_to_string(delivery_manifest())
+        .unwrap()
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        .map(str::to_owned)
+        .collect()
+}
+
+/// Stage the real delivery payload bytes at their real relative paths.
+fn stage_delivery_payload(destination: &Path) {
+    for path in delivery_paths() {
+        let bytes = fs::read(repository_root().join(&path)).unwrap();
+        let target = destination.join(&path);
+        fs::create_dir_all(target.parent().unwrap()).unwrap();
+        fs::write(target, bytes).unwrap();
+    }
+}
+
+fn append_to_payload(payload: &Path, relative: &str, extra: &[u8]) {
+    let target = payload.join(relative);
+    let mut bytes = fs::read(&target).unwrap();
+    bytes.extend_from_slice(extra);
+    fs::write(&target, bytes).unwrap();
+}
+
+fn payload_digest(payload: &Path, relative: &str) -> String {
+    sha256_hex(&fs::read(payload.join(relative)).unwrap())
+}
+
+fn evidence_s4b4(name: &str, body: &str) {
+    let directory = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .join("target/s4b4-evidence");
+    fs::create_dir_all(&directory).unwrap();
+    fs::write(directory.join(name), body).unwrap();
+}
+
+struct RealDeliveryFixture {
+    tmp: tempfile::TempDir,
+    workspace: PathBuf,
+    payload_a: PathBuf,
+    payload_b: PathBuf,
+    payload_c: PathBuf,
+    payload_d: PathBuf,
+    manifest: PathBuf,
+}
+
+impl RealDeliveryFixture {
+    fn new() -> Self {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().join("workspace");
+        fs::create_dir_all(&workspace).unwrap();
+        let payload_a = tmp.path().join("payload-a");
+        let payload_b = tmp.path().join("payload-b");
+        let payload_c = tmp.path().join("payload-c");
+        let payload_d = tmp.path().join("payload-d");
+        stage_delivery_payload(&payload_a);
+        // Ref B: exactly one changed file.
+        stage_delivery_payload(&payload_b);
+        append_to_payload(&payload_b, DELIVERY_SUBJECT, b"\n<!-- s4b4 ref b -->\n");
+        // Ref C: the conflicted subject plus one clean path.
+        stage_delivery_payload(&payload_c);
+        append_to_payload(&payload_c, DELIVERY_SUBJECT, b"\n<!-- s4b4 ref c -->\n");
+        append_to_payload(&payload_c, DELIVERY_CLEAN, b"\n<!-- s4b4 clean c -->\n");
+        // Ref D: restage the same shape after the continue.
+        stage_delivery_payload(&payload_d);
+        append_to_payload(&payload_d, DELIVERY_SUBJECT, b"\n<!-- s4b4 ref d -->\n");
+        append_to_payload(&payload_d, DELIVERY_CLEAN, b"\n<!-- s4b4 clean d -->\n");
+        Self {
+            tmp,
+            workspace,
+            payload_a,
+            payload_b,
+            payload_c,
+            payload_d,
+            manifest: delivery_manifest(),
+        }
+    }
+
+    /// A real core install through the shipped command.
+    fn core_state(&self, transcript: &mut String) {
+        let output = run(
+            &[
+                "install",
+                "--directory",
+                path_str(&self.workspace),
+                "--json",
+            ],
+            transcript,
+        );
+        assert!(output.status.success(), "{}", stderr(&output));
+    }
+
+    fn status(&self, transcript: &mut String) -> Value {
+        json(&run(
+            &[
+                "addon",
+                "status",
+                "--name",
+                DELIVERY,
+                "--directory",
+                path_str(&self.workspace),
+                "--json",
+            ],
+            transcript,
+        ))
+    }
+
+    fn install_args(&self, source: &Path, source_ref: &str) -> Vec<String> {
+        vec![
+            "addon".to_owned(),
+            "install".to_owned(),
+            "--name".to_owned(),
+            DELIVERY.to_owned(),
+            "--manifest".to_owned(),
+            path_str(&self.manifest).to_owned(),
+            "--source".to_owned(),
+            path_str(source).to_owned(),
+            "--source-ref".to_owned(),
+            source_ref.to_owned(),
+            "--directory".to_owned(),
+            path_str(&self.workspace).to_owned(),
+            "--json".to_owned(),
+        ]
+    }
+
+    fn update_args(&self, source: &Path, source_ref: &str) -> Vec<String> {
+        let mut args = self.install_args(source, source_ref);
+        args[1] = "update".to_owned();
+        let json_index = args.iter().position(|arg| arg == "--json").unwrap();
+        args.splice(
+            json_index..json_index,
+            [
+                "--source-core-version".to_owned(),
+                DELIVERY_CORE_VERSION.to_owned(),
+            ],
+        );
+        args
+    }
+}
+
+/// Acceptance row 1: the whole cycle works for the real delivery add-on at its
+/// real location `.agents/skills/delivery` and `.agents/skills/delivery-setup`.
+#[test]
+fn cli_addon_real_delivery_cycle_installs_updates_resolves_and_aborts() {
+    let fixture = RealDeliveryFixture::new();
+    let mut transcript = String::new();
+    let paths = delivery_paths();
+    assert_eq!(paths.len(), 17, "the real delivery manifest is 17 paths");
+    fixture.core_state(&mut transcript);
+
+    // A core conflict session plus `AGENTS.md` must survive every add-on step.
+    let core_session = fixture.workspace.join(".truss-core/update/session.json");
+    fs::create_dir_all(core_session.parent().unwrap()).unwrap();
+    fs::write(&core_session, CORE_SESSION).unwrap();
+    let agents_path = fixture.workspace.join("AGENTS.md");
+    let agents_before = fs::read(&agents_path).unwrap();
+
+    // 1. Absent status.
+    let absent = run(
+        &[
+            "addon",
+            "status",
+            "--name",
+            DELIVERY,
+            "--directory",
+            path_str(&fixture.workspace),
+            "--json",
+        ],
+        &mut transcript,
+    );
+    assert_eq!(absent.status.code(), Some(1));
+    assert_eq!(json(&absent)["record"], Value::Null);
+
+    // 2. Install at ref A, at the real location.
+    let args = fixture.install_args(&fixture.payload_a, DELIVERY_REF_A);
+    let args = args.iter().map(String::as_str).collect::<Vec<_>>();
+    let installed = run(&args, &mut transcript);
+    assert!(installed.status.success(), "{}", stderr(&installed));
+    let installed = json(&installed);
+    assert_eq!(installed["operation"], "addon_install");
+    assert!(installed["applied"].as_bool().unwrap());
+    assert!(!installed["adopted"].as_bool().unwrap());
+    assert_eq!(installed["source_ref"], DELIVERY_REF_A);
+    assert!(fixture
+        .workspace
+        .join(".agents/skills/delivery-setup/SKILL.md")
+        .is_file());
+
+    // 3. Status reports the ref and all 17 payload digests.
+    let recorded = fixture.status(&mut transcript);
+    assert_eq!(recorded["record"]["source_ref"], DELIVERY_REF_A);
+    assert_eq!(
+        recorded["record"]["source_core_version"],
+        env!("CARGO_PKG_VERSION")
+    );
+    let files = recorded["record"]["files"].as_array().unwrap();
+    assert_eq!(files.len(), 17);
+    for (index, path) in paths.iter().enumerate() {
+        assert_eq!(files[index]["path"], path.as_str());
+        assert_eq!(
+            files[index]["sha256"],
+            payload_digest(&fixture.payload_a, path)
+        );
+    }
+    assert_eq!(fs::read(&agents_path).unwrap(), agents_before);
+    assert_eq!(fs::read(&core_session).unwrap(), CORE_SESSION);
+
+    // 4. A dry run to ref B reports exactly one Update and mutates nothing.
+    let before = common::workspace_snapshot(&fixture.workspace);
+    let addons_before = fs::read(fixture.workspace.join(".truss-core/addons.json")).unwrap();
+    let mut dry = fixture.update_args(&fixture.payload_b, DELIVERY_REF_B);
+    dry.push("--dry-run".to_owned());
+    let dry = dry.iter().map(String::as_str).collect::<Vec<_>>();
+    let preview = json(&run(&dry, &mut transcript));
+    assert!(preview["dry_run"].as_bool().unwrap());
+    assert_eq!(preview["conflicts"].as_array().unwrap().len(), 0);
+    let updates = preview["changes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|change| change["kind"] == "update")
+        .count();
+    assert_eq!(updates, 1, "exactly one Update: {}", preview["changes"]);
+    assert_eq!(
+        common::workspace_snapshot(&fixture.workspace),
+        before,
+        "an add-on update dry run must mutate nothing"
+    );
+    assert_eq!(
+        fs::read(fixture.workspace.join(".truss-core/addons.json")).unwrap(),
+        addons_before
+    );
+
+    // 5. The real update applies ref B.
+    let args = fixture.update_args(&fixture.payload_b, DELIVERY_REF_B);
+    let args = args.iter().map(String::as_str).collect::<Vec<_>>();
+    let updated = run(&args, &mut transcript);
+    assert!(updated.status.success(), "{}", stderr(&updated));
+    assert!(json(&updated)["applied"].as_bool().unwrap());
+    assert_eq!(
+        fs::read(fixture.workspace.join(DELIVERY_SUBJECT)).unwrap(),
+        fs::read(fixture.payload_b.join(DELIVERY_SUBJECT)).unwrap()
+    );
+
+    // 6. A seeded conflict: consumer edit plus an upstream change on the same
+    //    managed path, with a disjoint clean change staged and never applied.
+    fs::write(fixture.workspace.join(DELIVERY_SUBJECT), b"consumer edit\n").unwrap();
+    let addons_before = fs::read(fixture.workspace.join(".truss-core/addons.json")).unwrap();
+    let conflict_before = managed_snapshot(&fixture.workspace);
+    let args = fixture.update_args(&fixture.payload_c, DELIVERY_REF_C);
+    let args = args.iter().map(String::as_str).collect::<Vec<_>>();
+    let staged = run(&args, &mut transcript);
+    assert_eq!(staged.status.code(), Some(2), "{}", stderr(&staged));
+    let staged = json(&staged);
+    assert!(staged["resolution_staged"].as_bool().unwrap());
+    assert!(!staged["applied"].as_bool().unwrap());
+    assert_eq!(staged["conflicts"].as_array().unwrap().len(), 1);
+    assert_eq!(staged["conflicts"][0]["path"], DELIVERY_SUBJECT);
+    assert_eq!(managed_snapshot(&fixture.workspace), conflict_before);
+    assert_eq!(
+        fs::read(fixture.workspace.join(DELIVERY_CLEAN)).unwrap(),
+        fs::read(fixture.payload_a.join(DELIVERY_CLEAN)).unwrap(),
+        "the clean subset of a conflicted plan must be staged, never applied"
+    );
+    assert_eq!(
+        fs::read(fixture.workspace.join(".truss-core/addons.json")).unwrap(),
+        addons_before
+    );
+    assert!(fixture.status(&mut transcript)["session_pending"]
+        .as_bool()
+        .unwrap());
+    assert_eq!(fs::read(&core_session).unwrap(), CORE_SESSION);
+
+    // 7. The operator edits the session's own `resolved/` content, then the
+    //    payload-free `continue` completes.
+    let resolved = fixture.workspace.join(format!(
+        ".truss-core/addon-update/{DELIVERY}/resolved/{DELIVERY_SUBJECT}"
+    ));
+    fs::write(&resolved, DELIVERY_RESOLVED).unwrap();
+    let continued = json(&run(
+        &[
+            "addon",
+            "continue",
+            "--name",
+            DELIVERY,
+            "--directory",
+            path_str(&fixture.workspace),
+            "--json",
+        ],
+        &mut transcript,
+    ));
+    assert_eq!(continued["operation"], "addon_continue");
+    assert!(continued["applied"].as_bool().unwrap());
+    assert_eq!(continued["source_ref"], Value::Null);
+    assert_eq!(
+        fs::read(fixture.workspace.join(DELIVERY_SUBJECT)).unwrap(),
+        DELIVERY_RESOLVED
+    );
+    assert_eq!(
+        fs::read(fixture.workspace.join(DELIVERY_CLEAN)).unwrap(),
+        fs::read(fixture.payload_c.join(DELIVERY_CLEAN)).unwrap()
+    );
+
+    // 8. The record reports ref C and the payload digests, never the operator's
+    //    resolved bytes.
+    let resumed = fixture.status(&mut transcript);
+    assert_eq!(resumed["record"]["source_ref"], DELIVERY_REF_C);
+    assert_eq!(
+        resumed["record"]["source_core_version"],
+        DELIVERY_CORE_VERSION
+    );
+    let files = resumed["record"]["files"].as_array().unwrap();
+    for (index, path) in paths.iter().enumerate() {
+        assert_eq!(
+            files[index]["sha256"],
+            payload_digest(&fixture.payload_c, path)
+        );
+    }
+    assert!(!resumed["session_pending"].as_bool().unwrap());
+    assert_eq!(fs::read(&core_session).unwrap(), CORE_SESSION);
+    assert_eq!(fs::read(&agents_path).unwrap(), agents_before);
+
+    // 9. Idempotent abort after the continue: both calls are safe no-ops.
+    for _ in 0..2 {
+        let aborted = json(&run(
+            &[
+                "addon",
+                "abort",
+                "--name",
+                DELIVERY,
+                "--directory",
+                path_str(&fixture.workspace),
+                "--json",
+            ],
+            &mut transcript,
+        ));
+        assert!(!aborted["removed"].as_bool().unwrap());
+    }
+    assert_eq!(fs::read(&core_session).unwrap(), CORE_SESSION);
+
+    // 10. Restage with ref D, then abort twice: a real removal, then a no-op.
+    let args = fixture.update_args(&fixture.payload_d, DELIVERY_REF_D);
+    let args = args.iter().map(String::as_str).collect::<Vec<_>>();
+    let restaged = run(&args, &mut transcript);
+    assert_eq!(restaged.status.code(), Some(2), "{}", stderr(&restaged));
+    assert!(json(&restaged)["resolution_staged"].as_bool().unwrap());
+    let managed_before_abort = managed_snapshot(&fixture.workspace);
+    let first = json(&run(
+        &[
+            "addon",
+            "abort",
+            "--name",
+            DELIVERY,
+            "--directory",
+            path_str(&fixture.workspace),
+            "--json",
+        ],
+        &mut transcript,
+    ));
+    assert!(first["removed"].as_bool().unwrap());
+    let second = json(&run(
+        &[
+            "addon",
+            "abort",
+            "--name",
+            DELIVERY,
+            "--directory",
+            path_str(&fixture.workspace),
+            "--json",
+        ],
+        &mut transcript,
+    ));
+    assert!(!second["removed"].as_bool().unwrap());
+    assert_eq!(managed_snapshot(&fixture.workspace), managed_before_abort);
+    assert_eq!(fs::read(&core_session).unwrap(), CORE_SESSION);
+    assert_eq!(
+        fs::read(fixture.workspace.join(DELIVERY_SUBJECT)).unwrap(),
+        DELIVERY_RESOLVED
+    );
+    assert_eq!(fs::read(&agents_path).unwrap(), agents_before);
+
+    println!("{transcript}");
+    evidence_s4b4("s4b4-cli-transcript.txt", &transcript);
+    evidence_s4b4(
+        "s4b4-row1-cycle.txt",
+        &format!(
+            "install_source_ref={DELIVERY_REF_A}\nstatus_paths=17 status_ref={DELIVERY_REF_A}\ndry_run_updates=1 dry_run_mutated=false\nupdate_applied=true ref={DELIVERY_REF_B}\nconflict_exit=2 conflicts=1 staged=true applied=false\ncontinue_applied=true source_ref=null\nstatus_after_continue_ref={DELIVERY_REF_C} digests_are_payload=true\nabort_after_continue=removed:false,false\nrestaged_abort=removed:true,false\nagents_md_untouched=true\ncore_session_untouched=true\ncore_session_sha256={}\n",
+            sha256_hex(CORE_SESSION),
+        ),
+    );
+}
+
+/// Acceptance row 2: the hazard check still fires inside the add-on's own
+/// subtree. An undeclared `.agents/skills/delivery/stray.md` refuses the
+/// install and is named, and the three surfaces stay unchanged.
+#[test]
+fn cli_addon_real_delivery_stray_path_is_refused() {
+    let fixture = RealDeliveryFixture::new();
+    let mut transcript = String::new();
+    fixture.core_state(&mut transcript);
+    fs::create_dir_all(fixture.workspace.join(".agents/skills/delivery")).unwrap();
+    fs::write(fixture.workspace.join(DELIVERY_STRAY), b"stray\n").unwrap();
+
+    let before = common::workspace_snapshot(&fixture.workspace);
+    let args = fixture.install_args(&fixture.payload_a, DELIVERY_REF_A);
+    let args = args.iter().map(String::as_str).collect::<Vec<_>>();
+    let refused = run(&args, &mut transcript);
+    let after = common::workspace_snapshot(&fixture.workspace);
+
+    assert_eq!(refused.status.code(), Some(1), "{}", stderr(&refused));
+    let error = stderr(&refused);
+    assert!(
+        error.contains("stray.md"),
+        "the refusal must name the stray file, got: {error}"
+    );
+    assert_eq!(
+        before, after,
+        "the workspace surface must be unchanged by the refusal"
+    );
+    assert!(!fixture.workspace.join(".truss-core/addons.json").exists());
+    assert!(!fixture.workspace.join(".truss-core/base-addons").exists());
+
+    evidence_s4b4(
+        "s4b4-row2-stray-refusal.txt",
+        &format!(
+            "stray={DELIVERY_STRAY}\nexit={}\nnamed=true\nworkspace_unchanged={}\naddons_json_absent={}\nbaseline_absent={}\nrefusal={}\n",
+            refused.status.code().unwrap_or(-1),
+            before == after,
+            !fixture.workspace.join(".truss-core/addons.json").exists(),
+            !fixture.workspace.join(".truss-core/base-addons").exists(),
+            error.trim(),
+        ),
+    );
+}
+
+/// Acceptance row 3: a state whose `.truss-core` holds only `.gitignore` and
+/// `lock` is refused as invalid before any observation, so the foreign set is
+/// never silently empty.
+#[test]
+fn cli_addon_incomplete_core_state_is_refused_before_observation() {
+    let fixture = RealDeliveryFixture::new();
+    let mut transcript = String::new();
+    let state_root = fixture.workspace.join(".truss-core");
+    fs::create_dir_all(&state_root).unwrap();
+    fs::write(state_root.join(".gitignore"), common::CORE_STATE_IGNORE).unwrap();
+    fs::write(state_root.join("lock"), b"").unwrap();
+    assert!(!state_root.join("manifest.json").exists());
+    let _ = fixture.tmp.path();
+
+    let before = common::workspace_snapshot(&fixture.workspace);
+    let args = fixture.install_args(&fixture.payload_a, DELIVERY_REF_A);
+    let args = args.iter().map(String::as_str).collect::<Vec<_>>();
+    let refused = run(&args, &mut transcript);
+    let after = common::workspace_snapshot(&fixture.workspace);
+    let error = stderr(&refused);
+
+    assert_eq!(refused.status.code(), Some(1), "{}", error);
+    assert!(
+        error.contains("manifest.json"),
+        "the refusal must name the missing manifest, got: {error}"
+    );
+    assert_eq!(
+        before, after,
+        "an invalid core state must be refused without mutation"
+    );
+    assert!(!fixture.workspace.join(".truss-core/addons.json").exists());
+    assert!(!fixture.workspace.join(".truss-core/base-addons").exists());
+
+    evidence_s4b4(
+        "s4b4-row3-incomplete-core-state.txt",
+        &format!(
+            "core_state_files=.gitignore,lock\nexit={}\nrefused_before_observation=true\nworkspace_unchanged={}\nrefusal={}\n",
+            refused.status.code().unwrap_or(-1),
+            before == after,
+            error.trim(),
+        ),
+    );
+}

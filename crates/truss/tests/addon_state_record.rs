@@ -139,6 +139,7 @@ fn bare_fixture(tmp: &Path, name: &str) -> (PathBuf, PathBuf, PathBuf) {
 fn install_writes_the_record_after_the_files_and_it_matches_the_payload() {
     let tmp = tempfile::tempdir().unwrap();
     let (payload, workspace, manifest) = fixture(tmp.path(), "install");
+    let manifest_before = fs::read(workspace.join(".truss-core/manifest.json")).unwrap();
     let descriptor = describe(&payload, &manifest, "demo");
 
     let receipt = FileSystemAddOnState
@@ -154,11 +155,12 @@ fn install_writes_the_record_after_the_files_and_it_matches_the_payload() {
     assert_record_matches_payload(&record, &workspace, &payload, "demo").unwrap();
 
     // The record is a separate file with its own schema; the core manifest is
-    // not created and its schema does not move.
+    // not created, rewritten, or removed.
     assert!(workspace.join(".truss-core/addons.json").is_file());
-    assert!(
-        !workspace.join(".truss-core/manifest.json").exists(),
-        "the add-on record must not create or rewrite the core manifest"
+    assert_eq!(
+        fs::read(workspace.join(".truss-core/manifest.json")).unwrap(),
+        manifest_before,
+        "the add-on record must not rewrite the core manifest"
     );
 
     // Every managed path exists with the recorded digest, and every baseline
@@ -430,6 +432,11 @@ fn invalid_core_state_is_refused_without_mutation() {
     }));
     cases.push(("missing-lock", |workspace: &Path| {
         fs::remove_file(workspace.join(".truss-core/lock")).unwrap();
+    }));
+    cases.push(("missing-manifest", |workspace: &Path| {
+        // Decision 0003 clause 13: a core state without manifest.json is
+        // invalid, so the foreign path set can never be silently empty.
+        fs::remove_file(workspace.join(".truss-core/manifest.json")).unwrap();
     }));
     cases.push(("non-regular-lock", |workspace: &Path| {
         let lock = workspace.join(".truss-core/lock");

@@ -1,6 +1,7 @@
 use std::path::Path;
 
-use crate::domain::{AddOnDescriptor, UpdatePlan};
+use super::PortError;
+use crate::domain::{AddOnDescriptor, AddOnName, ApplyReceipt, UpdatePlan};
 
 /// One add-on apply request.
 ///
@@ -33,3 +34,38 @@ pub struct AddOnStageRequest<'a> {
 // self-contained, so resume takes only the workspace root and the add-on name
 // and reads the candidate payload, the descriptor identity, the materialised
 // plan, and the operator-edited resolutions out of the session itself.
+
+/// Applies, stages, resumes, and aborts one add-on update.
+///
+/// Every method is add-on scoped. In particular `session_pending` asks only
+/// whether the owned `.truss-core/addon-update/<name>/` session exists; it must
+/// never overload the core [`InstallationStatePort::resolution_pending`],
+/// which reads the core-only `.truss-core/update/` namespace.
+///
+/// [`InstallationStatePort::resolution_pending`]: super::InstallationStatePort::resolution_pending
+pub trait AddOnExecutionPort {
+    /// Apply one conflict-free plan transactionally. A plan carrying any
+    /// conflict is refused with no mutation at all.
+    fn apply(
+        &self,
+        root: &Path,
+        request: &AddOnApplyRequest<'_>,
+    ) -> Result<ApplyReceipt, PortError>;
+
+    /// Stage one conflicted plan under the owned add-on namespace instead of
+    /// applying it. No managed file, baseline, or provenance byte changes.
+    fn stage(&self, root: &Path, request: &AddOnStageRequest<'_>) -> Result<(), PortError>;
+
+    /// Resume the self-contained staged session for `name` by name alone. The
+    /// session is read, never re-planned, and only the owned session is
+    /// cleared after provenance is written.
+    fn resume(&self, root: &Path, name: &AddOnName) -> Result<ApplyReceipt, PortError>;
+
+    /// Remove only the owned session for `name`; a repeat call is `false`.
+    fn abort(&self, root: &Path, name: &AddOnName) -> Result<bool, PortError>;
+
+    /// Report whether `.truss-core/addon-update/<name>/session.json` exists.
+    /// The add-on session is inspected only; the core session namespace is
+    /// never read, and a schema-1 session is pending rather than an error.
+    fn session_pending(&self, root: &Path, name: &AddOnName) -> Result<bool, PortError>;
+}

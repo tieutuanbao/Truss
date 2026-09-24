@@ -9,7 +9,8 @@ use super::state_io::{
 };
 use super::{FileSystemAddOnState, FileSystemInstallationState, GitThreeWayMerge};
 use crate::application::{
-    plan_update, AddOnPlanRequest, AddOnStatePort, ApplicationError, InstallationStatePort,
+    plan_update, AddOnPlanPort, AddOnPlanRequest, AddOnStatePort, ApplicationError,
+    InstallationStatePort, PortError,
 };
 use crate::domain::{UpdatePlan, UpdatePlanInput};
 
@@ -45,6 +46,12 @@ impl FileSystemAddOnPlanner {
         let result = plan_locked(root, request);
         FileExt::unlock(&lock).map_err(io_error)?;
         result
+    }
+}
+
+impl AddOnPlanPort for FileSystemAddOnPlanner {
+    fn plan(&self, root: &Path, request: &AddOnPlanRequest<'_>) -> Result<UpdatePlan, PortError> {
+        FileSystemAddOnPlanner::plan(self, root, request).map_err(PortError::from)
     }
 }
 

@@ -1,3 +1,4 @@
+mod addon_application;
 mod addon_apply;
 mod addon_payload;
 mod addon_plan;
@@ -7,6 +8,7 @@ mod ports;
 mod self_update;
 mod service;
 
+pub use addon_application::*;
 pub use addon_apply::*;
 pub use addon_payload::*;
 pub use addon_plan::*;

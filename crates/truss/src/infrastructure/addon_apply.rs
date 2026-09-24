@@ -19,9 +19,16 @@ use super::state_io::{
 };
 use super::transaction::{self, ProvenanceKind, ProvenanceWriter};
 use crate::application::{
-    AddOnApplyRequest, AddOnStageRequest, AddOnStatePort, ApplicationError, PortError,
+    AddOnApplyRequest, AddOnExecutionPort, AddOnStageRequest, AddOnStatePort, ApplicationError,
+    PortError,
 };
 use crate::domain::{AddOnInstallation, AddOnName, AddOnState, ApplyReceipt, BaselineFile};
+
+/// The session marker the session owner (`infrastructure::addon_session`)
+/// writes last. `session_pending` only asks whether this marker exists, so it
+/// never reads the session document and reports a schema-1 or otherwise
+/// uncontinuable session as pending instead of as an error.
+const SESSION_MARKER_FILE: &str = "session.json";
 
 /// Transactional add-on apply adapter.
 ///
@@ -120,6 +127,52 @@ impl FileSystemAddOnApplier {
         let result = clear_addon_session(&state_root, name).map_err(Into::into);
         FileExt::unlock(&lock).map_err(io_error)?;
         result
+    }
+
+    /// Report whether an add-on conflict session is pending for `name`.
+    ///
+    /// Add-on scoped: only the owned `.truss-core/addon-update/<name>/`
+    /// marker is inspected, never the core-only `.truss-core/update/`
+    /// namespace, and the core `resolution_pending` is not involved. A valid
+    /// pre-existing core state and the existing shared lock are required
+    /// exactly as for every other add-on operation, and nothing is created or
+    /// repaired.
+    pub fn session_pending(&self, root: &Path, name: &AddOnName) -> Result<bool, ApplicationError> {
+        validate_workspace_root(root)?;
+        let state_root = state_root(root);
+        validate_core_state(&state_root)?;
+        let lock = acquire_existing_lock(&state_root)?;
+        let pending = addon_session_root(&state_root, name)
+            .join(SESSION_MARKER_FILE)
+            .is_file();
+        FileExt::unlock(&lock).map_err(io_error)?;
+        Ok(pending)
+    }
+}
+
+impl AddOnExecutionPort for FileSystemAddOnApplier {
+    fn apply(
+        &self,
+        root: &Path,
+        request: &AddOnApplyRequest<'_>,
+    ) -> Result<ApplyReceipt, PortError> {
+        FileSystemAddOnApplier::apply(self, root, request).map_err(PortError::from)
+    }
+
+    fn stage(&self, root: &Path, request: &AddOnStageRequest<'_>) -> Result<(), PortError> {
+        FileSystemAddOnApplier::stage(self, root, request).map_err(PortError::from)
+    }
+
+    fn resume(&self, root: &Path, name: &AddOnName) -> Result<ApplyReceipt, PortError> {
+        FileSystemAddOnApplier::resume(self, root, name).map_err(PortError::from)
+    }
+
+    fn abort(&self, root: &Path, name: &AddOnName) -> Result<bool, PortError> {
+        FileSystemAddOnApplier::abort(self, root, name).map_err(PortError::from)
+    }
+
+    fn session_pending(&self, root: &Path, name: &AddOnName) -> Result<bool, PortError> {
+        FileSystemAddOnApplier::session_pending(self, root, name).map_err(PortError::from)
     }
 }
 

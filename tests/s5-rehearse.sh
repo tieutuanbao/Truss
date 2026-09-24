@@ -32,7 +32,10 @@
 # Note: the local source lanes require the add-on payload paths to be committed
 # at HEAD, because the installer records an immutable ref that must describe the
 # bytes it installs. Run the rehearsal on a candidate revision whose add-on
-# payload is committed, as it is in the repository.
+# payload is committed, as it is in the repository. The expected local ref
+# mirrors the installer: a checkout whose HEAD carries the tag declared in
+# scripts/truss-release-tag is a released source and records that tag, and every
+# other checkout records the exact HEAD commit SHA.
 #
 # Environment knobs: S5_KEEP_FIXTURES=1 keeps the throwaway fixture directory,
 # S5_EVIDENCE_DIR overrides where raw outputs are copied (default
@@ -264,9 +267,14 @@ scripts/install-truss.sh --directory "$W1" --with-delivery --yes > "$EV/row1-ins
 st=$?
 check "installer exits 0" "$st"
 HEAD_SHA="$(git rev-parse HEAD)"
+RELEASE_TAG_FILE="$(awk 'NF && $1 !~ /^#/ { print $1; exit }' scripts/truss-release-tag 2>/dev/null)"
+LOCAL_SOURCE_REF="$HEAD_SHA"
+if [ -n "$RELEASE_TAG_FILE" ] && git tag --points-at HEAD 2>/dev/null | grep -Fxq "$RELEASE_TAG_FILE"; then
+  LOCAL_SOURCE_REF="$RELEASE_TAG_FILE"
+fi
 check "addons.json records the add-on" "$([ -f "$W1/.truss-core/addons.json" ]; echo $?)"
-check "recorded ref is the resolved immutable HEAD commit SHA" \
-  "$([ "$(python3 -c "import json;print(json.load(open('$W1/.truss-core/addons.json'))['addons'][0]['source_ref'])")" = "$HEAD_SHA" ]; echo $?)"
+check "recorded ref is the resolved local source ref (release tag on a tagged HEAD, else HEAD SHA)" \
+  "$([ "$(python3 -c "import json;print(json.load(open('$W1/.truss-core/addons.json'))['addons'][0]['source_ref'])")" = "$LOCAL_SOURCE_REF" ]; echo $?)"
 check "recorded digest count equals the delivery manifest's path count" \
   "$([ "$(python3 -c "import json;print(len(json.load(open('$W1/.truss-core/addons.json'))['addons'][0]['files']))")" = "$DELIVERY_PATHS" ]; echo $?)"
 check "baseline holds every payload path" \
@@ -362,7 +370,7 @@ print(0 if len(sets) == 3 and len({tuple(s) for s in sets}) == 3 else 1)" \
 for spec in "$MANIFEST_ENGINEERING_WISDOM:engineering-wisdom" "$MANIFEST_DELIVERY:delivery" "$MANIFEST_PLANNING:planning"; do
   manifest="${spec%%:*}"
   name="${spec#*:}"
-  line="$(assert_addon_matches_manifest "$WALL" "$name" "$manifest" "$HEAD_SHA")"
+  line="$(assert_addon_matches_manifest "$WALL" "$name" "$manifest" "$LOCAL_SOURCE_REF")"
   st=$?
   check "$line" "$st"
   "$WALL/.truss-core/bin/truss" addon status --name "$name" --directory "$WALL" --json > "$EV/status-$name.json" 2>&1
@@ -373,7 +381,7 @@ done
 # Counterexample observed red: a record judged against another add-on's manifest
 # must be rejected, so repeating one add-on's case under a different name cannot
 # pass a bare "three installs" count.
-line="$(assert_addon_matches_manifest "$WALL" delivery "$MANIFEST_PLANNING" "$HEAD_SHA")"
+line="$(assert_addon_matches_manifest "$WALL" delivery "$MANIFEST_PLANNING" "$LOCAL_SOURCE_REF")"
 st=$?
 check "the per-manifest assertion rejects a record judged against another manifest" "$([ "$st" -ne 0 ]; echo $?)"
 echo

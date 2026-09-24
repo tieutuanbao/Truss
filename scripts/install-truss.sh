@@ -52,10 +52,27 @@ Safety:
   interactive installs stop unless --merge or --override is provided. If a
   target .gitignore receives only the Rust maintenance binary rules.
   Optional add-ons requested with --with-engineering-wisdom, --with-delivery,
-  or --with-planning are installed and updated by the Truss CLI, which records
-  their provenance and baseline under .truss-core/. --merge and --force do not
-  apply to add-on files: the CLI plans, preserves, updates, or stages a
-  conflict for them, and this installer never copies an add-on file directly.
+  or --with-planning are acquired here and installed or updated by the Truss
+  CLI; see Add-ons below for the lifecycle. --merge and --force do not apply to
+  add-on files, and this installer never copies an add-on file directly.
+
+Add-ons:
+  Every add-on is one distribution with its own immutable provenance. The
+  Truss CLI owns its plan, baseline, and record under .truss-core/:
+    truss addon status   --name <name>
+    truss addon install  --name <name> --manifest <manifest> --source <dir> --source-ref <ref>
+    truss addon update   --name <name> --manifest <manifest> --source <dir> --source-ref <ref>
+    truss addon continue --name <name>
+    truss addon abort    --name <name>
+  --source-ref is an immutable release tag or exact commit SHA, never a branch
+  name, and each managed file is recorded with its SHA-256 in
+  .truss-core/addons.json. --dry-run previews the plan without writing.
+  Overlapping local and upstream edits are never overwritten: update stops and
+  stages the conflict under .truss-core/addon-update/<name>/resolved/, and
+  continue applies the operator-edited copies while abort removes only the
+  session. AGENTS.md is never an add-on payload file. A remote raw source base
+  URL (TRUSS_SOURCE_BASE_URL) must be pinned to the release tag or the add-on
+  step stops.
 
 Examples:
   scripts/install-truss.sh

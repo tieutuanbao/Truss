@@ -1,3 +1,29 @@
+<#
+.SYNOPSIS
+Bootstrap the Rust `truss` CLI and install the Truss core into a target.
+
+.DESCRIPTION
+Installs the repository-centered core plus the Rust maintenance CLI. Optional
+add-ons requested with -WithEngineeringWisdom, -WithDelivery, or -WithPlanning
+are acquired here and installed or updated by the Truss CLI, which owns the
+plan, the baseline, and the provenance under .truss-core/:
+  truss addon status   --name <name>
+  truss addon install  --name <name> --manifest <manifest> --source <dir> --source-ref <ref>
+  truss addon update   --name <name> --manifest <manifest> --source <dir> --source-ref <ref>
+  truss addon continue --name <name>
+  truss addon abort    --name <name>
+--source-ref is an immutable release tag or exact commit SHA, never a branch
+name, and each managed file is recorded with its SHA-256 in
+.truss-core/addons.json. -DryRun previews the plan without writing.
+Overlapping local and upstream edits are never overwritten: update stops and
+stages the conflict under .truss-core/addon-update/<name>/resolved/, and
+continue applies the operator-edited copies while abort removes only the
+session. AGENTS.md is never an add-on payload file. -Merge and -Force do not
+apply to add-on files, and this installer never copies an add-on file
+directly. A remote raw source base URL must be pinned to the release tag or the
+add-on step stops.
+#>
+
 [CmdletBinding()]
 param(
     [Alias("d")]

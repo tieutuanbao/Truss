@@ -324,6 +324,48 @@ the user.
 Add-ons are explicit and independent. Installation alone does not activate a
 skill, and omitting an add-on flag does not remove an existing copy.
 
+### 🔁 Add-on lifecycle
+
+Every add-on is one distribution with its own immutable provenance. For the
+add-ons you request with `--with-*`, the installer acquires the payload and
+delegates every write to the Truss CLI, which owns the plan, the baseline, and
+the record. The same lifecycle is available directly:
+
+```bash
+.truss-core/bin/truss addon status   --name delivery --directory /path/to/project
+.truss-core/bin/truss addon install  --name delivery --directory /path/to/project \
+  --manifest scripts/delivery-install-files.txt \
+  --source <staged-payload-dir> --source-ref truss-v0.1.13
+.truss-core/bin/truss addon update   --name delivery --directory /path/to/project \
+  --manifest scripts/delivery-install-files.txt \
+  --source <staged-payload-dir> --source-ref truss-v0.1.14
+.truss-core/bin/truss addon continue --name delivery --directory /path/to/project
+.truss-core/bin/truss addon abort    --name delivery --directory /path/to/project
+```
+
+- `status` reports the recorded `source_ref`, the core version the payload was
+  acquired with, and the path plus SHA-256 of every managed file. It exits `1`
+  when the add-on is not recorded. Every subcommand accepts `--json`.
+- `install` and `update` are the only writers. Both accept `--dry-run`, which
+  reports the plan and changes nothing.
+- `--source-ref` is an immutable ref: a `truss-vX.Y.Z` release tag or an exact
+  40/64-character commit SHA. A branch name, `HEAD`, or a short SHA is refused
+  before any state is opened.
+- The installer refuses a requested add-on when it cannot resolve such a ref,
+  when a manifest-listed payload path is not committed at `HEAD`, or when the
+  payload bytes differ from `HEAD`.
+
+Overlapping local and upstream edits are never overwritten. `addon update`
+stops with exit `2` and stages the frozen plan under
+`.truss-core/addon-update/<name>/resolved/<path>`. Edit those copies, then apply
+the frozen decision with `addon continue`; `addon abort` removes only the owned
+session and leaves managed files unchanged.
+
+The record lives in `.truss-core/addons.json` and the payload baseline in
+`.truss-core/base-addons/<name>/`; both are owned by the CLI. `AGENTS.md` is a
+core payload file, never an add-on payload file: the CLI refuses an add-on that
+declares a path the core manifest or another recorded add-on already owns.
+
 ### ⚙️ Installation behavior
 
 | Bash option | PowerShell option | Behavior |
@@ -461,6 +503,76 @@ scripts/validate-premerge.sh
 It checks shell syntax, Rust formatting, tests, Clippy warnings, the source
 contract, and the current Git diff. Development requires a current stable Rust
 toolchain, Git, and ripgrep.
+
+The committed installer rehearsal is the validation entry point for the add-on
+installation path:
+
+```bash
+bash tests/s5-rehearse.sh
+```
+
+It builds the CLI when it is missing, then installs into throwaway workspaces
+and asserts that both installers delegate to the CLI; that all three add-ons
+install against their own manifest with a recorded ref and per-file digests;
+that a repeated run preserves managed bytes instead of skipping them; that a
+consumer edit plus a changed payload stages a conflict with the consumer bytes
+intact; that a dirty payload, a non-git source, a floating raw base URL, and a
+tag mismatch each stop with a clear message and copy nothing; and that the
+PowerShell script delegates with the same flags and never falls back to a
+direct copy. It needs no network and exits non-zero on any failed check.
+`scripts/validate-premerge.sh` runs it.
+
+### 🚀 Release
+
+A release is proven twice. Before tagging, the current proof is the committed
+rehearsal above. After tagging `truss-vX.Y.Z`, the released source at that tag
+must reach the same add-on tree and the same `addons.json` provenance as the
+fresh source at the same ref. Run both and compare:
+
+```bash
+tag=truss-vX.Y.Z
+base="https://raw.githubusercontent.com/tieutuanbao/Truss/$tag"
+
+# 1. Fresh source: the tagged checkout itself.
+git checkout --detach "$tag"
+scripts/install-truss.sh --directory /tmp/truss-fresh \
+  --with-engineering-wisdom --with-delivery --with-planning --yes
+
+# 2. Released source: the raw base URL pinned to the same tag.
+export TRUSS_SOURCE_BASE_URL="$base"
+export TRUSS_CORE_SOURCE_BASE_URL="$base"
+export TRUSS_RELEASE_REPO=tieutuanbao/Truss
+curl -fsSL "$base/scripts/install-truss.sh" | bash -s -- \
+  --directory /tmp/truss-released \
+  --with-engineering-wisdom --with-delivery --with-planning --yes
+
+# 3. Same add-on tree: every add-on manifest path is byte-identical.
+for manifest in scripts/engineering-wisdom-install-files.txt \
+                scripts/delivery-install-files.txt \
+                scripts/plan-install-files.txt; do
+  while IFS= read -r p; do
+    case "$p" in ""|\#*) continue ;; esac
+    cmp "/tmp/truss-fresh/$p" "/tmp/truss-released/$p"
+  done < "$manifest"
+done
+
+# 4. Same provenance: identical addons.json.
+cmp /tmp/truss-fresh/.truss-core/addons.json \
+    /tmp/truss-released/.truss-core/addons.json
+```
+
+Both installs must record `source_ref=truss-vX.Y.Z`. The released-source half
+of this gate cannot run before the tag and its release binaries exist, so it is
+a release gate, not a current proof; the local rehearsal above is the current
+proof.
+
+Two limits are stated rather than implied. Windows parity is static
+verification on the host without `pwsh`: the rehearsal compares the PowerShell
+and Bash argument construction statically, declares the execution gap, and
+claims no byte-level cross-platform equality. A dirty add-on payload is refused
+rather than recorded: a checkout whose manifest-listed payload paths are
+untracked or differ from `HEAD` stops before any mutation, and no dirty
+provenance format is invented.
 
 <a id="scripts-reference"></a>
 

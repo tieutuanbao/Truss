@@ -87,3 +87,85 @@ installation and self-update require explicit configuration:
 
 Local-source installs (running the bootstrap from a checkout) need none of
 these.
+
+## Add-On Source Rules
+
+An add-on payload is recorded with one immutable `source_ref` and a SHA-256 for
+each declared file. The installer resolves that ref and proves the payload
+before any mutation:
+
+- A released source records the exact `truss-vX.Y.Z` release tag, and only when
+the checkout is exactly that release: the tag must be declared by
+`scripts/truss-release-tag` and point at `HEAD` (`git tag --points-at HEAD`). A
+local or `--source-git` checkout that is not exactly that release records the
+exact 40/64-character commit SHA of `HEAD` instead.
+- A branch name, `HEAD`, a short SHA, or any other ref that can move is never
+accepted. The installer stops with a clear message before opening any state.
+- `TRUSS_SOURCE_BASE_URL` raw mode must be tag-pinned: the final URL segment
+must be an immutable ref, and `scripts/truss-release-tag` downloaded from that
+same URL must declare the same ref. A floating base URL (for example `/main`)
+or a tag mismatch stops the add-on step; a core-only install is unaffected.
+- A checkout whose manifest-listed payload paths are not committed at `HEAD` is
+refused. An untracked payload path, or one that differs from `HEAD`, stops
+before any mutation rather than recording a ref that does not describe the
+installed bytes.
+
+## Add-On Release Gate
+
+The current proof for the add-on install path is the committed rehearsal:
+
+```bash
+bash tests/s5-rehearse.sh
+```
+
+`scripts/validate-premerge.sh` runs it. After tagging `truss-vX.Y.Z`, the
+released source at that tag must reach the same add-on tree and the same
+`addons.json` provenance as the fresh source at the same ref:
+
+```bash
+tag=truss-vX.Y.Z
+base="https://raw.githubusercontent.com/tieutuanbao/Truss/$tag"
+
+# 1. Fresh source: the tagged checkout itself.
+git checkout --detach "$tag"
+scripts/install-truss.sh --directory /tmp/truss-fresh \
+  --with-engineering-wisdom --with-delivery --with-planning --yes
+
+# 2. Released source: the raw base URL pinned to the same tag.
+export TRUSS_SOURCE_BASE_URL="$base"
+export TRUSS_CORE_SOURCE_BASE_URL="$base"
+export TRUSS_RELEASE_REPO=tieutuanbao/Truss
+curl -fsSL "$base/scripts/install-truss.sh" | bash -s -- \
+  --directory /tmp/truss-released \
+  --with-engineering-wisdom --with-delivery --with-planning --yes
+
+# 3. Same add-on tree: every add-on manifest path is byte-identical.
+for manifest in scripts/engineering-wisdom-install-files.txt \
+                scripts/delivery-install-files.txt \
+                scripts/plan-install-files.txt; do
+  while IFS= read -r p; do
+    case "$p" in ""|\#*) continue ;; esac
+    cmp "/tmp/truss-fresh/$p" "/tmp/truss-released/$p"
+  done < "$manifest"
+done
+
+# 4. Same provenance: identical addons.json.
+cmp /tmp/truss-fresh/.truss-core/addons.json \
+    /tmp/truss-released/.truss-core/addons.json
+```
+
+Both installs must record `source_ref=truss-vX.Y.Z`. The released-source half
+of this gate cannot run before the tag and its release binaries exist, so it is
+a release gate, not a current proof.
+
+## Add-On Limits
+
+- **Windows parity is static verification only on a host without `pwsh`.** The
+  rehearsal compares the PowerShell and Bash argument construction statically,
+  declares the execution gap, and claims no byte-level cross-platform equality.
+  Windows execution and lock semantics remain unverified until a host with
+  `pwsh` runs the same rehearsal.
+- **A dirty add-on payload is refused, not recorded.** A checkout whose
+  manifest-listed payload paths are untracked or differ from `HEAD` stops before
+  any mutation. No dirty provenance format is invented; the recorded
+  `source_ref` always describes the installed bytes.

@@ -4,7 +4,7 @@
 
 **Turn any software repository into a clear, durable workspace for coding agents.**
 
-[![Release](https://img.shields.io/badge/release-v0.1.13-2563eb)](scripts/truss-release-tag)
+[![Release](https://img.shields.io/badge/release-v0.1.14-2563eb)](scripts/truss-release-tag)
 [![License](https://img.shields.io/badge/license-MIT-16a34a)](LICENSE)
 [![Language](https://img.shields.io/badge/rust-2021%20edition-f74c00?logo=rust&logoColor=white)](Cargo.toml)
 [![Platform](https://img.shields.io/badge/platform-linux%20%7C%20macos%20%7C%20windows-64748b)](#quick-start)

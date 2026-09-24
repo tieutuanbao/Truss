@@ -56,30 +56,6 @@ function Read-RemoteText([string]$Url) {
     return (Invoke-WebRequest -UseBasicParsing -Uri $Url).Content
 }
 
-function Write-SourceFile([string]$Relative, [string]$Target) {
-    if ($Relative -eq "AGENTS.md") {
-        $block = (Read-SourceText "scripts/agent-truss-block.md").TrimEnd("`r", "`n")
-        Set-Content -LiteralPath $Target -Value ("# Agent Instructions`n`n" + $block + "`n") -NoNewline
-        return
-    }
-
-    if ($script:Source.Mode -eq "local") {
-        $source = Join-Path $script:Source.Root $Relative
-        if (!(Test-Path $source)) {
-            Fail "Source file missing: $source"
-        }
-        Copy-Item -LiteralPath $source -Destination $Target -Force
-        return
-    }
-
-    $url = "$script:SourceBaseUrl/$($Relative -replace '\\','/')"
-    if ($url.StartsWith("file://")) {
-        Copy-Item -LiteralPath ([uri]$url).LocalPath -Destination $Target -Force
-    } else {
-        Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $Target
-    }
-}
-
 function Read-SourceText([string]$Relative) {
     if ($script:Source.Mode -eq "local") {
         $source = Join-Path $script:Source.Root $Relative
@@ -118,41 +94,6 @@ function Get-PayloadFiles([string]$Manifest) {
         }
         $relative
     }
-}
-
-function Copy-TrussFile([string]$Relative) {
-    $target = Join-Path $script:TargetDir $Relative
-
-    if (Test-Path $target) {
-        if ($Force) {
-            if ($DryRun) {
-                Write-Step "overwrite $Relative (backup first)"
-            } else {
-                $backup = Join-Path $script:BackupDir $Relative
-                New-Item -ItemType Directory -Force -Path (Split-Path -Parent $backup) | Out-Null
-                Copy-Item -LiteralPath $target -Destination $backup -Force
-                Write-SourceFile $Relative $target
-                Write-Step "updated  $Relative (backup: $($backup.Substring($script:TargetDir.Length + 1)))"
-            }
-            $script:Updated++
-        } elseif ($script:ConflictAction -eq "merge") {
-            Write-Step "skip     $Relative (merge keeps existing file)"
-            $script:Skipped++
-        } else {
-            Write-Step "skip     $Relative (already exists)"
-            $script:Skipped++
-        }
-        return
-    }
-
-    if ($DryRun) {
-        Write-Step "create   $Relative"
-    } else {
-        New-Item -ItemType Directory -Force -Path (Split-Path -Parent $target) | Out-Null
-        Write-SourceFile $Relative $target
-        Write-Step "created  $Relative"
-    }
-    $script:Created++
 }
 
 function Get-AgentShimBlock {
@@ -351,30 +292,272 @@ function Install-TrussCore {
     }
 }
 
+# ---------------------------------------------------------------------------
+# Add-on installation: delegated to the Truss CLI, never copied.
+#
+# The membership manifests stay the owner of what an add-on contains: their
+# non-comment lines are exactly the payload path set staged for the CLI. The
+# CLI is invoked once per requested add-on and owns planning, preservation,
+# update, adoption, and conflict staging against the recorded baseline, so
+# every add-on install writes `.truss-core/addons.json` and the
+# `.truss-core/base-addons/<name>/` copies of the payload bytes. No add-on path
+# is written by a direct copy path in this installer.
+# ---------------------------------------------------------------------------
+
+function Test-ImmutableSourceRef([string]$Ref) {
+    if ($Ref -match '^truss-v[0-9]+\.[0-9]+\.[0-9]+(?:[-.][A-Za-z0-9]+)*$') { return $true }
+    if ($Ref -match '^([0-9a-f]{40}|[0-9a-f]{64})$') { return $true }
+    return $false
+}
+
+function Assert-ImmutableSourceRef([string]$Ref, [string]$Label) {
+    if (!(Test-ImmutableSourceRef $Ref)) {
+        Fail "$Label did not resolve to an immutable --source-ref (got '$Ref'); an add-on records exactly a truss-vX.Y.Z release tag or a full commit SHA, and the installer stops instead of copying files"
+    }
+}
+
+function Assert-GitAvailable {
+    if (!(Get-Command git -ErrorAction SilentlyContinue)) {
+        Fail "git is required to resolve an immutable --source-ref for a local Truss source checkout"
+    }
+}
+
+# An add-on is installed the first time and updated once it is recorded. The
+# record is read from the CLI-owned state file, never from the workspace.
+function Test-AddOnRecorded([string]$Name) {
+    $record = Join-Path $script:TargetDir ".truss-core/addons.json"
+    if (!(Test-Path $record)) { return $false }
+    return [bool](Select-String -LiteralPath $record -SimpleMatch -Quiet -Pattern ('"name": "' + $Name + '"'))
+}
+
+function Resolve-LocalAddOnSourceRef {
+    Assert-GitAvailable
+    $root = $script:Source.Root
+    $head = @(& git -C $root rev-parse --verify HEAD 2>$null)
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace(($head -join ""))) {
+        Fail "the local Truss source at $root is not a git checkout, so no immutable --source-ref can be resolved; install add-ons from a git checkout, or from a source base URL pinned to the released ref, and never from a direct copy"
+    }
+    $head = ($head -join "").Trim()
+    $tag = $null
+    $tagPath = Join-Path $root "scripts/truss-release-tag"
+    if (Test-Path $tagPath) {
+        $tag = ((Get-Content -LiteralPath $tagPath | Where-Object { $_ -match "\S" -and $_ -notmatch "^\s*#" } | Select-Object -First 1) -as [string])
+        if ($tag) { $tag = $tag.Trim() }
+    }
+    if ($tag) {
+        $pointsAt = @(& git -C $root tag --points-at HEAD 2>$null)
+        if (($pointsAt | Where-Object { $_.Trim() -eq $tag }).Count -gt 0) {
+            $script:AddOnSourceRef = $tag
+            return
+        }
+    }
+    $script:AddOnSourceRef = $head
+}
+
+# A raw source base URL is a released source only when the URL itself pins the
+# released ref: the last URL segment must be the tag that the tag file at that
+# same URL declares. A floating URL (a branch) has no immutable ref to record,
+# so the installer stops instead of recording a tag for unreleased bytes.
+function Resolve-RemoteAddOnSourceRef {
+    $tagFile = "scripts/truss-release-tag"
+    $urlTag = ($script:SourceBaseUrl.TrimEnd("/") -split "/")[-1]
+    Assert-ImmutableSourceRef $urlTag "the raw source base URL ($script:SourceBaseUrl)"
+    $tagText = Read-RemoteText "$script:SourceBaseUrl/$tagFile"
+    $tag = (($tagText -split "\r?\n" | Where-Object { $_ -match "\S" -and $_ -notmatch "^\s*#" } | Select-Object -First 1) -as [string])
+    if ($tag) { $tag = $tag.Trim() }
+    if ($tag -ne $urlTag) {
+        Fail "the raw source base URL pins $urlTag but $tagFile declares '$tag'; install add-ons from a base URL pinned to the released ref"
+    }
+    $script:AddOnSourceRef = $tag
+}
+
+function Resolve-AddOnSourceRef {
+    if ($script:AddOnSourceRef) { return }
+    if ($script:Source.Mode -eq "local") {
+        Resolve-LocalAddOnSourceRef
+    } else {
+        Resolve-RemoteAddOnSourceRef
+    }
+    Assert-ImmutableSourceRef $script:AddOnSourceRef "the Truss source"
+}
+
+# The core version the payload was acquired with: the released ref's version,
+# the installed CLI's reported version, or the local source checkout's own
+# crate version when no CLI is installed yet (a dry run).
+function Resolve-AddOnSourceCoreVersion {
+    if ($script:AddOnSourceCoreVersion) { return }
+    if ($script:AddOnSourceRef.StartsWith("truss-v")) {
+        $script:AddOnSourceCoreVersion = $script:AddOnSourceRef.Substring(7)
+        return
+    }
+    $runner = Join-Path $script:TargetDir ".truss-core/bin/truss.exe"
+    if (Test-Path $runner) {
+        $reported = ((& $runner --version) -split "\s+")[-1]
+        if ($LASTEXITCODE -eq 0 -and ![string]::IsNullOrWhiteSpace($reported)) {
+            $script:AddOnSourceCoreVersion = $reported.Trim()
+            return
+        }
+    }
+    $cargoToml = Join-Path $script:Source.Root "crates/truss/Cargo.toml"
+    if (!(Test-Path $cargoToml)) {
+        Fail "could not resolve the source core version for the add-on install: neither an installed Truss CLI nor $cargoToml is available"
+    }
+    $line = Get-Content -LiteralPath $cargoToml | Where-Object { $_ -match '^\s*version\s*=' } | Select-Object -First 1
+    if ($line -match '"([^"]+)"') {
+        $script:AddOnSourceCoreVersion = $Matches[1]
+        return
+    }
+    Fail "could not read the Truss source core version from $cargoToml"
+}
+
+function Assert-LocalAddOnPayloadCommitted([string]$Name, [string]$Manifest) {
+    $root = $script:Source.Root
+    $paths = @(Get-PayloadFiles $Manifest)
+    if ($paths.Count -eq 0) {
+        Fail "the $Name add-on payload manifest $Manifest lists no files"
+    }
+    Assert-GitAvailable
+    $untracked = @(& git -C $root ls-files --others --exclude-standard -- $paths)
+    if ($LASTEXITCODE -ne 0) {
+        Fail "could not inspect the local Truss source checkout at $root with git"
+    }
+    if (($untracked | Where-Object { $_ -match "\S" }).Count -gt 0) {
+        Fail "the $Name add-on payload is not committed in $root; an immutable --source-ref must describe the bytes that are installed, so this installer stops instead of recording one"
+    }
+    & git -C $root diff --quiet HEAD -- $paths
+    if ($LASTEXITCODE -ne 0) {
+        Fail "the $Name add-on payload has uncommitted changes in $root; commit or discard them first, because an immutable --source-ref must describe the bytes that are installed and no dirty provenance format is invented here"
+    }
+}
+
+# The manifest stays the membership owner: its lines are read here, and every
+# path it lists is staged for the CLI.
+function Stage-AddOnPayload([string]$Name, [string]$Manifest) {
+    $script:AddOnStagedPayload = $null
+    $script:AddOnStagedManifest = $null
+    if ($script:Source.Mode -eq "local") {
+        Assert-LocalAddOnPayloadCommitted $Name $Manifest
+        $script:AddOnStagedPayload = $script:Source.Root
+        $script:AddOnStagedManifest = Join-Path $script:Source.Root $Manifest
+        return
+    }
+    $stageRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("truss-addon-" + [guid]::NewGuid().ToString("N"))
+    $script:AddOnStageRoot = $stageRoot
+    $script:AddOnStagedPayload = Join-Path $stageRoot "payload"
+    $script:AddOnStagedManifest = Join-Path $stageRoot $Manifest
+    New-Item -ItemType Directory -Force -Path $script:AddOnStagedPayload | Out-Null
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $script:AddOnStagedManifest) | Out-Null
+    Set-Content -LiteralPath $script:AddOnStagedManifest -Value (Read-PayloadManifest $Manifest)
+    foreach ($relative in (Get-PayloadFiles $Manifest)) {
+        $target = Join-Path $script:AddOnStagedPayload $relative
+        New-Item -ItemType Directory -Force -Path (Split-Path -Parent $target) | Out-Null
+        $url = "$script:SourceBaseUrl/$($relative -replace '\\','/')"
+        if ($url.StartsWith("file://")) {
+            Copy-Item -LiteralPath ([uri]$url).LocalPath -Destination $target -Force
+        } else {
+            Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $target
+        }
+    }
+}
+
+function Remove-AddOnStageRoot {
+    if ($script:AddOnStageRoot) {
+        Remove-Item -LiteralPath $script:AddOnStageRoot -Recurse -Force -ErrorAction SilentlyContinue
+        $script:AddOnStageRoot = $null
+    }
+}
+
+# Resolve the immutable ref, and prove that a local checkout really carries the
+# payload that ref names, before any mutation. A mutable ref or a checkout whose
+# add-on payload is not committed stops the installer before the core install
+# writes anything.
+function Invoke-AddOnPreflight {
+    if (!$WithEngineeringWisdom -and !$WithDelivery -and !$WithPlanning) { return }
+    Resolve-AddOnSourceRef
+    if ($script:Source.Mode -ne "local") { return }
+    if ($WithEngineeringWisdom) {
+        Assert-LocalAddOnPayloadCommitted "engineering-wisdom" $script:EngineeringWisdomPayloadManifest
+    }
+    if ($WithDelivery) {
+        Assert-LocalAddOnPayloadCommitted "delivery" $script:DeliveryPayloadManifest
+    }
+    if ($WithPlanning) {
+        Assert-LocalAddOnPayloadCommitted "planning" $script:PlanningPayloadManifest
+    }
+}
+
+# One CLI invocation per add-on. `install` for a new add-on, `update` for one
+# already recorded; the CLI then plans, preserves, updates, adopts, or stages a
+# conflict, and writes the record and baseline. -Merge and -Force never reach an
+# add-on: there is no installer-side skip or overwrite path left.
+function Install-AddOn([string]$Name, [string]$Manifest) {
+    $operation = "install"
+    $runner = Join-Path $script:TargetDir ".truss-core/bin/truss.exe"
+    $dryPreview = $false
+
+    Stage-AddOnPayload $Name $Manifest
+    Resolve-AddOnSourceRef
+    Resolve-AddOnSourceCoreVersion
+    if (Test-AddOnRecorded $Name) { $operation = "update" }
+
+    $coreManifest = Join-Path $script:TargetDir ".truss-core/manifest.json"
+    if ($DryRun -and !(Test-Path $coreManifest)) {
+        # A dry run installs no core state for the CLI to validate. Nothing is
+        # copied either way; the invocation a real run would make is reported.
+        $dryPreview = $true
+    } elseif (!(Test-Path $runner)) {
+        Fail "the Truss CLI is required to install the $Name add-on but is not available at $runner; run a full install first (a dry run installs no CLI and no core state)"
+    }
+
+    $arguments = @("addon", $operation, "--name", $Name, "--manifest", $script:AddOnStagedManifest, "--source", $script:AddOnStagedPayload, "--source-ref", $script:AddOnSourceRef, "--source-core-version", $script:AddOnSourceCoreVersion, "--directory", $script:TargetDir)
+    if ($DryRun) { $arguments += "--dry-run" }
+    $invocation = "$runner " + ($arguments -join " ")
+
+    if ($dryPreview) {
+        Write-Step "${Name}: dry run would delegate to the Truss CLI (no core state in the target yet)"
+        Write-Step "  $invocation"
+        return
+    }
+
+    Write-Step "${Name}: $operation via the Truss CLI"
+    Write-Step "  $invocation"
+    & $runner @arguments
+    $status = $LASTEXITCODE
+    if ($status -eq 2 -and $DryRun) {
+        Write-Step "${Name}: the Truss CLI preview reports conflicts; the dry run changed nothing"
+        return
+    }
+    if ($status -eq 2) {
+        Fail "the $Name add-on update stopped on a conflict and staged a resolution; edit the files under .truss-core/addon-update/$Name/resolved/, then run: $runner addon continue --name $Name --directory $script:TargetDir"
+    }
+    if ($status -ne 0) {
+        Fail "the Truss CLI failed to $operation the $Name add-on with exit code $status"
+    }
+}
+
 function Install-EngineeringWisdom {
     if (!$WithEngineeringWisdom) { return }
-    foreach ($file in (Get-PayloadFiles $script:EngineeringWisdomPayloadManifest)) {
-        Copy-TrussFile $file
-    }
+    Install-AddOn "engineering-wisdom" $script:EngineeringWisdomPayloadManifest
 }
 
 function Install-Delivery {
     if (!$WithDelivery) { return }
-    foreach ($file in (Get-PayloadFiles $script:DeliveryPayloadManifest)) {
-        Copy-TrussFile $file
-    }
+    Install-AddOn "delivery" $script:DeliveryPayloadManifest
 }
 
 function Install-Planning {
     if (!$WithPlanning) { return }
-    foreach ($file in (Get-PayloadFiles $script:PlanningPayloadManifest)) {
-        Copy-TrussFile $file
-    }
+    Install-AddOn "planning" $script:PlanningPayloadManifest
 }
 
 $script:Created = 0
 $script:Updated = 0
 $script:Skipped = 0
+$script:AddOnSourceRef = $null
+$script:AddOnSourceCoreVersion = $null
+$script:AddOnStagedPayload = $null
+$script:AddOnStagedManifest = $null
+$script:AddOnStageRoot = $null
 $script:Source = Get-SourceMode
 $script:SourceBaseUrl = if ($env:TRUSS_SOURCE_BASE_URL) { $env:TRUSS_SOURCE_BASE_URL.TrimEnd("/") } else { "" }
 $script:CoreSourceBaseUrl = if ($env:TRUSS_CORE_SOURCE_BASE_URL) { $env:TRUSS_CORE_SOURCE_BASE_URL.TrimEnd("/") } else { "" }
@@ -460,11 +643,17 @@ if ($WithPlanning) {
 }
 Write-Step "Target project: $script:TargetDir"
 
+Invoke-AddOnPreflight
+
 Install-TrussCore
 
-Install-EngineeringWisdom
-Install-Delivery
-Install-Planning
+try {
+    Install-EngineeringWisdom
+    Install-Delivery
+    Install-Planning
+} finally {
+    Remove-AddOnStageRoot
+}
 Refresh-AgentShimFile
 
 Write-Step ""

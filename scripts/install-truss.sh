@@ -51,6 +51,11 @@ Safety:
   stay in place and new Truss files are appended by path. Non-
   interactive installs stop unless --merge or --override is provided. If a
   target .gitignore receives only the Rust maintenance binary rules.
+  Optional add-ons requested with --with-engineering-wisdom, --with-delivery,
+  or --with-planning are installed and updated by the Truss CLI, which records
+  their provenance and baseline under .truss-core/. --merge and --force do not
+  apply to add-on files: the CLI plans, preserves, updates, or stages a
+  conflict for them, and this installer never copies an add-on file directly.
 
 Examples:
   scripts/install-truss.sh
@@ -129,71 +134,6 @@ make_absolute_parent() {
   (cd "$parent" && printf '%s/%s\n' "$(pwd -P)" "$(basename "$path")")
 }
 
-copy_file() {
-  local relative="$1"
-  local target="$TARGET_DIR/$relative"
-
-  if [ -e "$target" ]; then
-    if [ "$SOURCE_MODE" = "local" ] && [ "$SOURCE_ROOT/$relative" -ef "$target" ]; then
-      log "skip     $relative (source file)"
-      SKIPPED=$((SKIPPED + 1))
-      return
-    fi
-
-    if [ "$FORCE" -eq 1 ]; then
-      if [ "$DRY_RUN" -eq 1 ]; then
-        log "overwrite $relative (backup first)"
-      else
-        local backup="$BACKUP_DIR/$relative"
-        mkdir -p "$(dirname "$backup")"
-        cp -p "$target" "$backup"
-        write_source_file "$relative" "$target"
-        log "updated $relative (backup: ${backup#$TARGET_DIR/})"
-      fi
-      UPDATED=$((UPDATED + 1))
-    elif [ "$CONFLICT_ACTION" = "merge" ]; then
-      log "skip     $relative (merge keeps existing file)"
-      SKIPPED=$((SKIPPED + 1))
-    else
-      log "skip     $relative (already exists)"
-      SKIPPED=$((SKIPPED + 1))
-    fi
-    return
-  fi
-
-  if [ "$DRY_RUN" -eq 1 ]; then
-    log "create   $relative"
-  else
-    mkdir -p "$(dirname "$target")"
-    write_source_file "$relative" "$target"
-    log "created  $relative"
-  fi
-  CREATED=$((CREATED + 1))
-}
-
-write_source_file() {
-  local relative="$1"
-  local target="$2"
-
-  if [ "$relative" = "AGENTS.md" ]; then
-    {
-      printf '# Agent Instructions\n\n'
-      agent_shim_block
-    } > "$target"
-    return
-  fi
-
-  if [ "$SOURCE_MODE" = "local" ]; then
-    local source="$SOURCE_ROOT/$relative"
-    [ -f "$source" ] || fail "Source file missing: $source"
-    cp -p "$source" "$target"
-    return
-  fi
-
-  local url="$SOURCE_BASE_URL/$relative"
-  curl -fsSL "$url" -o "$target" || fail "Could not download $url"
-}
-
 read_source_text() {
   local relative="$1"
 
@@ -219,25 +159,6 @@ read_payload_manifest() {
 
   local url="$SOURCE_BASE_URL/$payload_manifest"
   curl -fsSL "$url" || fail "Could not download $url"
-}
-
-copy_manifest_files() {
-  local payload_manifest="$1"
-  local manifest
-  local relative
-
-  manifest="$(read_payload_manifest "$payload_manifest")"
-  while IFS= read -r relative || [ -n "$relative" ]; do
-    relative="${relative%$'\r'}"
-    case "$relative" in
-      ""|\#*)
-        continue
-        ;;
-    esac
-    copy_file "$relative"
-  done <<EOF
-$manifest
-EOF
 }
 
 agent_shim_block() {
@@ -704,19 +625,310 @@ override_protected_target_paths() {
 
 }
 
+# ---------------------------------------------------------------------------
+# Add-on installation: delegated to the Truss CLI, never copied.
+#
+# The membership manifests stay the owner of what an add-on contains: their
+# non-comment lines are exactly the payload path set staged for the CLI. The
+# CLI is invoked once per requested add-on and owns planning, preservation,
+# update, adoption, and conflict staging against the recorded baseline, so
+# every add-on install writes `.truss-core/addons.json` and the
+# `.truss-core/base-addons/<name>/` copies of the payload bytes. No add-on path
+# is written by a direct copy path in this installer.
+# ---------------------------------------------------------------------------
+
+ADDON_SOURCE_REF=""
+ADDON_SOURCE_CORE_VERSION=""
+ADDON_STAGED_PAYLOAD=""
+ADDON_STAGED_MANIFEST=""
+
+# An immutable ref: exactly a released tag or a full commit SHA. A branch name,
+# `HEAD`, or a short SHA can move, so none of them is accepted.
+is_immutable_source_ref() {
+  [[ "$1" =~ ^truss-v[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9]+)*$ ]] ||
+    [[ "$1" =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ ]]
+}
+
+require_immutable_source_ref() {
+  local ref="$1"
+  local label="$2"
+  if ! is_immutable_source_ref "$ref"; then
+    fail "$label did not resolve to an immutable --source-ref (got '${ref:-nothing}'); an add-on records exactly a truss-vX.Y.Z release tag or a full commit SHA, and the installer stops instead of copying files"
+  fi
+}
+
+# An add-on is installed the first time and updated once it is recorded. The
+# record is read from the CLI-owned state file, never from the workspace.
+addon_name_is_recorded() {
+  local name="$1"
+  local record="$TARGET_DIR/.truss-core/addons.json"
+
+  [ -f "$record" ] || return 1
+  grep -Fq "\"name\": \"$name\"" "$record"
+}
+
+resolve_addon_source_ref() {
+  [ -n "$ADDON_SOURCE_REF" ] && return 0
+
+  if [ "$SOURCE_MODE" = "local" ]; then
+    resolve_local_addon_source_ref
+  else
+    resolve_remote_addon_source_ref
+  fi
+  require_immutable_source_ref "$ADDON_SOURCE_REF" "the Truss source"
+}
+
+# A released source records the release tag; every other git or local checkout
+# records the exact commit SHA of its HEAD, never a branch name.
+resolve_local_addon_source_ref() {
+  command -v git >/dev/null 2>&1 ||
+    fail "git is required to resolve an immutable --source-ref for a local Truss source checkout"
+
+  local head=""
+  if ! head="$(git -C "$SOURCE_ROOT" rev-parse --verify HEAD 2>/dev/null)"; then
+    head=""
+  fi
+  [ -n "$head" ] ||
+    fail "the local Truss source at $SOURCE_ROOT is not a git checkout, so no immutable --source-ref can be resolved; install add-ons from a git checkout, or from a source base URL pinned to the released ref, and never from a direct copy"
+
+  local tag=""
+  if [ -f "$SOURCE_ROOT/scripts/truss-release-tag" ]; then
+    tag="$(awk 'NF && $1 !~ /^#/ { print $1; exit }' "$SOURCE_ROOT/scripts/truss-release-tag")"
+  fi
+  if [ -n "$tag" ] && git -C "$SOURCE_ROOT" tag --points-at HEAD 2>/dev/null | grep -Fxq "$tag"; then
+    ADDON_SOURCE_REF="$tag"
+    return 0
+  fi
+  ADDON_SOURCE_REF="$head"
+}
+
+# A raw source base URL is a released source only when the URL itself pins the
+# released ref: the last URL segment must be the tag that the tag file at that
+# same URL declares. A floating URL (a branch) has no immutable ref to record,
+# so the installer stops instead of recording a tag for unreleased bytes.
+resolve_remote_addon_source_ref() {
+  local tag_file="scripts/truss-release-tag"
+  local url_tag="${SOURCE_BASE_URL##*/}"
+
+  require_immutable_source_ref "$url_tag" "the raw source base URL ($SOURCE_BASE_URL)"
+
+  local tag_tmp=""
+  local tag=""
+  tag_tmp="$(mktemp)"
+  if ! curl -fsSL "$SOURCE_BASE_URL/$tag_file" -o "$tag_tmp"; then
+    rm -f "$tag_tmp"
+    fail "could not download $SOURCE_BASE_URL/$tag_file to confirm the add-on payload ref"
+  fi
+  tag="$(awk 'NF && $1 !~ /^#/ { print $1; exit }' "$tag_tmp")"
+  rm -f "$tag_tmp"
+  if [ "$tag" != "$url_tag" ]; then
+    fail "the raw source base URL pins $url_tag but $tag_file declares '${tag:-nothing}'; install add-ons from a base URL pinned to the released ref"
+  fi
+  ADDON_SOURCE_REF="$tag"
+}
+
+# The core version the payload was acquired with: the released ref's version,
+# the installed CLI's reported version, or the local source checkout's own
+# crate version when no CLI is installed yet (a dry run).
+resolve_addon_source_core_version() {
+  [ -n "$ADDON_SOURCE_CORE_VERSION" ] && return 0
+
+  case "$ADDON_SOURCE_REF" in
+    truss-v*)
+      ADDON_SOURCE_CORE_VERSION="${ADDON_SOURCE_REF#truss-v}"
+      return 0
+      ;;
+  esac
+
+  local runner="$TARGET_DIR/.truss-core/bin/truss"
+  if [ -x "$runner" ]; then
+    local reported=""
+    if reported="$("$runner" --version 2>/dev/null | awk '{ print $NF; exit }')" && [ -n "$reported" ]; then
+      ADDON_SOURCE_CORE_VERSION="$reported"
+      return 0
+    fi
+  fi
+
+  local cargo_toml="$SOURCE_ROOT/crates/truss/Cargo.toml"
+  [ -f "$cargo_toml" ] ||
+    fail "could not resolve the source core version for the add-on install: neither an installed Truss CLI nor $cargo_toml is available"
+  local version=""
+  version="$(awk -F'"' '/^[[:space:]]*version[[:space:]]*=/ { print $2; exit }' "$cargo_toml")"
+  [ -n "$version" ] ||
+    fail "could not read the Truss source core version from $cargo_toml"
+  ADDON_SOURCE_CORE_VERSION="$version"
+}
+
+# The manifest stays the membership owner: its lines are read here, and every
+# path it lists is staged for the CLI.
+stage_addon_payload() {
+  local name="$1"
+  local manifest="$2"
+
+  ADDON_STAGED_PAYLOAD=""
+  ADDON_STAGED_MANIFEST=""
+
+  if [ "$SOURCE_MODE" = "local" ]; then
+    # The checkout is the payload: no copy is made. The bytes must equal the
+    # recorded commit's bytes, or the recorded ref would describe something
+    # else, so a checkout whose add-on payload is not committed is refused.
+    assert_local_addon_payload_is_committed "$name" "$manifest"
+    ADDON_STAGED_PAYLOAD="$SOURCE_ROOT"
+    ADDON_STAGED_MANIFEST="$SOURCE_ROOT/$manifest"
+    return 0
+  fi
+
+  ADDON_TMP="$(mktemp -d)"
+  ADDON_STAGED_PAYLOAD="$ADDON_TMP/payload"
+  ADDON_STAGED_MANIFEST="$ADDON_TMP/$manifest"
+  mkdir -p "$ADDON_STAGED_PAYLOAD" "$(dirname "$ADDON_STAGED_MANIFEST")"
+  read_payload_manifest "$manifest" > "$ADDON_STAGED_MANIFEST"
+
+  local relative=""
+  while IFS= read -r relative || [ -n "$relative" ]; do
+    relative="${relative%$'\r'}"
+    case "$relative" in
+      ""|\#*)
+        continue
+        ;;
+    esac
+    mkdir -p "$ADDON_STAGED_PAYLOAD/$(dirname "$relative")"
+    download_file "$SOURCE_BASE_URL/$relative" "$ADDON_STAGED_PAYLOAD/$relative"
+  done < "$ADDON_STAGED_MANIFEST"
+}
+
+assert_local_addon_payload_is_committed() {
+  local name="$1"
+  local manifest="$2"
+  local relative=""
+  local paths=()
+
+  while IFS= read -r relative || [ -n "$relative" ]; do
+    relative="${relative%$'\r'}"
+    case "$relative" in
+      ""|\#*)
+        continue
+        ;;
+    esac
+    paths+=("$relative")
+  done < <(read_payload_manifest "$manifest")
+
+  [ "${#paths[@]}" -gt 0 ] ||
+    fail "the $name add-on payload manifest $manifest lists no files"
+
+  local untracked=""
+  if ! untracked="$(git -C "$SOURCE_ROOT" ls-files --others --exclude-standard -- "${paths[@]}")"; then
+    untracked=""
+    fail "could not inspect the local Truss checkout at $SOURCE_ROOT with git"
+  fi
+  [ -z "$untracked" ] ||
+    fail "the $name add-on payload is not committed in $SOURCE_ROOT: ${untracked//$'\n'/ }; an immutable --source-ref must describe the bytes that are installed, so this installer stops instead of recording one"
+
+  if ! git -C "$SOURCE_ROOT" diff --quiet HEAD -- "${paths[@]}"; then
+    fail "the $name add-on payload has uncommitted changes in $SOURCE_ROOT; commit or discard them first, because an immutable --source-ref must describe the bytes that are installed and no dirty provenance format is invented here"
+  fi
+}
+
+# Resolve the immutable ref, and prove that a local checkout really carries the
+# payload that ref names, before any mutation. A mutable ref or a checkout whose
+# add-on payload is not committed stops the installer before the core install
+# writes anything.
+preflight_addons() {
+  if [ "$INSTALL_ENGINEERING_WISDOM" -ne 1 ] && [ "$INSTALL_DELIVERY" -ne 1 ] && [ "$INSTALL_PLANNING" -ne 1 ]; then
+    return 0
+  fi
+
+  resolve_addon_source_ref
+  [ "$SOURCE_MODE" = "local" ] || return 0
+
+  if [ "$INSTALL_ENGINEERING_WISDOM" -eq 1 ]; then
+    assert_local_addon_payload_is_committed "engineering-wisdom" "$ENGINEERING_WISDOM_PAYLOAD_MANIFEST"
+  fi
+  if [ "$INSTALL_DELIVERY" -eq 1 ]; then
+    assert_local_addon_payload_is_committed "delivery" "$DELIVERY_PAYLOAD_MANIFEST"
+  fi
+  if [ "$INSTALL_PLANNING" -eq 1 ]; then
+    assert_local_addon_payload_is_committed "planning" "$PLANNING_PAYLOAD_MANIFEST"
+  fi
+}
+
+# One CLI invocation per add-on. `install` for a new add-on, `update` for one
+# already recorded; the CLI then plans, preserves, updates, adopts, or stages a
+# conflict, and writes the record and baseline. `--merge` and `--force` never
+# reach an add-on: there is no installer-side skip or overwrite path left.
+install_addon() {
+  local name="$1"
+  local manifest="$2"
+  local operation="install"
+  local runner="$TARGET_DIR/.truss-core/bin/truss"
+  local dry_preview=0
+  local status=0
+
+  stage_addon_payload "$name" "$manifest"
+  resolve_addon_source_ref
+  resolve_addon_source_core_version
+  if addon_name_is_recorded "$name"; then
+    operation="update"
+  fi
+
+  if [ "$DRY_RUN" -eq 1 ] && [ ! -f "$TARGET_DIR/.truss-core/manifest.json" ]; then
+    # A dry run installs no core state for the CLI to validate. Nothing is
+    # copied either way; the invocation that a real run would make is reported.
+    dry_preview=1
+  elif [ ! -x "$runner" ]; then
+    fail "the Truss CLI is required to install the $name add-on but is not available at $runner; run a full install first (a dry run installs no CLI and no core state)"
+  fi
+
+  local args=(
+    addon "$operation"
+    --name "$name"
+    --manifest "$ADDON_STAGED_MANIFEST"
+    --source "$ADDON_STAGED_PAYLOAD"
+    --source-ref "$ADDON_SOURCE_REF"
+    --source-core-version "$ADDON_SOURCE_CORE_VERSION"
+    --directory "$TARGET_DIR"
+  )
+  if [ "$DRY_RUN" -eq 1 ]; then
+    args+=(--dry-run)
+  fi
+
+  if [ "$dry_preview" -eq 1 ]; then
+    log "add-on $name: dry run would delegate to the Truss CLI (no core state in the target yet)"
+    log "  $runner ${args[*]}"
+    return 0
+  fi
+
+  log "add-on $name: $operation via the Truss CLI"
+  log "  $runner ${args[*]}"
+  set +e
+  "$runner" "${args[@]}"
+  status=$?
+  set -e
+  if [ "$status" -eq 2 ] && [ "$DRY_RUN" -eq 1 ]; then
+    log "add-on $name: the Truss CLI preview reports conflicts; the dry run changed nothing"
+    return 0
+  fi
+  if [ "$status" -eq 2 ]; then
+    fail "the $name add-on update stopped on a conflict and staged a resolution; edit the files under .truss-core/addon-update/$name/resolved/, then run: $runner addon continue --name $name --directory $TARGET_DIR"
+  fi
+  if [ "$status" -ne 0 ]; then
+    fail "the Truss CLI failed to $operation the $name add-on with exit code $status"
+  fi
+}
+
 install_engineering_wisdom() {
   [ "$INSTALL_ENGINEERING_WISDOM" -eq 1 ] || return 0
-  copy_manifest_files "$ENGINEERING_WISDOM_PAYLOAD_MANIFEST"
+  install_addon "engineering-wisdom" "$ENGINEERING_WISDOM_PAYLOAD_MANIFEST"
 }
 
 install_planning() {
   [ "$INSTALL_PLANNING" -eq 1 ] || return 0
-  copy_manifest_files "$PLANNING_PAYLOAD_MANIFEST"
+  install_addon "planning" "$PLANNING_PAYLOAD_MANIFEST"
 }
 
 install_delivery() {
   [ "$INSTALL_DELIVERY" -eq 1 ] || return 0
-  copy_manifest_files "$DELIVERY_PAYLOAD_MANIFEST"
+  install_addon "delivery" "$DELIVERY_PAYLOAD_MANIFEST"
 }
 
 TARGET_INPUT="${TRUSS_TARGET_DIR:-$PWD}"
@@ -841,13 +1053,19 @@ fi
 # a shallow clone is a full checkout, so the local pipeline (file copy plus
 # cargo-built binary) applies and tracks the remote's latest commit.
 TRUSS_GIT_TMP=""
-cleanup_git_tmp() {
-  [ -n "$TRUSS_GIT_TMP" ] && rm -rf "$TRUSS_GIT_TMP"
+ADDON_TMP=""
+cleanup_tmp() {
+  if [ -n "$TRUSS_GIT_TMP" ]; then
+    rm -rf "$TRUSS_GIT_TMP"
+  fi
+  if [ -n "$ADDON_TMP" ]; then
+    rm -rf "$ADDON_TMP"
+  fi
 }
+trap cleanup_tmp EXIT
 if [ -n "$SOURCE_GIT_URL" ]; then
   command -v git >/dev/null 2>&1 || fail "git is required for --source-git"
   TRUSS_GIT_TMP="$(mktemp -d)"
-  trap cleanup_git_tmp EXIT
   git clone --quiet --depth 1 "$SOURCE_GIT_URL" "$TRUSS_GIT_TMP/checkout" ||
     fail "could not clone Truss source from: $SOURCE_GIT_URL"
   SOURCE_ROOT="$(cd "$TRUSS_GIT_TMP/checkout" && pwd -P)"
@@ -917,8 +1135,9 @@ else
 fi
 log "Target project: $TARGET_DIR"
 
-install_truss_core
+preflight_addons
 
+install_truss_core
 install_engineering_wisdom
 install_delivery
 install_planning

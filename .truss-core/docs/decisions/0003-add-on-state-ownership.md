@@ -98,6 +98,15 @@ Specifically:
     add-on flags, so the update path ships on Bash and PowerShell together,
     or on neither. PowerShell must never fall back to the old skip or force
     behaviour once a shared update option exists.
+12. **Frozen recovery decision.** A staged add-on conflict session is
+    self-contained. It records the immutable source identity and complete
+    descriptor, stores payload bytes for every descriptor path, and persists
+    the materialised update plan plus every frozen workspace observation.
+    Resume verifies the stored descriptor and plan, incorporates only the
+    operator-edited resolutions, rechecks all frozen observations under the
+    existing shared lock, and applies that frozen decision without
+    re-planning. A session whose schema lacks complete candidate or plan
+    material may be inspected and aborted but cannot be continued.
 
 ## Alternatives Considered
 

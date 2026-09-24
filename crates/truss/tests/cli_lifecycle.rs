@@ -1288,3 +1288,312 @@ fn cli_addon_incomplete_core_state_is_refused_before_observation() {
         ),
     );
 }
+
+// S4b4 remediation — recorded ownership from the workspace's own state.
+//
+// The repository manifest and the shipped binary are untouched: the ownership
+// set comes from `.truss-core/manifest.json` and `.truss-core/addons.json`, so
+// the real command line needs no second manifest flag.
+// ---------------------------------------------------------------------------
+
+const REMEDIATION_ADDON: &str = "demo";
+const REMEDIATION_SIBLING: &str = "demo-sibling";
+const REMEDIATION_SUBJECT: &str = ".agents/skills/demo/SKILL.md";
+const REMEDIATION_SHARED: &str = ".agents/skills/shared/notes.md";
+const REMEDIATION_REF: &str = "truss-v0.1.13";
+/// The sibling's bytes, staged identically into the first collision payload, so
+/// a binary without the recorded-ownership guard adopts the colliding path
+/// instead of failing on a byte comparison.
+const REMEDIATION_SHARED_BYTES: &[u8] = b"shared notes\n";
+/// Different bytes for the collision update, so a binary without the guard
+/// visibly overwrites the sibling's managed file.
+const REMEDIATION_SHARED_WRITE: &[u8] = b"demo wants this path\n";
+
+/// Stage a payload directory holding exactly the given `(path, bytes)` pairs.
+fn stage_remediation_payload(root: &Path, files: &[(&str, &[u8])]) {
+    for (relative, bytes) in files {
+        let target = root.join(relative);
+        fs::create_dir_all(target.parent().unwrap()).unwrap();
+        fs::write(target, bytes).unwrap();
+    }
+}
+
+/// Write a membership manifest whose non-comment lines are `paths`.
+fn remediation_manifest(root: &Path, name: &str, paths: &[&str]) -> PathBuf {
+    let manifest = root.join(name);
+    let mut text = String::from("# s4b4 remediation fixture manifest\n");
+    for path in paths {
+        text.push_str(path);
+        text.push('\n');
+    }
+    fs::write(&manifest, text).unwrap();
+    manifest
+}
+
+/// Build a real `addon install`/`addon update` argument vector for one
+/// remediation payload.
+fn remediation_args(
+    command: &str,
+    name: &str,
+    manifest: &Path,
+    source: &Path,
+    workspace: &Path,
+) -> Vec<String> {
+    vec![
+        "addon".to_owned(),
+        command.to_owned(),
+        "--name".to_owned(),
+        name.to_owned(),
+        "--manifest".to_owned(),
+        path_str(manifest).to_owned(),
+        "--source".to_owned(),
+        path_str(source).to_owned(),
+        "--source-ref".to_owned(),
+        REMEDIATION_REF.to_owned(),
+        "--source-core-version".to_owned(),
+        DELIVERY_CORE_VERSION.to_owned(),
+        "--directory".to_owned(),
+        path_str(workspace).to_owned(),
+        "--json".to_owned(),
+    ]
+}
+
+/// Acceptance row A: with two add-ons recorded in `.truss-core/addons.json`
+/// sharing a parent, the real `addon install` and `addon update` refuse a
+/// descriptor that declares the other add-on's exact path, before any
+/// mutation, and name the owner.
+///
+/// The ownership set is the workspace's own recorded state, so no extra CLI
+/// flag is passed. Every refusal is checked against a byte-identical full
+/// workspace, baseline tree, and `addons.json`.
+#[test]
+fn cli_addon_recorded_ownership_collision_is_refused() {
+    let tmp = tempfile::tempdir().unwrap();
+    let workspace = tmp.path().join("workspace");
+    fs::create_dir_all(&workspace).unwrap();
+    let mut transcript = String::new();
+
+    // Real core state through the shipped command, then a first add-on that
+    // records `.agents/skills/shared/notes.md`.
+    let core = run(
+        &["install", "--directory", path_str(&workspace), "--json"],
+        &mut transcript,
+    );
+    assert!(core.status.success(), "{}", stderr(&core));
+    let sibling_payload = tmp.path().join("sibling-payload");
+    stage_remediation_payload(
+        &sibling_payload,
+        &[(REMEDIATION_SHARED, REMEDIATION_SHARED_BYTES)],
+    );
+    let sibling_manifest =
+        remediation_manifest(tmp.path(), "sibling-files.txt", &[REMEDIATION_SHARED]);
+    let sibling_args = remediation_args(
+        "install",
+        REMEDIATION_SIBLING,
+        &sibling_manifest,
+        &sibling_payload,
+        &workspace,
+    );
+    let sibling_args = sibling_args.iter().map(String::as_str).collect::<Vec<_>>();
+    let sibling_install = run(&sibling_args, &mut transcript);
+    assert!(
+        sibling_install.status.success(),
+        "the sibling install must succeed: {}",
+        stderr(&sibling_install)
+    );
+    assert!(json(&sibling_install)["applied"].as_bool().unwrap());
+
+    let addons_path = workspace.join(".truss-core/addons.json");
+    let baselines_root = workspace.join(".truss-core/base-addons");
+    let sibling_baseline = common::workspace_snapshot(&baselines_root);
+
+    // 1. `install` with a descriptor declaring the sibling's exact path and
+    //    byte-identical payload content: refused before anything is written.
+    let collision_payload = tmp.path().join("collision-payload");
+    stage_remediation_payload(
+        &collision_payload,
+        &[(REMEDIATION_SHARED, REMEDIATION_SHARED_BYTES)],
+    );
+    let collision_manifest =
+        remediation_manifest(tmp.path(), "collision-files.txt", &[REMEDIATION_SHARED]);
+    let before_install = common::workspace_snapshot(&workspace);
+    let addons_before_install = fs::read(&addons_path).unwrap();
+    let install_args = remediation_args(
+        "install",
+        REMEDIATION_ADDON,
+        &collision_manifest,
+        &collision_payload,
+        &workspace,
+    );
+    let install_args = install_args.iter().map(String::as_str).collect::<Vec<_>>();
+    let refused_install = run(&install_args, &mut transcript);
+    let install_error = stderr(&refused_install);
+    assert_eq!(
+        refused_install.status.code(),
+        Some(1),
+        "the colliding install must be refused: {install_error}"
+    );
+    assert!(
+        install_error.contains(REMEDIATION_SIBLING) && install_error.contains(REMEDIATION_SHARED),
+        "the refusal must name the owner and the path, got: {install_error}"
+    );
+    assert_eq!(
+        common::workspace_snapshot(&workspace),
+        before_install,
+        "the refused install must leave the workspace byte-identical"
+    );
+    assert_eq!(
+        fs::read(&addons_path).unwrap(),
+        addons_before_install,
+        "the refused install must leave addons.json byte-identical"
+    );
+    assert_eq!(
+        common::workspace_snapshot(&baselines_root),
+        sibling_baseline,
+        "the refused install must leave the baseline tree byte-identical"
+    );
+    let install_unchanged = common::workspace_snapshot(&workspace) == before_install;
+    let install_addons_unchanged = fs::read(&addons_path).unwrap() == addons_before_install;
+    let install_baselines_unchanged =
+        common::workspace_snapshot(&baselines_root) == sibling_baseline;
+
+    // 2. A real install of the add-on under test at its own path, so the
+    //    update case starts from a genuine record.
+    let subject_payload = tmp.path().join("subject-payload");
+    stage_remediation_payload(&subject_payload, &[(REMEDIATION_SUBJECT, b"demo skill\n")]);
+    let subject_manifest =
+        remediation_manifest(tmp.path(), "subject-files.txt", &[REMEDIATION_SUBJECT]);
+    let subject_args = remediation_args(
+        "install",
+        REMEDIATION_ADDON,
+        &subject_manifest,
+        &subject_payload,
+        &workspace,
+    );
+    let subject_args = subject_args.iter().map(String::as_str).collect::<Vec<_>>();
+    let subject_install = run(&subject_args, &mut transcript);
+    assert!(
+        subject_install.status.success(),
+        "the add-on's own install must succeed: {}",
+        stderr(&subject_install)
+    );
+
+    // 3. `update` whose descriptor declares the sibling's exact path, with
+    //    different bytes: refused before planning, so the sibling's managed
+    //    file is never overwritten and no provenance moves.
+    let write_payload = tmp.path().join("write-payload");
+    stage_remediation_payload(
+        &write_payload,
+        &[(REMEDIATION_SHARED, REMEDIATION_SHARED_WRITE)],
+    );
+    let write_manifest = remediation_manifest(tmp.path(), "write-files.txt", &[REMEDIATION_SHARED]);
+    let before_update = common::workspace_snapshot(&workspace);
+    let baselines_before_update = common::workspace_snapshot(&baselines_root);
+    let addons_before_update = fs::read(&addons_path).unwrap();
+    let update_args = remediation_args(
+        "update",
+        REMEDIATION_ADDON,
+        &write_manifest,
+        &write_payload,
+        &workspace,
+    );
+    let update_args = update_args.iter().map(String::as_str).collect::<Vec<_>>();
+    let refused_update = run(&update_args, &mut transcript);
+    let update_error = stderr(&refused_update);
+    assert_eq!(
+        refused_update.status.code(),
+        Some(1),
+        "the colliding update must be refused: {update_error}"
+    );
+    assert!(
+        update_error.contains(REMEDIATION_SIBLING) && update_error.contains(REMEDIATION_SHARED),
+        "the refusal must name the owner and the path, got: {update_error}"
+    );
+    assert_eq!(
+        common::workspace_snapshot(&workspace),
+        before_update,
+        "the refused update must leave the workspace byte-identical"
+    );
+    assert_eq!(
+        common::workspace_snapshot(&baselines_root),
+        baselines_before_update,
+        "the refused update must leave the baseline tree byte-identical"
+    );
+    assert_eq!(
+        fs::read(&addons_path).unwrap(),
+        addons_before_update,
+        "the refused update must leave addons.json byte-identical"
+    );
+    let update_unchanged = common::workspace_snapshot(&workspace) == before_update;
+    let update_addons_unchanged = fs::read(&addons_path).unwrap() == addons_before_update;
+    let update_baselines_unchanged =
+        common::workspace_snapshot(&baselines_root) == baselines_before_update;
+    assert_eq!(
+        fs::read(workspace.join(REMEDIATION_SHARED)).unwrap(),
+        REMEDIATION_SHARED_BYTES,
+        "the sibling's managed file must keep its recorded bytes"
+    );
+    // No plan was built, so no add-on session was staged either.
+    assert!(!workspace
+        .join(format!(".truss-core/addon-update/{REMEDIATION_ADDON}"))
+        .exists());
+
+    // The add-on under test still records only its own path; the sibling still
+    // records only its own.
+    let status = json(&run(
+        &[
+            "addon",
+            "status",
+            "--name",
+            REMEDIATION_ADDON,
+            "--directory",
+            path_str(&workspace),
+            "--json",
+        ],
+        &mut transcript,
+    ));
+    assert_eq!(
+        status["record"]["files"][0]["path"].as_str().unwrap(),
+        REMEDIATION_SUBJECT
+    );
+    let sibling_status = json(&run(
+        &[
+            "addon",
+            "status",
+            "--name",
+            REMEDIATION_SIBLING,
+            "--directory",
+            path_str(&workspace),
+            "--json",
+        ],
+        &mut transcript,
+    ));
+    assert_eq!(
+        sibling_status["record"]["files"][0]["path"]
+            .as_str()
+            .unwrap(),
+        REMEDIATION_SHARED
+    );
+
+    println!("{transcript}");
+    evidence_s4b4("s4b4-remediation-cli-transcript.txt", &transcript);
+    evidence_s4b4(
+        "s4b4-remediation-row-a.txt",
+        &format!(
+            "sibling_install_applied=true sibling_path={REMEDIATION_SHARED}\ninstall_collision_exit={}\ninstall_workspace_unchanged={}\ninstall_addons_json_unchanged={}\ninstall_baselines_unchanged={}\nupdate_collision_exit={}\nupdate_workspace_unchanged={}\nupdate_addons_json_unchanged={}\nupdate_baselines_unchanged={}\nsibling_bytes_unchanged=true\naddon_session_staged=false\ninstall_refusal={}\nupdate_refusal={}\nworkspace_snapshot_sha256={}\naddons_json_sha256={}\nbaselines_sha256={}\n",
+            refused_install.status.code().unwrap_or(-1),
+            install_unchanged,
+            install_addons_unchanged,
+            install_baselines_unchanged,
+            refused_update.status.code().unwrap_or(-1),
+            update_unchanged,
+            update_addons_unchanged,
+            update_baselines_unchanged,
+            install_error.trim(),
+            update_error.trim(),
+            sha256_hex(common::workspace_snapshot(&workspace).as_bytes()),
+            sha256_hex(&fs::read(&addons_path).unwrap()),
+            sha256_hex(common::workspace_snapshot(&baselines_root).as_bytes()),
+        ),
+    );
+}

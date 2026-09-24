@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use sha2::{Digest, Sha256};
 use truss::application::{AddOnInstallRequest, AddOnPayloadPort, AddOnPayloadSpec, AddOnStatePort};
-use truss::domain::{AddOnDescriptor, AddOnName, AddOnState};
+use truss::domain::{AddOnDescriptor, AddOnName, AddOnState, RelativePath};
 use truss::infrastructure::{
     addon_observation_witness, FileSystemAddOnPayload, FileSystemAddOnState,
 };
@@ -27,6 +27,14 @@ const FIXTURE_MANIFEST: &str = "\
 .agents/skills/demo/references/notes.md\n";
 
 const SOURCE_REF: &str = "truss-v0.1.13";
+
+/// A path owned by a second recorded add-on under a parent shared with
+/// `FIXTURE_FILES`' `.agents/skills` tree.
+const SIBLING_SUBJECT: &str = ".agents/skills/shared/notes.md";
+
+fn path(value: &str) -> RelativePath {
+    RelativePath::parse(value).unwrap()
+}
 
 fn write_fixture_payload(root: &Path) {
     for (relative, content) in FIXTURE_FILES {
@@ -671,4 +679,141 @@ fn install_with_wrong_writer(tmp: &Path) -> (AddOnState, PathBuf) {
         .unwrap();
     let record = FileSystemAddOnState.load(&workspace).unwrap().unwrap();
     (record, real_payload)
+}
+
+/// Recorded ownership for the payload adapter guard: the core manifest entries
+/// under `truss-core` plus every other recorded add-on's paths, and never this
+/// add-on's own record.
+///
+/// The set is read from the workspace's own state, so it is available to the
+/// real command line without a second manifest flag, and a descriptor that
+/// declares one of these paths is refused by the domain rule before any plan or
+/// apply.
+#[test]
+fn recorded_owners_reports_the_core_and_every_other_recorded_add_on() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (payload, workspace, manifest) = fixture(tmp.path(), "owners");
+    let name = AddOnName::parse("demo").unwrap();
+
+    // Install this add-on, so its own recorded path must not be reported as a
+    // foreign owner of itself.
+    let descriptor = describe(&payload, &manifest, "demo");
+    FileSystemAddOnState
+        .apply(&workspace, &request(&descriptor, &payload))
+        .unwrap();
+
+    // A second add-on records an exact path under the shared
+    // `.agents/skills/shared` parent.
+    let sibling_payload = tmp.path().join("sibling-payload");
+    let sibling_manifest = tmp.path().join("sibling-install-files.txt");
+    write_file(&sibling_payload, SIBLING_SUBJECT, "sibling notes\n");
+    fs::write(
+        &sibling_manifest,
+        format!("# sibling add-on\n{SIBLING_SUBJECT}\n"),
+    )
+    .unwrap();
+    let sibling = describe(&sibling_payload, &sibling_manifest, "demo-sibling");
+    FileSystemAddOnState
+        .apply(&workspace, &request(&sibling, &sibling_payload))
+        .unwrap();
+
+    let owners = FileSystemAddOnState
+        .recorded_owners(&workspace, &name)
+        .unwrap();
+    let owner_names = owners
+        .iter()
+        .map(|(owner, _)| owner.as_str().to_owned())
+        .collect::<Vec<_>>();
+    assert_eq!(owner_names, vec!["truss-core", "demo-sibling"]);
+
+    // The core entry is exactly the core manifest's path list, read from the
+    // workspace, not from a caller-supplied manifest.
+    let core_manifest: serde_json::Value =
+        serde_json::from_slice(&fs::read(workspace.join(".truss-core/manifest.json")).unwrap())
+            .unwrap();
+    let mut core_paths = owners[0]
+        .1
+        .iter()
+        .map(|path| path.as_str().to_owned())
+        .collect::<Vec<_>>();
+    let mut manifest_paths = core_manifest["files"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|file| file["path"].as_str().unwrap().to_owned())
+        .collect::<Vec<_>>();
+    core_paths.sort();
+    manifest_paths.sort();
+    assert_eq!(core_paths, manifest_paths);
+    assert!(core_paths.contains(&".agents/skills/onboard-repository/SKILL.md".to_owned()));
+
+    // The sibling contributes its recorded path; this add-on's own record is
+    // absent from the set.
+    assert_eq!(owners[1].1, vec![path(SIBLING_SUBJECT)]);
+    assert!(!owners
+        .iter()
+        .any(|(_, paths)| paths.contains(&path(FIXTURE_FILES[0].0))));
+
+    // The two guard inputs — a descriptor declaring the sibling's exact path
+    // and this recorded ownership set — produce the refusal the real CLI must
+    // raise, and the owner is named.
+    let collision_payload = tmp.path().join("collision-payload");
+    let collision_manifest = tmp.path().join("collision-install-files.txt");
+    write_file(&collision_payload, SIBLING_SUBJECT, "sibling notes\n");
+    fs::write(
+        &collision_manifest,
+        format!("# collision fixture\n{SIBLING_SUBJECT}\n"),
+    )
+    .unwrap();
+    let collision = describe(&collision_payload, &collision_manifest, "demo");
+    let error = collision.reject_owned_paths(&owners).unwrap_err();
+    let error = error.to_string();
+    assert!(
+        error.contains("demo-sibling") && error.contains(SIBLING_SUBJECT),
+        "the refusal must name the owner and the path, got: {error}"
+    );
+
+    evidence(
+        "s4b4-remediation-recorded-owners.txt",
+        &format!(
+            "owner_names={owner_names:?}\ncore_paths={}\nsibling_paths={:?}\nown_record_excluded=true\ncollision_refusal={error}\n",
+            owner_names.len(),
+            owners[1]
+                .1
+                .iter()
+                .map(RelativePath::as_str)
+                .collect::<Vec<_>>(),
+        ),
+    );
+}
+
+/// The ownership set is never silently empty: an incomplete core state is a
+/// refusal, so the guard cannot pass by seeing no owner at all.
+#[test]
+fn recorded_owners_refuses_when_the_core_manifest_is_absent() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (_payload, workspace, _manifest) = bare_fixture(tmp.path(), "owners-absent");
+    let state_root = workspace.join(".truss-core");
+    fs::create_dir_all(&state_root).unwrap();
+    fs::write(state_root.join(".gitignore"), common::CORE_STATE_IGNORE).unwrap();
+    fs::write(state_root.join("lock"), b"").unwrap();
+    assert!(!state_root.join("manifest.json").exists());
+
+    let error = FileSystemAddOnState
+        .recorded_owners(&workspace, &AddOnName::parse("demo").unwrap())
+        .unwrap_err()
+        .to_string();
+    assert!(
+        error.contains("manifest.json"),
+        "a missing core manifest must be a refusal, got: {error}"
+    );
+    assert!(
+        !state_root.join("addons.json").exists(),
+        "reading the ownership set must not create add-on provenance"
+    );
+
+    evidence(
+        "s4b4-remediation-recorded-owners-absent.txt",
+        &format!("refusal={error}\n"),
+    );
 }

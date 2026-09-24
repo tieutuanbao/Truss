@@ -23,6 +23,8 @@ use crate::domain::{
 
 pub(crate) const ADDONS_FILE: &str = "addons.json";
 pub(crate) const BASE_ADDONS_DIR: &str = "base-addons";
+/// Owner label the core installation's manifest entries are reported under.
+pub(crate) const CORE_OWNER: &str = "truss-core";
 
 /// Filesystem implementation of the installed add-on record.
 ///
@@ -45,6 +47,15 @@ impl AddOnStatePort for FileSystemAddOnState {
         }
         reject_symlink(&state_root, ".truss-core")?;
         load_state(&state_root)
+    }
+
+    fn recorded_owners(
+        &self,
+        root: &Path,
+        own_name: &AddOnName,
+    ) -> Result<Vec<(String, Vec<RelativePath>)>, PortError> {
+        validate_workspace_root(root)?;
+        foreign_owners(root, &state_root(root), own_name)
     }
 
     fn apply(
@@ -378,7 +389,10 @@ fn collect_extra_managed_paths(
     descriptor: &AddOnDescriptor,
 ) -> Result<Vec<RelativePath>, PortError> {
     let state_root = state_root(root);
-    let foreign = foreign_owned_paths(root, &state_root, &descriptor.name)?;
+    let foreign = foreign_owners(root, &state_root, &descriptor.name)?
+        .into_iter()
+        .flat_map(|(_, paths)| paths)
+        .collect::<Vec<_>>();
     let mut declared_paths = BTreeSet::new();
     let mut declared_dirs = BTreeSet::new();
     for file in &descriptor.files {
@@ -437,37 +451,51 @@ fn is_ancestor_or_equal(directory: &str, path: &str) -> bool {
             && path.as_bytes().get(directory.len()) == Some(&b'/'))
 }
 
-/// Every path owned by an owner other than `own_name`: the core installation
-/// state's manifest entries and the other recorded add-ons' paths.
+/// Every path owned by an owner other than `own_name`, paired with the owner's
+/// name: the core installation state's manifest entries under [`CORE_OWNER`],
+/// and the recorded paths of every other recorded add-on.
 ///
 /// The core set is read through the same state reader the rest of the code
 /// uses, so a missing `.truss-core/manifest.json` is a refusal and the foreign
 /// set is never silently empty. The other add-ons come from the recorded paths
 /// in `.truss-core/addons.json`, and this add-on's own record is not foreign.
-fn foreign_owned_paths(
+///
+/// This is the one reader of the recorded ownership set: the extra-path
+/// scan-root rule flattens it, and the add-on state port reports it so the
+/// application can reject a descriptor that collides with it.
+fn foreign_owners(
     root: &Path,
     state_root: &Path,
     own_name: &AddOnName,
-) -> Result<Vec<RelativePath>, PortError> {
+) -> Result<Vec<(String, Vec<RelativePath>)>, PortError> {
     let Some(core) = FileSystemInstallationState.load(root)? else {
         return Err(PortError::new(
             "the core installation state has no .truss-core/manifest.json; add-on operations refuse"
                 .to_owned(),
         ));
     };
-    let mut owned = core
-        .files
-        .into_iter()
-        .map(|file| file.path)
-        .collect::<Vec<_>>();
+    let mut owners = vec![(
+        CORE_OWNER.to_owned(),
+        core.files
+            .into_iter()
+            .map(|file| file.path)
+            .collect::<Vec<_>>(),
+    )];
     if let Some(state) = load_state(state_root)? {
         for installation in state.addons {
             if &installation.name != own_name {
-                owned.extend(installation.files.into_iter().map(|file| file.path));
+                owners.push((
+                    installation.name.as_str().to_owned(),
+                    installation
+                        .files
+                        .into_iter()
+                        .map(|file| file.path)
+                        .collect(),
+                ));
             }
         }
     }
-    Ok(owned)
+    Ok(owners)
 }
 
 fn walk_managed_dir(

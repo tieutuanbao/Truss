@@ -35,6 +35,11 @@ const ADDON: &str = "demo";
 const SUBJECT: &str = ".agents/skills/demo/SKILL.md";
 const CLEAN: &str = ".agents/skills/demo/clean.md";
 const SOURCE_REF: &str = "truss-v0.1.14";
+/// A path the fake records to the core, so the ownership guard has a real
+/// owner to compare against and the rows stay green only because this owner
+/// does not collide with `SUBJECT` or `CLEAN`.
+const FOREIGN: &str = ".agents/skills/truss/SKILL.md";
+const CORE_OWNER: &str = "truss-core";
 
 type Log = Rc<RefCell<Vec<String>>>;
 
@@ -172,6 +177,22 @@ impl AddOnStatePort for FakeState {
         Ok(AddOnRecordReceipt {
             adopted: self.adopted,
         })
+    }
+
+    /// The recorded ownership set the real adapter reads from
+    /// `.truss-core/manifest.json` and `.truss-core/addons.json`.
+    ///
+    /// The fake records the call so the S4b2 rows prove the ownership guard is
+    /// consulted *before* the planner and *before* `apply`, and it reports one
+    /// real owner that does not collide with the fixture descriptor, so a row
+    /// stays green only because the guard admitted the payload.
+    fn recorded_owners(
+        &self,
+        _root: &Path,
+        _own_name: &AddOnName,
+    ) -> Result<Vec<(String, Vec<RelativePath>)>, PortError> {
+        record(&self.log, "state.recorded_owners");
+        Ok(vec![(CORE_OWNER.to_owned(), vec![path(FOREIGN)])])
     }
 }
 
@@ -420,7 +441,10 @@ fn install_reaches_only_the_payload_and_state_ports() {
         .application
         .install(absent_root(), &spec(absent_root(), absent_root()), true)
         .unwrap();
-    assert_eq!(harness.calls(), vec!["payload.describe"]);
+    assert_eq!(
+        harness.calls(),
+        vec!["payload.describe", "state.recorded_owners"]
+    );
     assert!(preview.dry_run && !preview.applied && !preview.resolution_staged);
     assert_eq!(preview.adopted, None);
     assert!(preview.changes.is_empty() && preview.conflicts.is_empty());
@@ -430,11 +454,18 @@ fn install_reaches_only_the_payload_and_state_ports() {
         .application
         .install(absent_root(), &spec(absent_root(), absent_root()), false)
         .unwrap();
-    // The log is cumulative: one `payload.describe` from the preview above,
-    // then describe plus apply for the real install.
+    // The log is cumulative: one `payload.describe` plus its ownership guard
+    // from the preview above, then describe, guard, and apply for the real
+    // install.
     assert_eq!(
         harness.calls(),
-        vec!["payload.describe", "payload.describe", "state.apply"]
+        vec![
+            "payload.describe",
+            "state.recorded_owners",
+            "payload.describe",
+            "state.recorded_owners",
+            "state.apply"
+        ]
     );
     assert!(!applied.dry_run && applied.applied);
     assert_eq!(applied.adopted, Some(true));
@@ -444,8 +475,8 @@ fn install_reaches_only_the_payload_and_state_ports() {
         "s4b2-row1-install.txt",
         &format!(
             "dry_run_calls={:?}\nreal_install_calls={:?}\nadopted={:?}\n",
-            vec!["payload.describe"],
-            vec!["payload.describe", "state.apply"],
+            vec!["payload.describe", "state.recorded_owners"],
+            vec!["payload.describe", "state.recorded_owners", "state.apply"],
             applied.adopted,
         ),
     );
@@ -460,7 +491,10 @@ fn update_dry_run_plans_and_never_applies() {
         .application
         .update(absent_root(), &spec(absent_root(), absent_root()), true)
         .unwrap();
-    assert_eq!(harness.calls(), vec!["payload.describe", "planner.plan"]);
+    assert_eq!(
+        harness.calls(),
+        vec!["payload.describe", "state.recorded_owners", "planner.plan"]
+    );
     assert!(preview.dry_run);
     assert_eq!(preview.changes, clean_plan().changes);
     assert!(preview.conflicts.is_empty());
@@ -474,7 +508,12 @@ fn update_dry_run_plans_and_never_applies() {
         .unwrap();
     assert_eq!(
         harness.calls(),
-        vec!["payload.describe", "planner.plan", "executor.apply"]
+        vec![
+            "payload.describe",
+            "state.recorded_owners",
+            "planner.plan",
+            "executor.apply"
+        ]
     );
     assert!(applied.applied && !applied.dry_run && !applied.resolution_staged);
     assert_eq!(applied.backup_path.as_deref(), Some("backup/apply"));
@@ -485,7 +524,7 @@ fn update_dry_run_plans_and_never_applies() {
         "s4b2-row2-dry-run.txt",
         &format!(
             "dry_run_calls={:?}\ndry_run_applied={}\nreal_calls={:?}\nreal_applied={}\n",
-            vec!["payload.describe", "planner.plan"],
+            vec!["payload.describe", "state.recorded_owners", "planner.plan"],
             preview.applied,
             harness.calls(),
             applied.applied,
@@ -502,7 +541,10 @@ fn update_stages_a_conflicted_plan_instead_of_applying_it() {
         .application
         .update(absent_root(), &spec(absent_root(), absent_root()), true)
         .unwrap();
-    assert_eq!(harness.calls(), vec!["payload.describe", "planner.plan"]);
+    assert_eq!(
+        harness.calls(),
+        vec!["payload.describe", "state.recorded_owners", "planner.plan"]
+    );
     assert!(preview.dry_run && !preview.applied && !preview.resolution_staged);
     assert_eq!(preview.conflicts, conflicted_plan().conflicts);
     assert_eq!(preview.changes, conflicted_plan().changes);
@@ -514,7 +556,12 @@ fn update_stages_a_conflicted_plan_instead_of_applying_it() {
         .unwrap();
     assert_eq!(
         harness.calls(),
-        vec!["payload.describe", "planner.plan", "executor.stage"]
+        vec![
+            "payload.describe",
+            "state.recorded_owners",
+            "planner.plan",
+            "executor.stage"
+        ]
     );
     assert!(!staged.applied, "a conflicted plan must not be applied");
     assert!(staged.resolution_staged);
@@ -527,7 +574,7 @@ fn update_stages_a_conflicted_plan_instead_of_applying_it() {
         "s4b2-row2-conflict.txt",
         &format!(
             "dry_run_calls={:?}\ndry_run_staged={}\nconflict_calls={:?}\nconflict_applied={}\nconflict_staged={}\n",
-            vec!["payload.describe", "planner.plan"],
+            vec!["payload.describe", "state.recorded_owners", "planner.plan"],
             preview.resolution_staged,
             harness.calls(),
             staged.applied,

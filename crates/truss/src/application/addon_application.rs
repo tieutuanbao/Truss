@@ -64,8 +64,11 @@ where
     /// Install one add-on payload, or preview it when `dry_run`.
     ///
     /// The descriptor is built by the payload port, so the payload path set and
-    /// every digest come from the payload bytes and the membership manifest.
-    /// A dry run stops after describing: nothing is written. A real install
+    /// every digest come from the payload bytes and the membership manifest,
+    /// and the recorded-ownership guard refuses a path the core manifest or
+    /// another recorded add-on already owns before anything is planned or
+    /// applied. A dry run stops after describing and guarding: nothing is
+    /// written. A real install
     /// delegates creation or exact adoption to the state port, which writes the
     /// managed files, the baseline, and the provenance record and refuses a
     /// workspace that does not match the payload exactly.
@@ -76,6 +79,7 @@ where
         dry_run: bool,
     ) -> Result<AddOnUpdateReport, PortError> {
         let descriptor = self.payload.describe(payload_spec)?;
+        self.reject_recorded_ownership(root, &descriptor)?;
         let mut report = AddOnUpdateReport::preview(&descriptor, dry_run);
         if !dry_run {
             let receipt = self.state.apply(
@@ -94,7 +98,10 @@ where
     /// Preview or apply one add-on update against the recorded baseline.
     ///
     /// A dry run builds the descriptor and the plan and returns immediately:
-    /// nothing is applied and no session is staged. A real update applies only
+    /// nothing is applied and no session is staged. The recorded-ownership
+    /// guard runs before the planner, so a descriptor path owned by the core
+    /// manifest or by another recorded add-on is refused before any planning.
+    /// A real update applies only
     /// a conflict-free plan through the execution port. A plan carrying any
     /// conflict is never applied, not even its clean subset: the same port
     /// stages the conflicted plan under the owned add-on session instead, and
@@ -106,6 +113,7 @@ where
         dry_run: bool,
     ) -> Result<AddOnUpdateReport, PortError> {
         let descriptor = self.payload.describe(payload_spec)?;
+        self.reject_recorded_ownership(root, &descriptor)?;
         let plan = self.planner.plan(
             root,
             &AddOnPlanRequest {
@@ -166,6 +174,28 @@ where
     /// Remove only the owned add-on conflict session for `name`.
     pub fn abort(&self, root: &Path, name: &AddOnName) -> Result<bool, PortError> {
         self.executor.abort(root, name)
+    }
+
+    /// Refuse a descriptor that declares a path another managed distribution
+    /// already owns, before anything is planned or applied.
+    ///
+    /// The ownership set is the workspace's own recorded state, read through
+    /// the add-on state port: the core `.truss-core/manifest.json` entry list
+    /// and the recorded paths of every other add-on in
+    /// `.truss-core/addons.json`. No caller supplies it and no command-line flag
+    /// exists for it, so an empty caller-supplied list can never disable the
+    /// check, and an incomplete core state is a refusal rather than an empty
+    /// ownership set. The guard runs on dry runs too, so a preview cannot
+    /// report a collision as applicable.
+    fn reject_recorded_ownership(
+        &self,
+        root: &Path,
+        descriptor: &AddOnDescriptor,
+    ) -> Result<(), PortError> {
+        let owners = self.state.recorded_owners(root, &descriptor.name)?;
+        descriptor
+            .reject_owned_paths(&owners)
+            .map_err(|error| PortError::new(error.to_string()))
     }
 }
 

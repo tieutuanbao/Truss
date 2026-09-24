@@ -291,10 +291,13 @@ where
                 name: name.as_str(),
                 source_ref: source_ref.as_str(),
                 source_core_version: &source_core_version,
-                // No interface-level source exists for the other managed
-                // manifests: the approved surface has exactly one `--manifest`
-                // flag, and discovering sibling manifests would be a path rule
-                // that belongs to the caller, not to argument mapping.
+                // Recorded ownership is not enforced from here: the interface
+                // opens no state and has exactly one `--manifest` flag, so this
+                // caller-supplied list is empty and is never the ownership
+                // check. `AddOnApplication` rejects a descriptor path already
+                // owned by the core manifest or by another recorded add-on,
+                // read from the workspace's own state, before planning or
+                // applying anything.
                 foreign_manifests: &[],
             };
             application
@@ -320,6 +323,9 @@ where
                 name: name.as_str(),
                 source_ref: source_ref.as_str(),
                 source_core_version: &source_core_version,
+                // See `Install`: recorded ownership is enforced by the
+                // application from the workspace's own state, not from this
+                // empty caller-supplied list.
                 foreign_manifests: &[],
             };
             application

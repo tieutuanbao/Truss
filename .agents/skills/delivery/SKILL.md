@@ -151,9 +151,20 @@ approved requirement or its instrument.
 ## Execution envelope
 
 Before mutation, Control resolves deployment preferences against the live
-truss surface, starts Orca and verifies its required capabilities, records
-the dirty baseline and exact-path ownership, and creates a feature branch when
-starting on the default branch.
+truss surface, validates the consumer repository worktree's exact Git root and
+baseline, starts Orca and verifies its required capabilities, records the
+dirty baseline and exact-path ownership, and creates a feature branch when
+starting on the default branch. The Orca Run must select that validated
+worktree.
+
+The candidate worktree defaults to the consumer checkout Control is running
+in. A separate checkout — including an Orca-managed worktree under the
+application's own workspace root — is neither required nor a default, and
+Control never relocates the working copy on its own judgement. Control may use
+one only when the approved envelope explicitly authorizes it: the design
+contract names the candidate path, and the owner approves that path at gate 1
+before any dispatch. Absent that authorization, deliver in the consumer
+checkout.
 
 Every delivered shape freezes the same safeguards in its approved envelope:
 
@@ -165,8 +176,10 @@ Every delivered shape freezes the same safeguards in its approved envelope:
 - Scope: owned paths, forbidden scope, and protected pre-existing dirty paths.
 - Proof: acceptance criteria, counterexample or permitted manual inspection,
   focused instruments, and applicable gates.
-- Git target: worktree, branch, baseline, base, remote, and pull-request
-  target; state when publishing is not authorized.
+- Git target: the candidate worktree and its exact Git root, branch, baseline,
+  base, remote, and pull-request target; state when publishing is not
+  authorized. The candidate worktree is the consumer checkout unless the
+  approved envelope explicitly authorizes a separate, Orca-managed checkout.
 - Deployment: resolved truss, model, and effort for each dispatched role.
 - Authority: granted branch, owned-path commit, gate, push, and pull-request
   actions; local delivery explicitly excludes push and pull-request authority.
@@ -193,12 +206,17 @@ ownership silently.
 
 ## Orca is mandatory
 
-Orca is the required execution plane. It launches and supervises fresh native
-truss TUIs with the resolved truss, model, and effort. Orchestration is a
-required Orca capability. `$delivery` starts and preflights Orca before
-execution. It stops only when the CLI is missing, the runtime cannot start,
-or a required capability is absent — there is no direct dispatch and no
-headless fallback of any kind.
+Orca is the required dispatch and supervision plane. Mandatory identifies how
+workers are launched and supervised, not a different repository in which the
+candidate is implemented. Candidate mutation remains in the candidate worktree
+recorded in the execution envelope — by default the consumer checkout — and no
+Orca capability, convenience, or default workspace path relocates it.
+
+Orca launches and supervises fresh native truss TUIs with the resolved truss,
+model, and effort. Orchestration is a required Orca capability. `$delivery`
+starts and preflights Orca before execution. If the CLI is missing, the runtime
+cannot start, or a required capability is absent, Delivery stops — there is no
+direct dispatch and no headless fallback of any kind.
 
 ### CLI identity and preflight
 
@@ -226,9 +244,10 @@ branch, stop before dispatch and ask for a baseline commit; do not stage
 Truss-managed files, nested repositories, or unrelated user files. Resolve
 the requested repository and worktree to this exact Git root and baseline
 before creating a Run. Do not infer the target from a nested directory named
-`source`, an existing current terminal, or a stale Orca worktree registration.
-The delivery objective must name the consumer-relative path, not an absolute
-path copied from a different repository.
+`source`, an existing current terminal, a stale Orca worktree registration, or
+an Orca-managed checkout path the envelope did not authorize. The delivery
+objective must name the consumer-relative path, not an absolute path copied
+from a different repository.
 
 A valid runtime does not prove worker readiness. The first worker dispatch
 must be treated as a readiness probe: inspect the actual terminal output when
@@ -577,6 +596,7 @@ is safe.
 | Scope or architecture must change | Return to the design gate |
 | New authority or destructive action is required | Ask the human |
 | Orca or a required capability is unavailable | Stop; no headless fallback |
+| The candidate location would move out of the consumer checkout | Not a Control decision: present it as a gate 1 decision with the named path, or deliver in the consumer checkout when the envelope authorizes no relocation |
 | Truss fails or evidence is insufficient | Preserve the candidate, report the native outcome and role disposition |
 | Dispatch wait times out or receipt is ambiguous | Treat as transport-unknown: re-enter the wait or read the terminal; retry only into the same pinned terminal with `--retry-of` when it is not progressing |
 | Plan-review rejects the drafted contract | Control routes findings back to `plan` when `plan` and `plan-review` are pinned; only without those pins may Control redraft in-session. Gate 1 is not presented until the audit passes |

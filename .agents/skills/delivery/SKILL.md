@@ -157,6 +157,11 @@ starting on the default branch.
 
 Every delivered shape freezes the same safeguards in its approved envelope:
 
+- Prerequisites: every artifact the run must consume before candidate mutation,
+  its current owner, the evidence that establishes it, and whether the approved
+  task may create, repair, validate, or only consume it. A required create or
+  repair action not granted in owned scope is `NEEDS_REPLAN`; path relevance or
+  tool capability does not grant that authority.
 - Scope: owned paths, forbidden scope, and protected pre-existing dirty paths.
 - Proof: acceptance criteria, counterexample or permitted manual inspection,
   focused instruments, and applicable gates.

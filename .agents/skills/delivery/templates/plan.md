@@ -46,6 +46,12 @@ Record the approved common envelope from `../SKILL.md` § Execution envelope.
 Use this plan's Allowed scope, Forbidden scope, Acceptance, and Closure gates
 sections by reference; do not duplicate their contents.
 
+Prerequisites: list each required artifact outside owned scope, its owner, the
+evidence that it exists and is valid, and the permitted interaction
+(`validate` or `consume`). If implementation discovers that it must create or
+repair that artifact, move it into approved owned scope or return
+`NEEDS_REPLAN`.
+
 Protected dirty paths: name pre-existing changes and their ownership, or
 record that the worktree was clean at baseline.
 

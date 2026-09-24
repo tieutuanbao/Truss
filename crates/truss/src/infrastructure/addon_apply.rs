@@ -8,6 +8,7 @@ use super::addon_state::{
     base_addons_root, publish_baseline, write_addons_record, FileSystemAddOnState, ADDONS_FILE,
     BASE_ADDONS_DIR,
 };
+use super::filesystem_state::verify_frozen_locked;
 use super::state_io::{
     acquire_existing_lock, copy_file, copy_tree, io_error, state_root, validate_core_state,
     validate_workspace_root,
@@ -93,6 +94,13 @@ fn apply_locked(
         installation: &installation,
         state: &state,
     };
+    // The S3b plan was observed under a lock that has since been released. The
+    // frozen set is the planner's complete per-path view of the validated
+    // union, so re-checking every one of them under this lock joins the
+    // planning observation and the commit into one authoritative section: a
+    // competing writer that changed a managed path in between is refused here
+    // instead of being overwritten by the stale plan.
+    verify_frozen_locked(root, &request.plan.frozen_files)?;
     transaction::run(root, state_root, &request.plan.mutations, &writer).map_err(Into::into)
 }
 
@@ -327,10 +335,15 @@ mod tests {
         let before_addons = fs::read(&addons).unwrap();
         let before_baseline = snapshot(&baseline_root);
 
+        let mut evidence = String::new();
         for point in [
             InjectionPoint::AfterFirstMutation,
             InjectionPoint::BeforeProvenanceWrite,
         ] {
+            let before_workspace_digest = bytes_digest(snapshot(&workspace).as_bytes());
+            let before_baseline_digest = bytes_digest(snapshot(&baseline_root).as_bytes());
+            let before_addons_digest = bytes_digest(&fs::read(&addons).unwrap());
+
             faults::arm(&workspace, point);
             let error = FileSystemAddOnApplier
                 .apply(
@@ -343,25 +356,53 @@ mod tests {
                 )
                 .unwrap_err();
             faults::disarm(&workspace);
+
+            let after_workspace = snapshot(&workspace);
+            let after_addons = fs::read(&addons).unwrap();
+            let after_baseline = snapshot(&baseline_root);
+
             assert!(
                 error.to_string().contains("injected add-on apply failure"),
                 "unexpected error at {point:?}: {error}"
             );
             assert_eq!(
-                snapshot(&workspace),
-                before_workspace,
+                after_workspace, before_workspace,
                 "workspace changed after the {point:?} injection"
             );
             assert_eq!(
-                fs::read(&addons).unwrap(),
-                before_addons,
+                after_addons, before_addons,
                 "addons.json changed after the {point:?} injection"
             );
             assert_eq!(
-                snapshot(&baseline_root),
-                before_baseline,
+                after_baseline, before_baseline,
                 "the baseline changed after the {point:?} injection"
             );
+
+            evidence.push_str(&format!(
+                "injection={point:?}\nbefore_workspace={before_workspace_digest}\nafter_workspace={}\nworkspace_equal={}\nbefore_baseline={before_baseline_digest}\nafter_baseline={}\nbaseline_equal={}\nbefore_addons={before_addons_digest}\nafter_addons={}\naddons_equal={}\n\n",
+                bytes_digest(after_workspace.as_bytes()),
+                after_workspace == before_workspace,
+                bytes_digest(after_baseline.as_bytes()),
+                after_baseline == before_baseline,
+                bytes_digest(&after_addons),
+                after_addons == before_addons,
+            ));
         }
+        write_evidence("s3c-row2-snapshots.txt", &evidence);
+    }
+
+    fn bytes_digest(bytes: &[u8]) -> String {
+        format!("{:x}", Sha256::digest(bytes))
+    }
+
+    fn write_evidence(name: &str, body: &str) {
+        let directory = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .join("target/s3-evidence");
+        fs::create_dir_all(&directory).unwrap();
+        fs::write(directory.join(name), body).unwrap();
     }
 }

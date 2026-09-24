@@ -410,6 +410,141 @@ fn any_conflict_refuses_without_mutation() {
     );
 }
 
+/// A fixture with a planned `Update` (`merge.md`) and a planned `Delete`
+/// (`delete.md`), ready to be drifted between planning and applying.
+struct DriftFixture {
+    _tmp: tempfile::TempDir,
+    workspace: PathBuf,
+    next_payload: PathBuf,
+    descriptor: AddOnDescriptor,
+    plan: UpdatePlan,
+}
+
+fn drift_fixture() -> DriftFixture {
+    let tmp = tempfile::tempdir().unwrap();
+    let baseline_payload = tmp.path().join("baseline-payload");
+    let next_payload = tmp.path().join("next-payload");
+    let workspace = tmp.path().join("workspace");
+    fs::create_dir_all(&workspace).unwrap();
+    let baseline_manifest = tmp.path().join("baseline-files.txt");
+    let next_manifest = tmp.path().join("next-files.txt");
+
+    install_baseline(
+        &workspace,
+        &baseline_payload,
+        &baseline_manifest,
+        &[(CARRIER, CARRIER_BYTES), (MERGE, BASE), (DELETE, BASE)],
+    );
+    write_bytes(&workspace, MERGE, LOCAL_NON_OVERLAP);
+
+    let (descriptor, plan) = plan(
+        &workspace,
+        &next_payload,
+        &next_manifest,
+        &[(CARRIER, CARRIER_BYTES), (MERGE, NEXT_NON_OVERLAP)],
+    );
+    DriftFixture {
+        _tmp: tmp,
+        workspace,
+        next_payload,
+        descriptor,
+        plan,
+    }
+}
+
+/// Acceptance Row A: a competing writer changing a managed path between the
+/// planning lock section and the apply lock section cannot be overwritten by
+/// the stale plan. The barrier is deterministic: the test plans, mutates one
+/// managed path, and only then applies.
+#[test]
+fn planned_observation_drift_is_refused_without_clobber() {
+    let competing = b"competing writer\n";
+    let mut evidence = String::new();
+
+    for (label, target, observed) in [
+        ("planned_write", MERGE, LOCAL_NON_OVERLAP),
+        ("planned_delete", DELETE, BASE),
+    ] {
+        let fixture = drift_fixture();
+        assert!(
+            fixture.plan.conflicts.is_empty(),
+            "{label}: the fixture must be conflict-free"
+        );
+        assert_eq!(
+            mutation(&fixture.plan, target).len(),
+            1,
+            "{label}: the plan must stage {target}"
+        );
+        let frozen = fixture
+            .plan
+            .frozen_files
+            .iter()
+            .find(|frozen| frozen.path == RelativePath::parse(target).unwrap())
+            .expect("the planned path must be frozen");
+        assert_eq!(
+            frozen.content.as_deref(),
+            Some(observed),
+            "{label}: the planner must have observed different bytes than the competing writer"
+        );
+
+        let addons = fixture.workspace.join(".truss-core/addons.json");
+        let baseline_root = fixture.workspace.join(".truss-core/base-addons");
+        let baseline_before = snapshot_digest(&workspace_snapshot(&baseline_root));
+
+        // The barrier: change one managed path after planning and before apply.
+        write_bytes(&fixture.workspace, target, competing);
+        let drifted = workspace_snapshot(&fixture.workspace);
+        let addons_drifted = fs::read(&addons).unwrap();
+
+        let error = FileSystemAddOnApplier
+            .apply(
+                &fixture.workspace,
+                &AddOnApplyRequest {
+                    descriptor: &fixture.descriptor,
+                    payload_root: &fixture.next_payload,
+                    plan: &fixture.plan,
+                },
+            )
+            .unwrap_err()
+            .to_string();
+
+        assert!(
+            error.contains("workspace changed"),
+            "{label}: expected a drift refusal, got: {error}"
+        );
+        assert_eq!(
+            fs::read(fixture.workspace.join(target)).unwrap(),
+            competing,
+            "{label}: the stale plan clobbered the competing bytes"
+        );
+        assert_eq!(
+            workspace_snapshot(&fixture.workspace),
+            drifted,
+            "{label}: the refused apply changed the workspace"
+        );
+        assert_eq!(
+            fs::read(&addons).unwrap(),
+            addons_drifted,
+            "{label}: the refused apply changed addons.json"
+        );
+        assert_eq!(
+            snapshot_digest(&workspace_snapshot(&baseline_root)),
+            baseline_before,
+            "{label}: the refused apply changed the baseline"
+        );
+
+        evidence.push_str(&format!(
+            "case={label}\ntarget={target}\nobserved_bytes={:x}\ncompeting_bytes={:x}\nrefusal={error}\ncompetitor_survives={}\nworkspace_unchanged_by_refusal={}\n\n",
+            Sha256::digest(observed),
+            Sha256::digest(competing),
+            fs::read(fixture.workspace.join(target)).unwrap() == competing,
+            workspace_snapshot(&fixture.workspace) == drifted,
+        ));
+    }
+
+    write_evidence("s3c-rowA-drift.txt", &evidence);
+}
+
 fn write_evidence(name: &str, body: &str) {
     let directory = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()

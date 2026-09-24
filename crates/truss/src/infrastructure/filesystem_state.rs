@@ -347,7 +347,10 @@ fn validate_resolution_path(update_root: &Path, path: &RelativePath) -> Result<(
     Ok(())
 }
 
-fn verify_frozen_locked(root: &Path, expected: &[FrozenWorkspaceFile]) -> Result<(), PortError> {
+pub(crate) fn verify_frozen_locked(
+    root: &Path,
+    expected: &[FrozenWorkspaceFile],
+) -> Result<(), PortError> {
     for frozen in expected {
         validate_path(root, &frozen.path)?;
         let target = root.join(frozen.path.as_str());

@@ -19,6 +19,25 @@ impl PortError {
     }
 }
 
+/// Report an application-layer error through the port error type.
+///
+/// The add-on adapters keep the richer [`ApplicationError`] internally, but an
+/// interface module reaches them only through a port, so the port boundary
+/// carries [`PortError`]. A [`ApplicationError::Port`] payload is returned
+/// unchanged, so a refusal raised by a port keeps its identity across the
+/// boundary.
+///
+/// [`ApplicationError`]: super::ApplicationError
+/// [`ApplicationError::Port`]: super::ApplicationError::Port
+impl From<super::ApplicationError> for PortError {
+    fn from(error: super::ApplicationError) -> Self {
+        match error {
+            super::ApplicationError::Port(inner) => inner,
+            other => Self::new(other.to_string()),
+        }
+    }
+}
+
 pub trait CoreDistributionPort {
     fn current(&self) -> Result<CoreDistribution, PortError>;
 }

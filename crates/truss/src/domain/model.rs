@@ -1,6 +1,8 @@
 use std::collections::BTreeSet;
 use std::fmt::{Display, Formatter};
 
+use super::AddOnName;
+
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct RelativePath(String);
 
@@ -267,6 +269,22 @@ pub enum DomainError {
     EmptyVersion,
     DuplicatePath(RelativePath),
     UnsupportedSchema(u32),
+    InvalidAddOnName(String),
+    MutableSourceRef(String),
+    EmptyAddOnPayload(AddOnName),
+    OverlappingDistributionPath {
+        owner: String,
+        path: RelativePath,
+    },
+    UnsupportedAddOnSchema(u32),
+    DuplicateAddOnRecord(AddOnName),
+    AddOnAdoptionMismatch {
+        path: RelativePath,
+        expected: ContentHash,
+        actual: ContentHash,
+    },
+    MissingAddOnPath(RelativePath),
+    ExtraAddOnPath(RelativePath),
 }
 
 impl Display for DomainError {
@@ -286,6 +304,42 @@ impl Display for DomainError {
                     "unsupported installation-state schema: {version}"
                 )
             }
+            Self::InvalidAddOnName(value) => write!(formatter, "invalid add-on name: {value}"),
+            Self::MutableSourceRef(value) => write!(
+                formatter,
+                "add-on source ref must be an immutable release tag or exact commit SHA, not {value}"
+            ),
+            Self::EmptyAddOnPayload(name) => {
+                write!(formatter, "add-on payload declares no files: {name}")
+            }
+            Self::OverlappingDistributionPath { owner, path } => write!(
+                formatter,
+                "add-on payload path {path} is already owned by {owner}"
+            ),
+            Self::UnsupportedAddOnSchema(version) => {
+                write!(formatter, "unsupported add-on state schema: {version}")
+            }
+            Self::DuplicateAddOnRecord(name) => {
+                write!(formatter, "duplicate add-on record: {name}")
+            }
+            Self::AddOnAdoptionMismatch {
+                path,
+                expected,
+                actual,
+            } => write!(
+                formatter,
+                "add-on adoption mismatch for {path}: payload {}, local {}",
+                expected.as_str(),
+                actual.as_str()
+            ),
+            Self::MissingAddOnPath(path) => write!(
+                formatter,
+                "add-on managed path is missing from the local workspace: {path}"
+            ),
+            Self::ExtraAddOnPath(path) => write!(
+                formatter,
+                "add-on managed path is not declared by the payload: {path}"
+            ),
         }
     }
 }

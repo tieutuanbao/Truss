@@ -12,5 +12,9 @@ while IFS= read -r manifest; do
     [[ -z "$path" || "$path" == \#* ]] || [[ -f "$path" ]] || { echo "manifest path missing: $path ($manifest)" >&2; exit 1; }
   done < "$manifest"
 done < <(find scripts -name '*-install-files.txt' | sort)
+# Committed S5 rehearsal: installer delegation and platform parity. Offline and
+# deterministic; it builds the CLI if needed, then exercises both installers
+# against throwaway workspaces.
+bash tests/s5-rehearse.sh
 git diff --check
 echo "pre-merge validation passed"

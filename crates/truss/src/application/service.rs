@@ -2,13 +2,13 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 use crate::application::{
-    CoreDistributionPort, InstallationStatePort, PortError, ThreeWayMergePort,
+    plan_update, CoreDistributionPort, InstallationStatePort, PortError, ThreeWayMergePort,
 };
 use crate::domain::{
-    BaselineFile, ConflictReason, CoreDistribution, DoctorCheck, DoctorReport, FileChangeKind,
-    FileStatus, FrozenWorkspaceFile, InstallReport, InstallationCondition, InstallationState,
-    MergeOutcome, PlannedFileChange, ResolutionConflict, StatusReport, UpdateConflict,
-    UpdateReport, UpdateResolutionSession, WorkspaceMutation,
+    BaselineFile, CoreDistribution, DoctorCheck, DoctorReport, FileChangeKind, FileStatus,
+    FrozenWorkspaceFile, InstallReport, InstallationCondition, InstallationState,
+    PlannedFileChange, StatusReport, UpdatePlan, UpdatePlanInput, UpdateReport,
+    UpdateResolutionSession, WorkspaceMutation,
 };
 
 pub struct CoreApplication<D, S, M> {
@@ -242,131 +242,40 @@ where
         installed: &InstallationState,
         resolutions: &BTreeMap<crate::domain::RelativePath, Vec<u8>>,
     ) -> Result<UpdatePlan, ApplicationError> {
-        let mut changes = Vec::new();
-        let mut conflicts = Vec::new();
-        let mut resolution_conflicts = Vec::new();
-        let mut mutations = Vec::new();
-        let mut frozen_files = Vec::new();
-        let upstream = distribution
-            .files
-            .iter()
-            .map(|file| (file.path.clone(), file))
-            .collect::<BTreeMap<_, _>>();
-        let baselines = installed
-            .files
-            .iter()
-            .map(|file| (file.path.clone(), file))
-            .collect::<BTreeMap<_, _>>();
-        let paths = upstream
+        // Read the workspace once for every candidate path that passes the
+        // managed-path check, then hand the pure planner neutral byte maps.
+        // The planner re-runs the same check so an unsafe path is still
+        // reported as an `UnsafePath` conflict rather than a read failure.
+        let mut input = UpdatePlanInput {
+            baselines: installed
+                .files
+                .iter()
+                .map(|file| (file.path.clone(), file.content.clone()))
+                .collect(),
+            upstream: distribution
+                .files
+                .iter()
+                .map(|file| (file.path.clone(), file.content.clone()))
+                .collect(),
+            local: BTreeMap::new(),
+            resolutions: resolutions.clone(),
+        };
+        let paths = input
+            .baselines
             .keys()
-            .chain(baselines.keys())
+            .chain(input.upstream.keys())
             .cloned()
             .collect::<BTreeSet<_>>();
-
         for path in paths {
-            if let Err(error) = self.state.validate_managed_path(root, &path) {
-                conflicts.push(UpdateConflict {
-                    path: path.clone(),
-                    reason: ConflictReason::UnsafePath,
-                    detail: error.to_string(),
-                });
+            if self.state.validate_managed_path(root, &path).is_err() {
                 continue;
             }
-            let local = self.state.read_workspace_file(root, &path)?;
-            frozen_files.push(FrozenWorkspaceFile {
-                path: path.clone(),
-                content: local.clone(),
-            });
-            match (baselines.get(&path), upstream.get(&path), local) {
-                (Some(base), Some(next), Some(local)) => {
-                    if let Some(resolved) = resolutions.get(&path) {
-                        let kind = if resolved == &local {
-                            FileChangeKind::Preserve
-                        } else {
-                            mutations.push(WorkspaceMutation::Write {
-                                path: path.clone(),
-                                content: resolved.clone(),
-                            });
-                            FileChangeKind::Update
-                        };
-                        changes.push(PlannedFileChange { path, kind });
-                        continue;
-                    }
-                    match self.merge_contents(&base.content, &local, &next.content)? {
-                        MergeOutcome::Clean(content) => {
-                            let kind = if content == local {
-                                FileChangeKind::Preserve
-                            } else {
-                                mutations.push(WorkspaceMutation::Write {
-                                    path: path.clone(),
-                                    content,
-                                });
-                                FileChangeKind::Update
-                            };
-                            changes.push(PlannedFileChange { path, kind });
-                        }
-                        MergeOutcome::Conflict { content, detail } => {
-                            resolution_conflicts.push(ResolutionConflict {
-                                path: path.clone(),
-                                base: base.content.clone(),
-                                local,
-                                incoming: next.content.clone(),
-                                resolved: content,
-                            });
-                            conflicts.push(UpdateConflict {
-                                path,
-                                reason: ConflictReason::OverlappingChanges,
-                                detail,
-                            });
-                        }
-                    }
-                }
-                (Some(_), Some(_), None) => conflicts.push(UpdateConflict {
-                    path,
-                    reason: ConflictReason::MissingManagedFile,
-                    detail: "managed file is missing from the consumer workspace".to_owned(),
-                }),
-                (None, Some(next), None) => {
-                    changes.push(PlannedFileChange {
-                        path: path.clone(),
-                        kind: FileChangeKind::Create,
-                    });
-                    mutations.push(WorkspaceMutation::Write {
-                        path,
-                        content: next.content.clone(),
-                    });
-                }
-                (None, Some(_), Some(_)) => conflicts.push(UpdateConflict {
-                    path,
-                    reason: ConflictReason::ExistingUnmanagedPath,
-                    detail: "new upstream managed path already exists locally".to_owned(),
-                }),
-                (Some(base), None, Some(local)) if local == base.content => {
-                    changes.push(PlannedFileChange {
-                        path: path.clone(),
-                        kind: FileChangeKind::Delete,
-                    });
-                    mutations.push(WorkspaceMutation::Delete { path });
-                }
-                (Some(_), None, Some(_)) => conflicts.push(UpdateConflict {
-                    path,
-                    reason: ConflictReason::ModifiedRemovedFile,
-                    detail: "upstream removed a file that contains consumer changes".to_owned(),
-                }),
-                (Some(_), None, None) => changes.push(PlannedFileChange {
-                    path,
-                    kind: FileChangeKind::Preserve,
-                }),
-                (None, None, _) => unreachable!("path union cannot contain an absent path"),
+            if let Some(content) = self.state.read_workspace_file(root, &path)? {
+                input.local.insert(path, content);
             }
         }
-
-        Ok(UpdatePlan {
-            changes,
-            conflicts,
-            resolution_conflicts,
-            mutations,
-            frozen_files,
+        plan_update(&input, &self.merger, |path| {
+            self.state.validate_managed_path(root, path)
         })
     }
 
@@ -512,29 +421,6 @@ where
         distribution.validate()?;
         Ok(distribution)
     }
-
-    fn merge_contents(
-        &self,
-        base: &[u8],
-        local: &[u8],
-        upstream: &[u8],
-    ) -> Result<MergeOutcome, ApplicationError> {
-        if local == base {
-            return Ok(MergeOutcome::Clean(upstream.to_vec()));
-        }
-        if upstream == base || local == upstream {
-            return Ok(MergeOutcome::Clean(local.to_vec()));
-        }
-        self.merger.merge(base, local, upstream).map_err(Into::into)
-    }
-}
-
-struct UpdatePlan {
-    changes: Vec<PlannedFileChange>,
-    conflicts: Vec<UpdateConflict>,
-    resolution_conflicts: Vec<ResolutionConflict>,
-    mutations: Vec<WorkspaceMutation>,
-    frozen_files: Vec<FrozenWorkspaceFile>,
 }
 
 struct FinishUpdate<'a> {
@@ -624,7 +510,7 @@ mod tests {
 
     use super::*;
     use crate::application::{CoreDistributionPort, InstallationStatePort, ThreeWayMergePort};
-    use crate::domain::{ApplyReceipt, ContentHash, DistributionFile, RelativePath};
+    use crate::domain::{ApplyReceipt, ContentHash, DistributionFile, MergeOutcome, RelativePath};
 
     #[derive(Clone)]
     struct DistributionFixture(CoreDistribution);

@@ -1,12 +1,15 @@
-use std::fs::{self, File, OpenOptions};
-use std::io::Write;
+use std::fs;
 use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use fs2::FileExt;
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 
+use super::state_io::{
+    acquire_lock, copy_bytes, copy_file, copy_tree, ensure_state_ignore, ensure_workspace_root,
+    hash_bytes, io_error, read_json, reject_symlink, remove_dir_if_exists, state_root,
+    validate_path, validate_state_path, validate_workspace_root, write_json_atomic,
+};
+use super::transaction::{self, ProvenanceKind, ProvenanceWriter};
 use crate::application::{InstallationStatePort, PortError};
 use crate::domain::{
     ApplyReceipt, BaselineFile, ContentHash, FrozenWorkspaceFile, InstallationState, RelativePath,
@@ -27,7 +30,7 @@ impl InstallationStatePort for FileSystemInstallationState {
         fs::create_dir_all(&state_root).map_err(io_error)?;
         ensure_state_ignore(&state_root)?;
         let lock = acquire_lock(&state_root)?;
-        let result = recover_locked(root, &state_root);
+        let result = transaction::recover(root, &state_root);
         FileExt::unlock(&lock).map_err(io_error)?;
         result
     }
@@ -98,17 +101,8 @@ impl InstallationStatePort for FileSystemInstallationState {
         fs::create_dir_all(&state_root).map_err(io_error)?;
         ensure_state_ignore(&state_root)?;
         let lock = acquire_lock(&state_root)?;
-        recover_locked(root, &state_root)?;
-        let result = apply_locked(root, &state_root, state, mutations);
-        let result = match result {
-            Ok(receipt) => Ok(receipt),
-            Err(error) => match recover_locked(root, &state_root) {
-                Ok(_) => Err(error),
-                Err(recovery_error) => Err(PortError::new(format!(
-                    "{error}; automatic recovery also failed: {recovery_error}"
-                ))),
-            },
-        };
+        let result = transaction::recover(root, &state_root);
+        let result = result.and_then(|_| apply_locked(root, &state_root, state, mutations));
         FileExt::unlock(&lock).map_err(io_error)?;
         result
     }
@@ -131,18 +125,10 @@ impl InstallationStatePort for FileSystemInstallationState {
         fs::create_dir_all(&state_root).map_err(io_error)?;
         ensure_state_ignore(&state_root)?;
         let lock = acquire_lock(&state_root)?;
-        recover_locked(root, &state_root)?;
-        let result = verify_frozen_locked(root, expected)
-            .and_then(|_| apply_locked(root, &state_root, state, mutations));
-        let result = match result {
-            Ok(receipt) => Ok(receipt),
-            Err(error) => match recover_locked(root, &state_root) {
-                Ok(_) => Err(error),
-                Err(recovery_error) => Err(PortError::new(format!(
-                    "{error}; automatic recovery also failed: {recovery_error}"
-                ))),
-            },
-        };
+        let result = transaction::recover(root, &state_root).and_then(|_| {
+            verify_frozen_locked(root, expected)
+                .and_then(|_| apply_locked(root, &state_root, state, mutations))
+        });
         FileExt::unlock(&lock).map_err(io_error)?;
         result
     }
@@ -361,47 +347,10 @@ fn validate_resolution_path(update_root: &Path, path: &RelativePath) -> Result<(
     Ok(())
 }
 
-fn ensure_state_ignore(state_root: &Path) -> Result<(), PortError> {
-    let path = state_root.join(".gitignore");
-    let rules = [
-        "/lock",
-        "/transaction.json",
-        "/base.next-*",
-        "/update/",
-        "/update-candidate/",
-    ];
-    if path.exists() {
-        reject_symlink(&path, ".truss-core/.gitignore")?;
-        let metadata = fs::metadata(&path).map_err(io_error)?;
-        if !metadata.is_file() {
-            return Err(PortError::new(
-                ".truss-core/.gitignore is not a regular file",
-            ));
-        }
-        let mut content = fs::read_to_string(&path).map_err(io_error)?;
-        let mut changed = false;
-        for rule in rules {
-            if !content.lines().any(|line| line.trim() == rule) {
-                if !content.is_empty() && !content.ends_with('\n') {
-                    content.push('\n');
-                }
-                content.push_str(rule);
-                content.push('\n');
-                changed = true;
-            }
-        }
-        if changed {
-            copy_bytes_atomic(content.as_bytes(), &path, "ignore")?;
-        }
-        return Ok(());
-    }
-    copy_bytes(
-        b"/lock\n/transaction.json\n/base.next-*\n/update/\n/update-candidate/\n",
-        &path,
-    )
-}
-
-fn verify_frozen_locked(root: &Path, expected: &[FrozenWorkspaceFile]) -> Result<(), PortError> {
+pub(crate) fn verify_frozen_locked(
+    root: &Path,
+    expected: &[FrozenWorkspaceFile],
+) -> Result<(), PortError> {
     for frozen in expected {
         validate_path(root, &frozen.path)?;
         let target = root.join(frozen.path.as_str());
@@ -433,144 +382,46 @@ fn apply_locked(
     state: &InstallationState,
     mutations: &[WorkspaceMutation],
 ) -> Result<ApplyReceipt, PortError> {
-    let id = transaction_id()?;
-    let backup_relative = format!(".truss-backup/truss-core-{id}");
-    let backup_root = root.join(&backup_relative);
-    let state_existed =
-        state_root.join("manifest.json").exists() || state_root.join("base").exists();
-    let mut records = Vec::new();
-
-    for mutation in mutations {
-        let path = mutation.path();
-        validate_path(root, path)?;
-        let target = root.join(path.as_str());
-        let existed = target.exists();
-        if existed {
-            let metadata = fs::symlink_metadata(&target).map_err(io_error)?;
-            if !metadata.is_file() {
-                return Err(PortError::new(format!(
-                    "cannot back up non-file managed path: {path}"
-                )));
-            }
-            let backup = backup_root.join("files").join(path.as_str());
-            copy_file(&target, &backup)?;
-        }
-        records.push(JournalFile {
-            path: path.as_str().to_owned(),
-            existed,
-        });
-    }
-
-    if state_existed {
-        let state_backup = backup_root.join("state");
-        fs::create_dir_all(&state_backup).map_err(io_error)?;
-        let manifest = state_root.join("manifest.json");
-        if manifest.exists() {
-            copy_file(&manifest, &state_backup.join("manifest.json"))?;
-        }
-        let base = state_root.join("base");
-        if base.exists() {
-            copy_tree(&base, &state_backup.join("base"))?;
-        }
-    }
-
-    let mut journal = TransactionJournal {
-        schema_version: 1,
-        id: id.clone(),
-        phase: TransactionPhase::Applying,
-        backup_relative: backup_relative.clone(),
-        state_existed,
-        files: records,
-    };
-    write_json_atomic(&state_root.join("transaction.json"), &journal, &id)?;
-
-    for mutation in mutations {
-        match mutation {
-            WorkspaceMutation::Write { path, content } => {
-                write_workspace_atomic(root, path, content, &id)?;
-            }
-            WorkspaceMutation::Delete { path } => {
-                let target = root.join(path.as_str());
-                if target.exists() {
-                    fs::remove_file(target).map_err(io_error)?;
-                }
-            }
-        }
-    }
-
-    write_state(state_root, state, &id)?;
-    journal.phase = TransactionPhase::Committed;
-    write_json_atomic(&state_root.join("transaction.json"), &journal, &id)?;
-    fs::remove_file(state_root.join("transaction.json")).map_err(io_error)?;
-
-    let backup_has_content = state_existed
-        || mutations.iter().any(|mutation| {
-            backup_root
-                .join("files")
-                .join(mutation.path().as_str())
-                .exists()
-        });
-    if !backup_has_content && backup_root.exists() {
-        fs::remove_dir_all(&backup_root).map_err(io_error)?;
-    }
-    Ok(ApplyReceipt {
-        backup_path: backup_has_content.then_some(backup_relative),
-    })
+    transaction::run(
+        root,
+        state_root,
+        mutations,
+        &CoreProvenanceWriter { state_root, state },
+    )
 }
 
-fn recover_locked(root: &Path, state_root: &Path) -> Result<bool, PortError> {
-    let journal_path = state_root.join("transaction.json");
-    if !journal_path.exists() {
-        return Ok(false);
-    }
-    let journal: TransactionJournal = read_json(&journal_path)?;
-    if journal.schema_version != 1 {
-        return Err(PortError::new(format!(
-            "unsupported transaction journal schema: {}",
-            journal.schema_version
-        )));
-    }
-    if journal.phase == TransactionPhase::Committed {
-        fs::remove_file(journal_path).map_err(io_error)?;
-        return Ok(true);
+/// The core state half of a transaction: `.truss-core/manifest.json` plus the
+/// `.truss-core/base/` baseline tree.
+struct CoreProvenanceWriter<'a> {
+    state_root: &'a Path,
+    state: &'a InstallationState,
+}
+
+impl ProvenanceWriter for CoreProvenanceWriter<'_> {
+    fn kind(&self) -> ProvenanceKind {
+        ProvenanceKind::Core
     }
 
-    let backup_root = root.join(&journal.backup_relative);
-    for record in &journal.files {
-        let path = RelativePath::parse(record.path.clone())
-            .map_err(|error| PortError::new(error.to_string()))?;
-        validate_path(root, &path)?;
-        let target = root.join(path.as_str());
-        if record.existed {
-            let backup = backup_root.join("files").join(path.as_str());
-            if !backup.is_file() {
-                return Err(PortError::new(format!(
-                    "transaction backup is missing: {}",
-                    backup.display()
-                )));
-            }
-            copy_file_atomic(&backup, &target, &journal.id)?;
-        } else if target.exists() {
-            fs::remove_file(target).map_err(io_error)?;
-        }
+    fn exists(&self) -> bool {
+        self.state_root.join("manifest.json").exists() || self.state_root.join("base").exists()
     }
 
-    let manifest = state_root.join("manifest.json");
-    let base = state_root.join("base");
-    remove_if_exists(&manifest)?;
-    remove_dir_if_exists(&base)?;
-    if journal.state_existed {
-        let state_backup = backup_root.join("state");
-        if state_backup.join("manifest.json").exists() {
-            copy_file_atomic(&state_backup.join("manifest.json"), &manifest, &journal.id)?;
+    fn backup(&self, target: &Path) -> Result<(), PortError> {
+        fs::create_dir_all(target).map_err(io_error)?;
+        let manifest = self.state_root.join("manifest.json");
+        if manifest.exists() {
+            copy_file(&manifest, &target.join("manifest.json"))?;
         }
-        if state_backup.join("base").exists() {
-            copy_tree(&state_backup.join("base"), &base)?;
+        let base = self.state_root.join("base");
+        if base.exists() {
+            copy_tree(&base, &target.join("base"))?;
         }
+        Ok(())
     }
-    remove_dir_if_exists(&state_root.join(format!("base.next-{}", journal.id)))?;
-    fs::remove_file(journal_path).map_err(io_error)?;
-    Ok(true)
+
+    fn write(&self, id: &str) -> Result<(), PortError> {
+        write_state(self.state_root, self.state, id)
+    }
 }
 
 fn load_state(root: &Path) -> Result<Option<InstallationState>, PortError> {
@@ -591,7 +442,7 @@ fn load_state(root: &Path) -> Result<Option<InstallationState>, PortError> {
         let expected = ContentHash::parse(file.upstream_sha256)
             .map_err(|error| PortError::new(error.to_string()))?;
         let base_path = state_root.join("base").join(path.as_str());
-        validate_state_base_path(&state_root, &base_path)?;
+        validate_state_path(&state_root, &base_path)?;
         let content = fs::read(&base_path).map_err(|error| {
             PortError::new(format!("could not read base {}: {error}", path.as_str()))
         })?;
@@ -652,187 +503,8 @@ fn write_state(state_root: &Path, state: &InstallationState, id: &str) -> Result
     write_json_atomic(&state_root.join("manifest.json"), &manifest, id)
 }
 
-fn validate_path(root: &Path, path: &RelativePath) -> Result<(), PortError> {
-    let mut current = root.to_path_buf();
-    for component in path.as_str().split('/') {
-        current.push(component);
-        if current.exists() {
-            reject_symlink(&current, path.as_str())?;
-        }
-    }
-    Ok(())
-}
-
-fn validate_state_base_path(state_root: &Path, target: &Path) -> Result<(), PortError> {
-    let relative = target
-        .strip_prefix(state_root)
-        .map_err(|_| PortError::new("base path escaped state root"))?;
-    let mut current = state_root.to_path_buf();
-    for component in relative.components() {
-        current.push(component);
-        if current.exists() {
-            reject_symlink(&current, &target.display().to_string())?;
-        }
-    }
-    Ok(())
-}
-
-fn write_workspace_atomic(
-    root: &Path,
-    path: &RelativePath,
-    content: &[u8],
-    id: &str,
-) -> Result<(), PortError> {
-    validate_path(root, path)?;
-    let target = root.join(path.as_str());
-    copy_bytes_atomic(content, &target, id)
-}
-
-fn copy_file_atomic(source: &Path, target: &Path, id: &str) -> Result<(), PortError> {
-    let bytes = fs::read(source).map_err(io_error)?;
-    copy_bytes_atomic(&bytes, target, id)
-}
-
-fn copy_bytes_atomic(content: &[u8], target: &Path, id: &str) -> Result<(), PortError> {
-    let parent = target
-        .parent()
-        .ok_or_else(|| PortError::new(format!("target has no parent: {}", target.display())))?;
-    fs::create_dir_all(parent).map_err(io_error)?;
-    let name = target
-        .file_name()
-        .and_then(|value| value.to_str())
-        .ok_or_else(|| PortError::new(format!("invalid target filename: {}", target.display())))?;
-    let temp = parent.join(format!(".{name}.truss-{id}.tmp"));
-    copy_bytes(content, &temp)?;
-    fs::rename(&temp, target).map_err(io_error)
-}
-
-fn copy_bytes(content: &[u8], target: &Path) -> Result<(), PortError> {
-    if let Some(parent) = target.parent() {
-        fs::create_dir_all(parent).map_err(io_error)?;
-    }
-    let mut file = File::create(target).map_err(io_error)?;
-    file.write_all(content).map_err(io_error)?;
-    file.sync_all().map_err(io_error)
-}
-
-fn copy_file(source: &Path, target: &Path) -> Result<(), PortError> {
-    let bytes = fs::read(source).map_err(io_error)?;
-    copy_bytes(&bytes, target)
-}
-
-fn copy_tree(source: &Path, target: &Path) -> Result<(), PortError> {
-    fs::create_dir_all(target).map_err(io_error)?;
-    for entry in fs::read_dir(source).map_err(io_error)? {
-        let entry = entry.map_err(io_error)?;
-        let source_path = entry.path();
-        let target_path = target.join(entry.file_name());
-        let metadata = fs::symlink_metadata(&source_path).map_err(io_error)?;
-        if metadata.file_type().is_symlink() {
-            return Err(PortError::new(format!(
-                "refusing symlink in state tree: {}",
-                source_path.display()
-            )));
-        }
-        if metadata.is_dir() {
-            copy_tree(&source_path, &target_path)?;
-        } else if metadata.is_file() {
-            copy_file(&source_path, &target_path)?;
-        }
-    }
-    Ok(())
-}
-
-fn write_json_atomic<T: Serialize>(target: &Path, value: &T, id: &str) -> Result<(), PortError> {
-    let bytes = serde_json::to_vec_pretty(value)
-        .map_err(|error| PortError::new(format!("could not encode JSON: {error}")))?;
-    copy_bytes_atomic(&bytes, target, id)
-}
-
-fn read_json<T: for<'de> Deserialize<'de>>(path: &Path) -> Result<T, PortError> {
-    let bytes = fs::read(path).map_err(io_error)?;
-    serde_json::from_slice(&bytes)
-        .map_err(|error| PortError::new(format!("could not parse {}: {error}", path.display())))
-}
-
-fn acquire_lock(state_root: &Path) -> Result<File, PortError> {
-    let lock = OpenOptions::new()
-        .create(true)
-        .read(true)
-        .write(true)
-        .truncate(false)
-        .open(state_root.join("lock"))
-        .map_err(io_error)?;
-    FileExt::lock_exclusive(&lock).map_err(io_error)?;
-    Ok(lock)
-}
-
-fn ensure_workspace_root(root: &Path) -> Result<(), PortError> {
-    if !root.exists() {
-        fs::create_dir_all(root).map_err(io_error)?;
-    }
-    validate_workspace_root(root)
-}
-
-fn validate_workspace_root(root: &Path) -> Result<(), PortError> {
-    let metadata = fs::metadata(root).map_err(io_error)?;
-    if !metadata.is_dir() {
-        return Err(PortError::new(format!(
-            "workspace root is not a directory: {}",
-            root.display()
-        )));
-    }
-    Ok(())
-}
-
-fn reject_symlink(path: &Path, label: &str) -> Result<(), PortError> {
-    let metadata = fs::symlink_metadata(path).map_err(io_error)?;
-    if metadata.file_type().is_symlink() {
-        return Err(PortError::new(format!(
-            "refusing symlink for managed path {label}: {}",
-            path.display()
-        )));
-    }
-    Ok(())
-}
-
-fn remove_if_exists(path: &Path) -> Result<(), PortError> {
-    if fs::symlink_metadata(path).is_ok() {
-        fs::remove_file(path).map_err(io_error)?;
-    }
-    Ok(())
-}
-
-fn remove_dir_if_exists(path: &Path) -> Result<(), PortError> {
-    if fs::symlink_metadata(path).is_ok() {
-        fs::remove_dir_all(path).map_err(io_error)?;
-    }
-    Ok(())
-}
-
-fn state_root(root: &Path) -> PathBuf {
-    root.join(".truss-core")
-}
-
 fn update_root(state_root: &Path) -> PathBuf {
     state_root.join("update")
-}
-
-fn transaction_id() -> Result<String, PortError> {
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_err(|error| PortError::new(error.to_string()))?
-        .as_nanos();
-    Ok(format!("{nanos}-{}", std::process::id()))
-}
-
-fn hash_bytes(content: &[u8]) -> Result<ContentHash, PortError> {
-    ContentHash::parse(format!("{:x}", Sha256::digest(content)))
-        .map_err(|error| PortError::new(error.to_string()))
-}
-
-fn io_error(error: std::io::Error) -> PortError {
-    PortError::new(error.to_string())
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -846,29 +518,6 @@ struct ManifestDto {
 struct ManifestFileDto {
     path: String,
     upstream_sha256: String,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-struct TransactionJournal {
-    schema_version: u32,
-    id: String,
-    phase: TransactionPhase,
-    backup_relative: String,
-    state_existed: bool,
-    files: Vec<JournalFile>,
-}
-
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "snake_case")]
-enum TransactionPhase {
-    Applying,
-    Committed,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-struct JournalFile {
-    path: String,
-    existed: bool,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -894,6 +543,9 @@ struct FrozenWorkspaceFileDto {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::infrastructure::transaction::{
+        JournalFile, ProvenanceKind, TransactionJournal, TransactionPhase,
+    };
 
     fn state(content: &[u8]) -> InstallationState {
         InstallationState {
@@ -962,6 +614,7 @@ mod tests {
             phase: TransactionPhase::Applying,
             backup_relative: backup_relative.to_owned(),
             state_existed: true,
+            provenance: ProvenanceKind::Core,
             files: vec![JournalFile {
                 path: path.as_str().to_owned(),
                 existed: true,

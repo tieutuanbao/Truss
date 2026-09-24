@@ -31,6 +31,9 @@ fn inward_layers_do_not_import_outward_layers_or_frameworks() {
     );
     assert_forbidden(&root.join("infrastructure"), &["crate::interface"]);
     assert_forbidden(&root.join("interface"), &["crate::infrastructure"]);
+    // The interface maps arguments and presents reports: it reaches the
+    // application facade and never opens a state, session, or manifest file.
+    assert_forbidden(&root.join("interface"), &["std::fs"]);
 }
 
 #[test]
@@ -41,6 +44,7 @@ fn composition_root_is_the_only_layer_wiring_infrastructure_to_interface() {
     assert!(main.contains("truss::interface"));
     assert!(main.contains("CoreApplication::new"));
     assert!(main.contains("SelfUpdateApplication::new"));
+    assert!(main.contains("AddOnApplication::new"));
 }
 
 fn assert_forbidden(root: &Path, forbidden: &[&str]) {

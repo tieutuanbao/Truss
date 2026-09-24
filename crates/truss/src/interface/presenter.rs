@@ -1,9 +1,9 @@
 use serde::Serialize;
 
-use crate::application::ExecutableRecoveryReport;
+use crate::application::{AddOnStatusReport, AddOnUpdateReport, ExecutableRecoveryReport};
 use crate::domain::{
-    ConflictReason, DoctorReport, FileChangeKind, InstallReport, InstallationCondition,
-    StatusReport, UpdateReport,
+    AddOnName, AddOnPayloadFile, ConflictReason, DoctorReport, FileChangeKind, InstallReport,
+    InstallationCondition, PlannedFileChange, StatusReport, UpdateReport,
 };
 
 pub struct CommandExit {
@@ -139,6 +139,157 @@ pub fn present_abort(removed: bool, json: bool) -> CommandExit {
     ))
 }
 
+/// Report one add-on's recorded provenance and pending session.
+///
+/// Absence is reported as data, not as an error message: the JSON carries
+/// `record: null` and the text says `not recorded`. The exit code mirrors the
+/// core `status`, whose uninstalled answer is also `1`.
+pub fn present_addon_status(report: &AddOnStatusReport, json: bool) -> CommandExit {
+    let output = AddOnStatusOutput {
+        operation: "addon_status",
+        name: report.name.as_str(),
+        session_pending: report.session_pending,
+        record: report.record.as_ref().map(|record| AddOnRecordOutput {
+            source_ref: record.source_ref.as_str(),
+            source_core_version: &record.source_core_version,
+            files: record.files.iter().map(addon_file_output).collect(),
+        }),
+    };
+    let human = match &report.record {
+        Some(record) => format!(
+            "Add-on {}: {} (core {}, session_pending={}).\n{}",
+            report.name,
+            record.source_ref,
+            record.source_core_version,
+            report.session_pending,
+            render_addon_files(&record.files)
+        ),
+        None => format!(
+            "Add-on {}: not recorded (session_pending={}).\n",
+            report.name, report.session_pending
+        ),
+    };
+    CommandExit {
+        code: if report.record.is_some() { 0 } else { 1 },
+        stdout: render(json, &output, human),
+        stderr: String::new(),
+    }
+}
+
+pub fn present_addon_install(report: &AddOnUpdateReport, json: bool) -> CommandExit {
+    let output = addon_update_output("addon_install", report);
+    let source_ref = report
+        .source_ref
+        .as_ref()
+        .map(|value| value.as_str())
+        .unwrap_or("unknown");
+    let human = if report.dry_run {
+        format!("Add-on {} {source_ref} install preview.\n", report.name)
+    } else {
+        format!(
+            "Add-on {} {source_ref} installed (adopted={}).\n",
+            report.name,
+            report.adopted.unwrap_or(false)
+        )
+    };
+    success(render(json, &output, human))
+}
+
+pub fn present_addon_update(report: &AddOnUpdateReport, json: bool) -> CommandExit {
+    let output = addon_update_output("addon_update", report);
+    let source_ref = report
+        .source_ref
+        .as_ref()
+        .map(|value| value.as_str())
+        .unwrap_or("unknown");
+    let human = if report.conflicts.is_empty() {
+        format!(
+            "Add-on {} {source_ref} {}.\n{}",
+            report.name,
+            if report.dry_run {
+                "update preview"
+            } else {
+                "updated"
+            },
+            render_changes(&report.changes)
+        )
+    } else {
+        let conflicts = report
+            .conflicts
+            .iter()
+            .map(|conflict| {
+                format!(
+                    "conflict {} ({:?}): {}",
+                    conflict.path, conflict.reason, conflict.detail
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        let resolution = if report.resolution_staged {
+            let paths = report
+                .conflicts
+                .iter()
+                .map(|conflict| {
+                    format!(
+                        "  .truss-core/addon-update/{}/resolved/{}",
+                        report.name, conflict.path
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+            format!(
+                "\nResolve after human direction:\n{paths}\nThen run: truss addon continue --name {}\nAbort with: truss addon abort --name {}\n",
+                report.name, report.name
+            )
+        } else {
+            String::new()
+        };
+        format!(
+            "Add-on {} update stopped; no files changed.\n{conflicts}\n{resolution}",
+            report.name
+        )
+    };
+    CommandExit {
+        code: if report.conflicts.is_empty() { 0 } else { 2 },
+        stdout: render(json, &output, human),
+        stderr: String::new(),
+    }
+}
+
+pub fn present_addon_continue(report: &AddOnUpdateReport, json: bool) -> CommandExit {
+    let output = addon_update_output("addon_continue", report);
+    success(render(
+        json,
+        &output,
+        format!(
+            "Add-on {} continued; the staged resolution was applied.\n",
+            report.name
+        ),
+    ))
+}
+
+pub fn present_addon_abort(name: &AddOnName, removed: bool, json: bool) -> CommandExit {
+    #[derive(Serialize)]
+    struct AddOnAbortOutput<'a> {
+        operation: &'static str,
+        name: &'a str,
+        removed: bool,
+    }
+    success(render(
+        json,
+        &AddOnAbortOutput {
+            operation: "addon_abort",
+            name: name.as_str(),
+            removed,
+        },
+        if removed {
+            format!("Staged add-on resolution for {name} aborted; managed files were unchanged.\n")
+        } else {
+            format!("No staged add-on resolution exists for {name}.\n")
+        },
+    ))
+}
+
 pub fn present_executable_recovery(report: &ExecutableRecoveryReport, json: bool) -> CommandExit {
     #[derive(Serialize)]
     struct RecoveryOutput<'a> {
@@ -261,7 +412,54 @@ fn render<T: Serialize>(json: bool, output: &T, human: String) -> String {
     }
 }
 
-fn render_changes(changes: &[crate::domain::PlannedFileChange]) -> String {
+fn addon_update_output<'a>(
+    operation: &'static str,
+    report: &'a AddOnUpdateReport,
+) -> AddOnUpdateOutput<'a> {
+    AddOnUpdateOutput {
+        operation,
+        name: report.name.as_str(),
+        source_ref: report.source_ref.as_ref().map(|value| value.as_str()),
+        dry_run: report.dry_run,
+        applied: report.applied,
+        adopted: report.adopted,
+        resolution_staged: report.resolution_staged,
+        changes: report
+            .changes
+            .iter()
+            .map(|change| ChangeOutput {
+                path: change.path.as_str(),
+                kind: change_kind(&change.kind),
+            })
+            .collect(),
+        conflicts: report
+            .conflicts
+            .iter()
+            .map(|conflict| ConflictOutput {
+                path: conflict.path.as_str(),
+                reason: conflict_reason(&conflict.reason),
+                detail: &conflict.detail,
+            })
+            .collect(),
+        backup_path: report.backup_path.as_deref(),
+    }
+}
+
+fn addon_file_output(file: &AddOnPayloadFile) -> AddOnFileOutput<'_> {
+    AddOnFileOutput {
+        path: file.path.as_str(),
+        sha256: file.sha256.as_str(),
+    }
+}
+
+fn render_addon_files(files: &[AddOnPayloadFile]) -> String {
+    files
+        .iter()
+        .map(|file| format!("  {} {}\n", file.path, file.sha256.as_str()))
+        .collect()
+}
+
+fn render_changes(changes: &[PlannedFileChange]) -> String {
     changes
         .iter()
         .map(|change| format!("{} {}", change_kind(&change.kind), change.path))
@@ -322,6 +520,41 @@ struct UpdateOutput<'a> {
     resolution_staged: bool,
     backup_path: Option<&'a str>,
     recovered_interrupted_transaction: bool,
+}
+
+#[derive(Serialize)]
+struct AddOnStatusOutput<'a> {
+    operation: &'static str,
+    name: &'a str,
+    session_pending: bool,
+    record: Option<AddOnRecordOutput<'a>>,
+}
+
+#[derive(Serialize)]
+struct AddOnRecordOutput<'a> {
+    source_ref: &'a str,
+    source_core_version: &'a str,
+    files: Vec<AddOnFileOutput<'a>>,
+}
+
+#[derive(Serialize)]
+struct AddOnFileOutput<'a> {
+    path: &'a str,
+    sha256: &'a str,
+}
+
+#[derive(Serialize)]
+struct AddOnUpdateOutput<'a> {
+    operation: &'static str,
+    name: &'a str,
+    source_ref: Option<&'a str>,
+    dry_run: bool,
+    applied: bool,
+    adopted: Option<bool>,
+    resolution_staged: bool,
+    changes: Vec<ChangeOutput<'a>>,
+    conflicts: Vec<ConflictOutput<'a>>,
+    backup_path: Option<&'a str>,
 }
 
 #[derive(Serialize)]

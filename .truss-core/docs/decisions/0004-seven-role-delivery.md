@@ -38,7 +38,11 @@ parallel capability is documented, not exercised using unapproved extra checkout
 Owned scope: delivery and delivery-setup skills, their YAML and templates,
 delivery install manifest, AGENTS delivery block, README, WORKFLOW, TRUSS,
 installation-profiles template inventory, focused role-contract test and native
-premerge entry point. No Rust or installer logic changes. Control owns this
+premerge entry point, plus manifest-count expectations in
+crates/truss/tests/cli_lifecycle.rs (17 to 18 for the added BA template).
+This companion test update was identified by the native gate during execution;
+it changes no production Rust or installer logic and preserves the approved
+payload acceptance scope. Control owns this
 record and durable execution plan. Dispatch prompt/report files remain untracked.
 
 Reuse existing preference choices: ba=Pi tao-router/explore medium;

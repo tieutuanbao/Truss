@@ -107,6 +107,15 @@ Specifically:
     existing shared lock, and applies that frozen decision without
     re-planning. A session whose schema lacks complete candidate or plan
     material may be inspected and aborted but cannot be continued.
+13. **Managed-scope boundary.** An add-on's managed scope is its declared
+    path set. The extra-path validation runs only inside the add-on's scan
+    roots: the declared directories that are not an ancestor-or-equal of any
+    path owned by another owner, where ownership means the core
+    `.truss-core/manifest.json` entry list or another add-on's recorded paths
+    in `.truss-core/addons.json`. Content of another owner under a shared
+    ancestor is never an extra path for this add-on. A valid pre-existing
+    core installation state includes `.truss-core/manifest.json`; a state
+    without it is refused as invalid before any add-on observation.
 
 ## Alternatives Considered
 

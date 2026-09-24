@@ -1,9 +1,10 @@
 use std::io::{self, Write};
 
 use clap::Parser;
-use truss::application::{CoreApplication, SelfUpdateApplication};
+use truss::application::{AddOnApplication, CoreApplication, SelfUpdateApplication};
 use truss::infrastructure::{
-    EmbeddedCoreDistribution, FileSystemInstallationState, GitThreeWayMerge,
+    EmbeddedCoreDistribution, FileSystemAddOnApplier, FileSystemAddOnPayload,
+    FileSystemAddOnPlanner, FileSystemAddOnState, FileSystemInstallationState, GitThreeWayMerge,
     LatestReleaseCandidates,
 };
 use truss::interface::{execute, Cli};
@@ -19,7 +20,13 @@ fn main() {
         LatestReleaseCandidates::default(),
         FileSystemInstallationState,
     );
-    let exit = execute(cli, &application, &self_update);
+    let add_on = AddOnApplication::new(
+        FileSystemAddOnPayload,
+        FileSystemAddOnState,
+        FileSystemAddOnPlanner,
+        FileSystemAddOnApplier,
+    );
+    let exit = execute(cli, &application, &self_update, &add_on);
     if !exit.stdout.is_empty() {
         let _ = io::stdout().write_all(exit.stdout.as_bytes());
     }

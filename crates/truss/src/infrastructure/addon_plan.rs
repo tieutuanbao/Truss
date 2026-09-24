@@ -52,6 +52,34 @@ fn plan_locked(
     root: &Path,
     request: &AddOnPlanRequest<'_>,
 ) -> Result<UpdatePlan, ApplicationError> {
+    let input = plan_input(root, request)?;
+    classify(root, &input)
+}
+
+/// Classify one prepared add-on planner input with the accepted merge owner.
+///
+/// The resume path prepares the same input, adds human resolutions, and calls
+/// this, so both planning paths share exactly one classification and one merge
+/// implementation.
+pub(crate) fn classify(
+    root: &Path,
+    input: &UpdatePlanInput,
+) -> Result<UpdatePlan, ApplicationError> {
+    plan_update(input, &GitThreeWayMerge, |path| {
+        FileSystemInstallationState.validate_managed_path(root, path)
+    })
+}
+
+/// Build the neutral planner input from the recorded add-on baseline, the
+/// staged payload, and the current workspace, without classifying anything.
+///
+/// `FileSystemAddOnPlanner::plan` classifies this input directly; the conflict
+/// resume path adds `resolutions` to the same input and reuses the same
+/// classification, so there is exactly one add-on planning implementation.
+pub(crate) fn plan_input(
+    root: &Path,
+    request: &AddOnPlanRequest<'_>,
+) -> Result<UpdatePlanInput, ApplicationError> {
     let descriptor = request.descriptor;
     descriptor.validate()?;
 
@@ -95,7 +123,5 @@ fn plan_locked(
         }
     }
 
-    plan_update(&input, &GitThreeWayMerge, |path| {
-        FileSystemInstallationState.validate_managed_path(root, path)
-    })
+    Ok(input)
 }

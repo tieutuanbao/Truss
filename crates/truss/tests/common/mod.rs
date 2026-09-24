@@ -17,7 +17,7 @@ use sha2::{Digest, Sha256};
 /// `state_io::ensure_state_ignore`; add-on operations validate them read-only
 /// and never create or repair them.
 pub const CORE_STATE_IGNORE: &str =
-    "/lock\n/transaction.json\n/base.next-*\n/update/\n/update-candidate/\n";
+    "/lock\n/transaction.json\n/base.next-*\n/update/\n/update-candidate/\n/addon-update/\n";
 
 pub fn write_bytes(root: &Path, relative: &str, content: &[u8]) {
     let target = root.join(relative);

@@ -349,6 +349,7 @@ fn existing_state_gitignore_is_augmented_without_losing_custom_rules() {
     assert!(ignore.contains("/custom-local-state/"));
     assert!(ignore.contains("/update/"));
     assert!(ignore.contains("/update-candidate/"));
+    assert!(ignore.contains("/addon-update/"));
 }
 
 fn application(

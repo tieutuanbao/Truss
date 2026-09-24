@@ -25,12 +25,13 @@ pub(crate) fn state_root(root: &Path) -> PathBuf {
 /// Core install and core update are the only writers of this file. Add-on
 /// operations validate the rules are present and refuse when one is missing;
 /// they never patch the file.
-pub(crate) const STATE_IGNORE_RULES: [&str; 5] = [
+pub(crate) const STATE_IGNORE_RULES: [&str; 6] = [
     "/lock",
     "/transaction.json",
     "/base.next-*",
     "/update/",
     "/update-candidate/",
+    "/addon-update/",
 ];
 
 pub(crate) fn ensure_state_ignore(state_root: &Path) -> Result<(), PortError> {

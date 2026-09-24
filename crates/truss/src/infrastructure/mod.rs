@@ -1,6 +1,7 @@
 mod addon_apply;
 mod addon_payload;
 mod addon_plan;
+mod addon_session;
 mod addon_state;
 mod embedded_distribution;
 mod filesystem_state;

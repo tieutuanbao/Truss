@@ -186,6 +186,16 @@ Tradeoffs:
   `.truss-core/.gitignore`, and created `.truss-core/lock` before its
   authoritative locked refusal. The add-on path was acting as a second core
   bootstrap owner.
+- Open divergence, recorded 2026-09-24: clause 6 requires a dirty local checkout
+  to record "the commit plus a dirty marker", but `SourceRef::parse` accepts only
+  a release tag or an exact 40/64-hex SHA. The installer therefore refuses
+  clearly when a manifest-listed payload path differs from HEAD or is untracked,
+  and uses the exact HEAD SHA otherwise; a checkout dirty only outside the
+  payload is accepted because the payload bytes still equal HEAD. This is
+  stricter than clause 6, not weaker, and it invents no marker format.
+  Resolving it needs either a Rust slice that accepts a dirty marker or an
+  amendment that drops the development mode; until then the refusal is the
+  recorded behaviour.
 - The payload descriptor publication mechanism is selected during the design
   phase: staged bytes from the existing source modes, with release assets
   deferred.

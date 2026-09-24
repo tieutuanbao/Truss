@@ -1,12 +1,13 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
 
 use fs2::FileExt;
 
 use super::addon_payload::read_declared_file;
-use super::addon_plan::{classify, plan_input};
-use super::addon_session::{clear_addon_session, load_addon_session, stage_addon_session};
+use super::addon_session::{
+    addon_session_root, clear_addon_session, load_addon_session, stage_addon_session,
+};
 use super::addon_state::{
     base_addons_root, publish_baseline, write_addons_record, FileSystemAddOnState, ADDONS_FILE,
     BASE_ADDONS_DIR,
@@ -18,12 +19,9 @@ use super::state_io::{
 };
 use super::transaction::{self, ProvenanceKind, ProvenanceWriter};
 use crate::application::{
-    AddOnApplyRequest, AddOnPlanRequest, AddOnResumeRequest, AddOnStageRequest, AddOnStatePort,
-    ApplicationError, PortError,
+    AddOnApplyRequest, AddOnStageRequest, AddOnStatePort, ApplicationError, PortError,
 };
-use crate::domain::{
-    AddOnInstallation, AddOnName, AddOnState, ApplyReceipt, BaselineFile, UpdateResolutionSession,
-};
+use crate::domain::{AddOnInstallation, AddOnName, AddOnState, ApplyReceipt, BaselineFile};
 
 /// Transactional add-on apply adapter.
 ///
@@ -89,24 +87,23 @@ impl FileSystemAddOnApplier {
         result
     }
 
-    /// Resume one staged add-on conflict session.
+    /// Resume one staged add-on conflict session by add-on name alone.
     ///
-    /// Every frozen observation in the session is re-checked against the
-    /// workspace under the shared lock, not only the conflicted path, and the
-    /// resolved plan is applied through the same [`Self::apply`] engine, which
-    /// writes provenance last. On success only the owned add-on session is
-    /// cleared. A competing change to any frozen managed path refuses before
-    /// mutation, leaving the competing bytes intact.
-    pub fn resume(
-        &self,
-        root: &Path,
-        request: &AddOnResumeRequest<'_>,
-    ) -> Result<ApplyReceipt, ApplicationError> {
+    /// The session is self-contained (decision 0003 clause 12), so resume reads
+    /// the candidate payload, the descriptor identity, the materialised plan,
+    /// and the operator-edited `resolved/` files out of the session instead of
+    /// taking them from the caller. It never re-plans: it incorporates only the
+    /// stored resolutions, re-checks every frozen observation against the
+    /// workspace under the shared lock, and applies the frozen decision through
+    /// the same [`Self::apply`] engine, which writes provenance last. On success
+    /// only the owned add-on session is cleared; a schema-1 or unsupported
+    /// session refuses instead of being reinterpreted.
+    pub fn resume(&self, root: &Path, name: &AddOnName) -> Result<ApplyReceipt, ApplicationError> {
         validate_workspace_root(root)?;
         let state_root = state_root(root);
         validate_core_state(&state_root)?;
         let lock = acquire_existing_lock(&state_root)?;
-        let result = resume_locked(root, &state_root, request);
+        let result = resume_locked(root, &state_root, name);
         FileExt::unlock(&lock).map_err(io_error)?;
         result
     }
@@ -165,109 +162,54 @@ fn stage_locked(
     // released. Re-check every frozen observation under this lock so a stale
     // plan is refused rather than persisted.
     verify_frozen_locked(root, &plan.frozen_files)?;
-    let session = UpdateResolutionSession {
-        from_version: installation.source_ref.as_str().to_owned(),
-        to_version: descriptor.source_ref.as_str().to_owned(),
-        conflicts: plan.resolution_conflicts.clone(),
-        frozen_files: plan.frozen_files.clone(),
-    };
-    stage_addon_session(state_root, &descriptor.name, &session)?;
+    // Persist the complete candidate, the descriptor identity, and the frozen
+    // plan, so resume is self-contained and never re-plans.
+    stage_addon_session(
+        state_root,
+        descriptor,
+        request.payload_root,
+        installation.source_ref.as_str(),
+        plan,
+    )?;
     Ok(())
 }
 
 fn resume_locked(
     root: &Path,
     state_root: &Path,
-    request: &AddOnResumeRequest<'_>,
+    name: &AddOnName,
 ) -> Result<ApplyReceipt, ApplicationError> {
-    let descriptor = request.descriptor;
-    descriptor.validate()?;
     transaction::recover(root, state_root)?;
-    let session = load_addon_session(state_root, &descriptor.name)?.ok_or_else(|| {
-        PortError::new(format!(
-            "no add-on conflict session is pending for {}",
-            descriptor.name
-        ))
+    // Loading validates the stored descriptor and plan digest, the candidate
+    // path set and digests, and path-set equality across the descriptor, the
+    // candidate, the mutations, the conflicts, and the frozen observations. A
+    // schema-1 or unsupported session refuses here, before any mutation.
+    let staged = load_addon_session(state_root, name)?.ok_or_else(|| {
+        PortError::new(format!("no add-on conflict session is pending for {name}"))
     })?;
     let existing = FileSystemAddOnState.load(root)?.ok_or_else(|| {
         PortError::new(format!(
-            "no installed add-on record at .truss-core/addons.json; install {} before updating it",
-            descriptor.name
+            "no installed add-on record at .truss-core/addons.json; install {name} before updating it"
         ))
     })?;
-    let installation = existing.installation(&descriptor.name).ok_or_else(|| {
+    let installation = existing.installation(name).ok_or_else(|| {
         PortError::new(format!(
-            "add-on {} is not recorded; install it before updating",
-            descriptor.name
+            "add-on {name} is not recorded; install it before updating"
         ))
     })?;
-    if session.from_version != installation.source_ref.as_str()
-        || session.to_version != descriptor.source_ref.as_str()
-    {
+    if installation.source_ref.as_str() != staged.from_ref {
         return Err(PortError::new(format!(
-            "staged add-on session for {} no longer matches the recorded refs (recorded={}, session={}->{}, candidate={}); abort and restart the update",
-            descriptor.name,
+            "the recorded ref for {name} changed after staging (recorded={}, session={}); abort and re-stage the update",
             installation.source_ref.as_str(),
-            session.from_version,
-            session.to_version,
-            descriptor.source_ref.as_str(),
+            staged.from_ref,
         ))
         .into());
     }
 
-    // Rebuild the same neutral input the S3b planner uses, so the resolution
-    // classification shares one implementation.
-    let mut input = plan_input(
-        root,
-        &AddOnPlanRequest {
-            descriptor,
-            payload_root: request.payload_root,
-        },
-    )?;
-    let expected_paths = input
-        .baselines
-        .keys()
-        .chain(input.upstream.keys())
-        .cloned()
-        .collect::<BTreeSet<_>>();
-    let frozen_paths = session
-        .frozen_files
-        .iter()
-        .map(|frozen| frozen.path.clone())
-        .collect::<BTreeSet<_>>();
-    if frozen_paths.len() != session.frozen_files.len() || frozen_paths != expected_paths {
-        return Err(PortError::new(format!(
-            "staged add-on plan for {} no longer matches the recorded/candidate managed paths; abort and restart the update",
-            descriptor.name
-        ))
-        .into());
-    }
-    // Validate every frozen observation, conflicted or not, against the current
-    // workspace under the lock that also commits; a competing change to any
-    // managed path is refused before any mutation.
-    verify_frozen_locked(root, &session.frozen_files)?;
-
+    // Only the operator-edited resolutions are incorporated; the frozen plan is
+    // applied verbatim and is never re-classified.
     let mut resolutions = BTreeMap::new();
-    for conflict in &session.conflicts {
-        let current = input.local.get(&conflict.path);
-        let base_matches = input
-            .baselines
-            .get(&conflict.path)
-            .is_some_and(|base| base == &conflict.base);
-        let incoming_matches = input
-            .upstream
-            .get(&conflict.path)
-            .is_some_and(|incoming| incoming == &conflict.incoming);
-        if current.map(Vec::as_slice) != Some(conflict.local.as_slice())
-            || !base_matches
-            || !incoming_matches
-        {
-            return Err(PortError::new(format!(
-                "workspace or recorded inputs changed after conflict detection for {}; abort and restart the update",
-                conflict.path
-            ))
-            .into());
-        }
+    for conflict in &staged.plan.resolution_conflicts {
         if contains_conflict_markers(&conflict.resolved) {
             return Err(PortError::new(format!(
                 "resolution still contains conflict markers for {}",
@@ -277,25 +219,24 @@ fn resume_locked(
         }
         resolutions.insert(conflict.path.clone(), conflict.resolved.clone());
     }
-    input.resolutions = resolutions;
-    let resolved_plan = classify(root, &input)?;
-    if !resolved_plan.conflicts.is_empty() || !resolved_plan.resolution_conflicts.is_empty() {
-        return Err(PortError::new(format!(
-            "refusing to resume an add-on update for {} that still plans {} conflict(s)",
-            descriptor.name,
-            resolved_plan.conflicts.len()
+    let resolved_plan = staged.plan.resolved(&resolutions).ok_or_else(|| {
+        PortError::new(format!(
+            "staged add-on session for {name} is missing a resolution input; abort and re-stage the update"
         ))
-        .into());
-    }
+    })?;
+
+    // The candidate bytes stored in the session are the new baseline for every
+    // descriptor path, so the payload root is the owned candidate directory.
+    let candidate_root = addon_session_root(state_root, name).join("candidate");
     let apply_request = AddOnApplyRequest {
-        descriptor,
-        payload_root: request.payload_root,
+        descriptor: &staged.descriptor,
+        payload_root: &candidate_root,
         plan: &resolved_plan,
     };
     let receipt = apply_locked(root, state_root, &apply_request)?;
     // Only this add-on's session is cleared, and only after provenance is
     // written.
-    clear_addon_session(state_root, &descriptor.name)?;
+    clear_addon_session(state_root, name)?;
     Ok(receipt)
 }
 
@@ -446,7 +387,7 @@ mod tests {
     use super::{AddOnApplyRequest, FileSystemAddOnApplier};
     use crate::application::{
         AddOnInstallRequest, AddOnPayloadPort, AddOnPayloadSpec, AddOnPlanRequest,
-        AddOnResumeRequest, AddOnStageRequest, AddOnStatePort,
+        AddOnStageRequest, AddOnStatePort,
     };
     use crate::domain::AddOnDescriptor;
 
@@ -694,6 +635,7 @@ mod tests {
                 &workspace,
                 &AddOnStageRequest {
                     descriptor: &next,
+                    payload_root: &next_payload,
                     plan: &plan,
                 },
             )
@@ -708,13 +650,7 @@ mod tests {
         let before = snapshot(&workspace);
         faults::arm(&workspace, InjectionPoint::BeforeProvenanceWrite);
         let error = FileSystemAddOnApplier
-            .resume(
-                &workspace,
-                &AddOnResumeRequest {
-                    descriptor: &next,
-                    payload_root: &next_payload,
-                },
-            )
+            .resume(&workspace, &next.name)
             .unwrap_err();
         faults::disarm(&workspace);
         let after = snapshot(&workspace);

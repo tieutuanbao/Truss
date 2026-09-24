@@ -1,17 +1,32 @@
-//! S4 scoped conflict recovery acceptance rows, driven from outside the crate.
+//! S4b1 self-contained frozen conflict-session acceptance rows.
 //!
-//! Row 1 stages a conflicted add-on plan and proves the session is recorded
-//! under `.truss-core/addon-update/<name>/` while the workspace, the baseline,
-//! `addons.json`, and any core session are byte-identical.
+//! The session is schema 2: it stores the complete candidate payload for every
+//! descriptor path, the descriptor identity (ordered paths and digests), the
+//! materialised plan with its digest, the per-conflict resolution inputs, and
+//! every frozen workspace observation. Resume takes the add-on name alone and
+//! never re-plans.
 //!
-//! Row 2 changes an unrelated frozen managed path between staging and resume:
-//! resume must refuse with the competing bytes intact and no provenance write.
-//! A second fixture resolves the conflict and resumes successfully, proving the
-//! session is the only thing cleared and that a seeded core session survives.
+//! Row 1 (`staged_session_resumes_without_the_external_payload`) stages a plan
+//! with one clean write, one delete, one preserve, and one conflict, deletes
+//! the external payload directory, edits `resolved/`, resumes, and verifies the
+//! workspace, the complete baseline, the provenance record, and the removal of
+//! the owned session. The companion
+//! `resume_writes_provenance_last_and_stays_retryable` proves the provenance
+//! record is written only after every workspace mutation by failing a later
+//! mutation deterministically and re-running.
 //!
-//! Row 3 seeds a second add-on session and a core session, aborts the owned one
-//! twice, and requires the owned session gone, the sibling and core sessions
-//! byte-identical, and the workspace, baseline, and `addons.json` unchanged.
+//! Row 2 (`stored_session_material_is_validated_not_trusted`) tampers one
+//! candidate file, tampers `plan.json`, and drops one candidate path; each must
+//! refuse before any mutation with the three surfaces byte-identical.
+//!
+//! Row 3 (`schema_one_session_refuses_continue_and_permits_abort` and
+//! `unsupported_schema_fails_closed`) refuses a schema-1 session with a message
+//! naming abort and re-stage while still permitting abort, and refuses an
+//! unsupported schema instead of reinterpreting it.
+//!
+//! Two further deterministic tests report the session size for the largest
+//! shipped add-on payload and confirm that candidate material rejects symlinks
+//! and path escapes on both stage and load.
 
 mod common;
 
@@ -20,8 +35,8 @@ use std::path::{Path, PathBuf};
 
 use sha2::{Digest, Sha256};
 use truss::application::{
-    AddOnInstallRequest, AddOnPayloadPort, AddOnPayloadSpec, AddOnPlanRequest, AddOnResumeRequest,
-    AddOnStageRequest, AddOnStatePort,
+    AddOnInstallRequest, AddOnPayloadPort, AddOnPayloadSpec, AddOnPlanRequest, AddOnStageRequest,
+    AddOnStatePort,
 };
 use truss::domain::{AddOnDescriptor, FileChangeKind, RelativePath, UpdatePlan, WorkspaceMutation};
 use truss::infrastructure::{
@@ -41,11 +56,19 @@ const CARRIER_BYTES: &[u8] = b"name: demo\n";
 const CONFLICT: &str = ".agents/skills/demo/conflict.md";
 const CLEAN: &str = ".agents/skills/demo/clean.md";
 const UNRELATED: &str = ".agents/skills/demo/unrelated.md";
+const REMOVED: &str = ".agents/skills/demo/removed.md";
 
 const BASE: &[u8] = b"one\ntwo\nthree\n";
+// `CLEAN` is a genuine clean three-way merge: the consumer edits the first
+// region and upstream edits the last one, so the mutation content comes from
+// `git merge-file` rather than from either side alone. That is exactly why the
+// frozen `plan.json` must store the merged bytes.
+const CLEAN_BASE: &[u8] = b"one\ntwo\nthree\n";
+const CLEAN_LOCAL: &[u8] = b"ONE\ntwo\nthree\n";
+const CLEAN_NEXT: &[u8] = b"one\ntwo\nTHREE\n";
+const CLEAN_MERGED: &[u8] = b"ONE\ntwo\nTHREE\n";
 const LOCAL_OVERLAP: &[u8] = b"local overlap\n";
 const NEXT_OVERLAP: &[u8] = b"next overlap\n";
-const CLEAN_NEXT: &[u8] = b"clean next\n";
 const UNRELATED_BYTES: &[u8] = b"unrelated\n";
 const COMPETING: &[u8] = b"competing writer\n";
 const RESOLVED: &[u8] = b"resolved by human\n";
@@ -102,9 +125,10 @@ fn install_baseline(workspace: &Path, payload: &Path, manifest: &Path, files: &[
         .unwrap();
 }
 
-/// The conflicted fixture used by rows 1, 2, and 3: one overlap conflict plus
-/// one clean `Update`, with a carrier and an unrelated preserve path.
-struct ConflictFixture {
+/// The conflicted fixture shared by the acceptance rows: one overlap conflict,
+/// one clean write (`CLEAN`), one clean delete (`REMOVED`, absent from the next
+/// payload), and two preserved paths (`CARRIER`, `UNRELATED`).
+struct Fixture {
     _tmp: tempfile::TempDir,
     workspace: PathBuf,
     next_payload: PathBuf,
@@ -112,7 +136,7 @@ struct ConflictFixture {
     plan: UpdatePlan,
 }
 
-fn conflict_fixture() -> ConflictFixture {
+fn conflict_fixture() -> Fixture {
     let tmp = tempfile::tempdir().unwrap();
     let baseline_payload = tmp.path().join("baseline-payload");
     let next_payload = tmp.path().join("next-payload");
@@ -128,11 +152,13 @@ fn conflict_fixture() -> ConflictFixture {
         &[
             (CARRIER, CARRIER_BYTES),
             (CONFLICT, BASE),
-            (CLEAN, BASE),
+            (CLEAN, CLEAN_BASE),
             (UNRELATED, UNRELATED_BYTES),
+            (REMOVED, BASE),
         ],
     );
     write_bytes(&workspace, CONFLICT, LOCAL_OVERLAP);
+    write_bytes(&workspace, CLEAN, CLEAN_LOCAL);
 
     write_payload(
         &next_payload,
@@ -160,17 +186,39 @@ fn conflict_fixture() -> ConflictFixture {
         .unwrap();
     assert_eq!(plan.conflicts.len(), 1, "the fixture carries one conflict");
     assert_eq!(plan.resolution_conflicts.len(), 1);
-    assert!(
-        !plan.mutations.is_empty(),
-        "the fixture carries one clean change"
+    assert_eq!(kind(&plan, CLEAN), vec![FileChangeKind::Update]);
+    assert_eq!(kind(&plan, REMOVED), vec![FileChangeKind::Delete]);
+    assert_eq!(kind(&plan, CARRIER), vec![FileChangeKind::Preserve]);
+    assert_eq!(mutation(&plan, CLEAN).len(), 1);
+    assert_eq!(mutation(&plan, REMOVED).len(), 1);
+    assert_eq!(
+        mutation(&plan, CLEAN),
+        vec![WorkspaceMutation::Write {
+            path: RelativePath::parse(CLEAN).unwrap(),
+            content: CLEAN_MERGED.to_vec(),
+        }],
+        "the clean write must carry the merged bytes"
     );
-    ConflictFixture {
+    Fixture {
         _tmp: tmp,
         workspace,
         next_payload,
         descriptor,
         plan,
     }
+}
+
+fn stage(fixture: &Fixture) {
+    FileSystemAddOnApplier
+        .stage(
+            &fixture.workspace,
+            &AddOnStageRequest {
+                descriptor: &fixture.descriptor,
+                payload_root: &fixture.next_payload,
+                plan: &fixture.plan,
+            },
+        )
+        .unwrap();
 }
 
 fn seed_core_session(workspace: &Path) {
@@ -204,8 +252,26 @@ fn digest(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }
 
-/// A workspace snapshot that can skip the add-on session namespace, so a stage
-/// or abort can be proven to change nothing else.
+fn mutation(plan: &UpdatePlan, path: &str) -> Vec<WorkspaceMutation> {
+    let path = RelativePath::parse(path).unwrap();
+    plan.mutations
+        .iter()
+        .filter(|mutation| mutation.path() == &path)
+        .cloned()
+        .collect()
+}
+
+fn kind(plan: &UpdatePlan, path: &str) -> Vec<FileChangeKind> {
+    let path = RelativePath::parse(path).unwrap();
+    plan.changes
+        .iter()
+        .filter(|change| change.path == path)
+        .map(|change| change.kind.clone())
+        .collect()
+}
+
+/// A workspace snapshot that can skip the add-on session namespace, so a stage,
+/// a refusal, or an abort can be proven to change nothing else.
 fn snapshot_without(root: &Path, excluded: &[&str]) -> String {
     let mut lines = Vec::new();
     walk(root, root, excluded, &mut lines);
@@ -245,74 +311,489 @@ fn walk(root: &Path, directory: &Path, excluded: &[&str], lines: &mut Vec<String
     }
 }
 
-fn mutation(plan: &UpdatePlan, path: &str) -> Vec<WorkspaceMutation> {
-    let path = RelativePath::parse(path).unwrap();
-    plan.mutations
-        .iter()
-        .filter(|mutation| mutation.path() == &path)
-        .cloned()
-        .collect()
+/// Total byte size of every regular file below `root`.
+fn tree_size(root: &Path) -> u64 {
+    let mut total = 0;
+    for entry in fs::read_dir(root).unwrap() {
+        let entry = entry.unwrap();
+        let metadata = fs::symlink_metadata(entry.path()).unwrap();
+        if metadata.is_dir() {
+            total += tree_size(&entry.path());
+        } else if metadata.is_file() {
+            total += metadata.len();
+        }
+    }
+    total
 }
 
-fn kind(plan: &UpdatePlan, path: &str) -> Vec<FileChangeKind> {
-    let path = RelativePath::parse(path).unwrap();
-    plan.changes
-        .iter()
-        .filter(|change| change.path == path)
-        .map(|change| change.kind.clone())
-        .collect()
+fn tree_files(root: &Path) -> usize {
+    let mut total = 0;
+    for entry in fs::read_dir(root).unwrap() {
+        let entry = entry.unwrap();
+        let metadata = fs::symlink_metadata(entry.path()).unwrap();
+        if metadata.is_dir() {
+            total += tree_files(&entry.path());
+        } else if metadata.is_file() {
+            total += 1;
+        }
+    }
+    total
 }
 
-/// Acceptance row 1: staging persists the session under the add-on namespace
-/// with its resolution inputs and frozen observations, and changes nothing
-/// else. `.truss-core/update/` stays untouched.
+/// The three surfaces a refusal must leave byte-identical: the workspace, the
+/// add-on baseline tree, and `.truss-core/addons.json`.
+struct Surfaces {
+    workspace: String,
+    baseline: String,
+    addons: Vec<u8>,
+}
+
+fn surfaces(workspace: &Path) -> Surfaces {
+    let baseline_root = workspace.join(".truss-core/base-addons");
+    Surfaces {
+        workspace: snapshot_without(workspace, &[ADDON_SESSION]),
+        baseline: snapshot_digest(&workspace_snapshot(&baseline_root)),
+        addons: fs::read(workspace.join(".truss-core/addons.json")).unwrap(),
+    }
+}
+
+fn assert_surfaces_unchanged(before: &Surfaces, workspace: &Path, context: &str) {
+    assert_eq!(
+        snapshot_without(workspace, &[ADDON_SESSION]),
+        before.workspace,
+        "{context}: the refusal changed the workspace"
+    );
+    let baseline_root = workspace.join(".truss-core/base-addons");
+    assert_eq!(
+        snapshot_digest(&workspace_snapshot(&baseline_root)),
+        before.baseline,
+        "{context}: the refusal changed the baseline"
+    );
+    assert_eq!(
+        fs::read(workspace.join(".truss-core/addons.json")).unwrap(),
+        before.addons,
+        "{context}: the refusal wrote provenance"
+    );
+}
+
+/// Acceptance row 1: the session carries the complete candidate, so resume
+/// completes after the external payload directory is deleted.
 #[test]
-fn staging_persists_the_session_and_mutates_nothing() {
+fn staged_session_resumes_without_the_external_payload() {
     let fixture = conflict_fixture();
     let workspace = &fixture.workspace;
-    // A core session sentinel proves the core namespace is never read or
-    // written by an add-on stage.
+    seed_core_session(workspace);
+    stage(&fixture);
+
+    // The session records the descriptor identity, the ordered descriptor
+    // paths and digests, the plan digest, and the path lists.
+    let record: serde_json::Value =
+        serde_json::from_slice(&fs::read(session_root(workspace).join("session.json")).unwrap())
+            .unwrap();
+    assert_eq!(record["schema_version"], 2);
+    assert_eq!(record["from_ref"], OLD_REF);
+    assert_eq!(record["source_ref"], NEW_REF);
+    assert_eq!(record["source_core_version"], NEW_CORE);
+    let recorded = record["files"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|file| file["path"].as_str().unwrap().to_owned())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        recorded,
+        vec![
+            CARRIER.to_owned(),
+            CONFLICT.to_owned(),
+            CLEAN.to_owned(),
+            UNRELATED.to_owned(),
+        ],
+        "the session must keep the descriptor path order"
+    );
+    assert_eq!(record["plan_sha256"].as_str().unwrap().len(), 64);
+    assert!(session_root(workspace).join("plan.json").is_file());
+    // The complete candidate: one payload file per descriptor path.
+    for file in &fixture.descriptor.files {
+        assert_eq!(
+            session_bytes(workspace, "candidate", file.path.as_str()),
+            fs::read(fixture.next_payload.join(file.path.as_str())).unwrap(),
+            "candidate bytes for {}",
+            file.path
+        );
+    }
+
+    // The operator edits the resolution, and the external payload disappears.
+    write_bytes(
+        workspace,
+        &format!("{ADDON_SESSION}/{ADDON}/resolved/{CONFLICT}"),
+        RESOLVED,
+    );
+    fs::remove_dir_all(&fixture.next_payload).unwrap();
+    assert!(!fixture.next_payload.exists());
+
+    let receipt = FileSystemAddOnApplier
+        .resume(workspace, &fixture.descriptor.name)
+        .unwrap();
+    assert!(receipt.backup_path.is_some());
+
+    // Workspace bytes: the resolution, the merged clean write, the delete, and
+    // the preserved paths.
+    assert_eq!(fs::read(workspace.join(CONFLICT)).unwrap(), RESOLVED);
+    assert_eq!(fs::read(workspace.join(CLEAN)).unwrap(), CLEAN_MERGED);
+    assert!(!workspace.join(REMOVED).exists(), "the delete must land");
+    assert_eq!(fs::read(workspace.join(CARRIER)).unwrap(), CARRIER_BYTES);
+    assert_eq!(
+        fs::read(workspace.join(UNRELATED)).unwrap(),
+        UNRELATED_BYTES
+    );
+
+    // The complete baseline: the payload bytes for every descriptor path (the
+    // upstream bytes, never the merged or the local bytes), and nothing for the
+    // removed path.
+    assert_eq!(baseline_bytes(workspace, CONFLICT).unwrap(), NEXT_OVERLAP);
+    assert_eq!(baseline_bytes(workspace, CLEAN).unwrap(), CLEAN_NEXT);
+    assert_eq!(baseline_bytes(workspace, CARRIER).unwrap(), CARRIER_BYTES);
+    assert_eq!(
+        baseline_bytes(workspace, UNRELATED).unwrap(),
+        UNRELATED_BYTES
+    );
+    assert!(
+        baseline_bytes(workspace, REMOVED).is_none(),
+        "a deleted path must leave the baseline"
+    );
+
+    // Provenance: the new ref and the payload digests, written after the
+    // workspace and the baseline.
+    let addons: serde_json::Value =
+        serde_json::from_slice(&fs::read(workspace.join(".truss-core/addons.json")).unwrap())
+            .unwrap();
+    let demo = &addons["addons"].as_array().unwrap()[0];
+    assert_eq!(demo["source_ref"], NEW_REF);
+    assert_eq!(demo["source_core_version"], NEW_CORE);
+    let recorded_files = demo["files"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|file| {
+            (
+                file["path"].as_str().unwrap().to_owned(),
+                file["upstream_sha256"].as_str().unwrap().to_owned(),
+            )
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        recorded_files,
+        vec![
+            (CARRIER.to_owned(), digest(CARRIER_BYTES)),
+            (CONFLICT.to_owned(), digest(NEXT_OVERLAP)),
+            (CLEAN.to_owned(), digest(CLEAN_NEXT)),
+            (UNRELATED.to_owned(), digest(UNRELATED_BYTES)),
+        ]
+    );
+    assert!(!workspace.join(".truss-core/transaction.json").exists());
+
+    // Only the owned session is cleared; the seeded core session survives.
+    assert!(
+        !session_root(workspace).exists(),
+        "the owned add-on session must be cleared"
+    );
+    assert_eq!(
+        fs::read(workspace.join(CORE_SESSION)).unwrap(),
+        CORE_SESSION_BYTES,
+        "resume must not touch the core session"
+    );
+
+    write_evidence(
+        "s4b1-row1-self-contained.txt",
+        &format!(
+            "candidate_paths={}\nresolved={}\nclean_workspace={}\nremoved_absent={}\nconflict_baseline={}\nsource_ref={NEW_REF}\nsession_cleared={}\ncore_session_survives={}\n",
+            fixture.descriptor.files.len(),
+            digest(&fs::read(workspace.join(CONFLICT)).unwrap()),
+            digest(&fs::read(workspace.join(CLEAN)).unwrap()),
+            !workspace.join(REMOVED).exists(),
+            digest(&baseline_bytes(workspace, CONFLICT).unwrap()),
+            !session_root(workspace).exists(),
+            fs::read(workspace.join(CORE_SESSION)).unwrap() == CORE_SESSION_BYTES,
+        ),
+    );
+}
+
+/// Provenance is written last: a deterministic failure at a later workspace
+/// mutation leaves `addons.json` and the baseline byte-identical even though an
+/// earlier mutation was applied and rolled back, and the session stays
+/// retryable.
+#[test]
+fn resume_writes_provenance_last_and_stays_retryable() {
+    let tmp = tempfile::tempdir().unwrap();
+    let baseline_payload = tmp.path().join("baseline-payload");
+    let next_payload = tmp.path().join("next-payload");
+    let workspace = tmp.path().join("workspace");
+    fs::create_dir_all(&workspace).unwrap();
+    let baseline_manifest = tmp.path().join("baseline-files.txt");
+    let next_manifest = tmp.path().join("next-files.txt");
+
+    // A new path whose parent is, in the workspace, a regular file. It plans as
+    // a clean create and sorts after the clean write, so the transaction
+    // applies the clean write first and then fails on this create.
+    const BLOCKER: &str = ".agents/skills/demo/zzz";
+    const BLOCKED: &str = ".agents/skills/demo/zzz/child.md";
+
+    install_baseline(
+        &workspace,
+        &baseline_payload,
+        &baseline_manifest,
+        &[(CONFLICT, BASE), (CLEAN, CLEAN_BASE)],
+    );
+    write_bytes(&workspace, CONFLICT, LOCAL_OVERLAP);
+    write_bytes(&workspace, BLOCKER, b"not a directory\n");
+    write_payload(
+        &next_payload,
+        &[
+            (CONFLICT, NEXT_OVERLAP),
+            (CLEAN, CLEAN_NEXT),
+            (BLOCKED, b"blocked create\n"),
+        ],
+    );
+    fs::write(&next_manifest, manifest_text(&[CONFLICT, CLEAN, BLOCKED])).unwrap();
+    let descriptor = describe(&next_payload, &next_manifest, NEW_REF, NEW_CORE);
+    let plan = FileSystemAddOnPlanner
+        .plan(
+            &workspace,
+            &AddOnPlanRequest {
+                descriptor: &descriptor,
+                payload_root: &next_payload,
+            },
+        )
+        .unwrap();
+    assert_eq!(kind(&plan, BLOCKED), vec![FileChangeKind::Create]);
+    FileSystemAddOnApplier
+        .stage(
+            &workspace,
+            &AddOnStageRequest {
+                descriptor: &descriptor,
+                payload_root: &next_payload,
+                plan: &plan,
+            },
+        )
+        .unwrap();
+    write_bytes(
+        &workspace,
+        &format!("{ADDON_SESSION}/{ADDON}/resolved/{CONFLICT}"),
+        RESOLVED,
+    );
+
+    let before = surfaces(&workspace);
+    let error = FileSystemAddOnApplier
+        .resume(&workspace, &descriptor.name)
+        .unwrap_err()
+        .to_string();
+    assert!(
+        !error.contains("injected"),
+        "the failure must be a real filesystem failure: {error}"
+    );
+    assert_surfaces_unchanged(&before, &workspace, "provenance-last");
+    // The earlier clean write was applied and rolled back; the competing
+    // blocker file is intact and the blocked path was never created.
+    let clean_rolled_back = fs::read(workspace.join(CLEAN)).unwrap() == BASE;
+    let addons_equal =
+        fs::read(workspace.join(".truss-core/addons.json")).unwrap() == before.addons;
+    assert!(clean_rolled_back, "the applied clean write must roll back");
+    assert!(addons_equal, "addons.json must not be written");
+    assert_eq!(
+        fs::read(workspace.join(BLOCKER)).unwrap(),
+        b"not a directory\n"
+    );
+    assert!(!workspace.join(BLOCKED).exists());
+    assert!(
+        session_root(&workspace).join("session.json").is_file(),
+        "the session must survive a failed resume"
+    );
+
+    // Remove the blocker: the same staged session now resumes successfully.
+    fs::remove_file(workspace.join(BLOCKER)).unwrap();
+    FileSystemAddOnApplier
+        .resume(&workspace, &descriptor.name)
+        .unwrap();
+    assert_eq!(fs::read(workspace.join(CLEAN)).unwrap(), CLEAN_NEXT);
+    assert_eq!(fs::read(workspace.join(CONFLICT)).unwrap(), RESOLVED);
+    assert_eq!(
+        fs::read(workspace.join(BLOCKED)).unwrap(),
+        b"blocked create\n"
+    );
+    assert!(!session_root(&workspace).exists());
+
+    write_evidence(
+        "s4b1-row1-provenance-last.txt",
+        &format!(
+            "failing_mutation={BLOCKED}\nrefusal={error}\nclean_rolled_back={clean_rolled_back}\naddons_equal={addons_equal}\nretry_clean={}\nretry_blocked_created={}\nsession_cleared={}\n",
+            fs::read(workspace.join(CLEAN)).unwrap() == CLEAN_NEXT,
+            workspace.join(BLOCKED).exists(),
+            !session_root(&workspace).exists(),
+        ),
+    );
+}
+
+/// Acceptance row 2: the stored material is validated, not trusted. A tampered
+/// candidate file, a tampered `plan.json`, and a missing candidate path each
+/// refuse before any mutation with the three surfaces byte-identical.
+#[test]
+fn stored_session_material_is_validated_not_trusted() {
+    type Tamper = fn(&Path) -> &'static str;
+    let cases: [(&str, Tamper); 3] = [
+        ("tampered candidate", |workspace| {
+            let path = session_root(workspace).join("candidate").join(CLEAN);
+            let mut bytes = fs::read(&path).unwrap();
+            bytes.extend_from_slice(b"tampered\n");
+            fs::write(&path, &bytes).unwrap();
+            "digest mismatch"
+        }),
+        ("tampered plan", |workspace| {
+            let path = session_root(workspace).join("plan.json");
+            let mut bytes = fs::read(&path).unwrap();
+            bytes.push(b'\n');
+            fs::write(&path, &bytes).unwrap();
+            "plan digest mismatch"
+        }),
+        ("dropped candidate", |workspace| {
+            fs::remove_file(session_root(workspace).join("candidate").join(CLEAN)).unwrap();
+            "candidate path set differs"
+        }),
+    ];
+
+    let mut evidence = String::new();
+    for (label, tamper) in cases {
+        let fixture = conflict_fixture();
+        let workspace = &fixture.workspace;
+        stage(&fixture);
+        let expected = tamper(workspace);
+
+        let before = surfaces(workspace);
+        let error = FileSystemAddOnApplier
+            .resume(workspace, &fixture.descriptor.name)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            error.contains(expected),
+            "{label}: expected {expected:?}, got: {error}"
+        );
+        assert_surfaces_unchanged(&before, workspace, label);
+        assert!(
+            session_root(workspace).join("session.json").is_file(),
+            "{label}: the refused resume must keep the session"
+        );
+        evidence.push_str(&format!(
+            "case={label}\nrefusal={error}\nsession_alive={}\n\n",
+            session_root(workspace).join("session.json").is_file(),
+        ));
+    }
+    write_evidence("s4b1-row2-validated.txt", &evidence);
+}
+
+/// Acceptance row 3: a schema-1 session refuses `continue` with a message
+/// naming abort and re-stage, and still permits `abort`.
+#[test]
+fn schema_one_session_refuses_continue_and_permits_abort() {
+    let fixture = conflict_fixture();
+    let workspace = &fixture.workspace;
+    stage(&fixture);
+    // Replace the schema-2 session with a faithful schema-1 one: identity and
+    // path lists only, with no candidate payload and no materialised plan.
+    fs::remove_dir_all(session_root(workspace).join("candidate")).unwrap();
+    fs::remove_file(session_root(workspace).join("plan.json")).unwrap();
+    let legacy = serde_json::json!({
+        "schema_version": 1,
+        "from_version": OLD_REF,
+        "to_version": NEW_REF,
+        "conflicts": [{ "path": CONFLICT }],
+        "frozen_files": [{ "path": CONFLICT, "present": true }],
+    });
+    fs::write(
+        session_root(workspace).join("session.json"),
+        serde_json::to_vec_pretty(&legacy).unwrap(),
+    )
+    .unwrap();
+
+    let before = surfaces(workspace);
+    let error = FileSystemAddOnApplier
+        .resume(workspace, &fixture.descriptor.name)
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("schema 1"), "got: {error}");
+    assert!(error.contains("abort"), "got: {error}");
+    assert!(error.contains("re-stage"), "got: {error}");
+    assert_surfaces_unchanged(&before, workspace, "schema 1 refusal");
+    assert!(
+        session_root(workspace).join("session.json").is_file(),
+        "the schema-1 session must stay abortable"
+    );
+
+    assert!(
+        FileSystemAddOnApplier
+            .abort(workspace, &fixture.descriptor.name)
+            .unwrap(),
+        "abort must still remove the schema-1 session"
+    );
+    assert!(!session_root(workspace).exists());
+
+    write_evidence(
+        "s4b1-row3-schema-one.txt",
+        &format!("refusal={error}\nabort_removed=true\nsession_present=false\n"),
+    );
+}
+
+/// Acceptance row 3: an unsupported schema fails closed instead of being
+/// reinterpreted, and the session stays abortable.
+#[test]
+fn unsupported_schema_fails_closed() {
+    let fixture = conflict_fixture();
+    let workspace = &fixture.workspace;
+    stage(&fixture);
+    let unsupported = serde_json::json!({ "schema_version": 3 });
+    fs::write(
+        session_root(workspace).join("session.json"),
+        serde_json::to_vec_pretty(&unsupported).unwrap(),
+    )
+    .unwrap();
+
+    let before = surfaces(workspace);
+    let error = FileSystemAddOnApplier
+        .resume(workspace, &fixture.descriptor.name)
+        .unwrap_err()
+        .to_string();
+    assert!(
+        error.contains("unsupported add-on resolution schema 3"),
+        "got: {error}"
+    );
+    assert_surfaces_unchanged(&before, workspace, "unsupported schema");
+    assert!(FileSystemAddOnApplier
+        .abort(workspace, &fixture.descriptor.name)
+        .unwrap());
+
+    write_evidence(
+        "s4b1-row3-unsupported.txt",
+        &format!("refusal={error}\nabort_removed=true\n"),
+    );
+}
+
+/// The deleted candidate path and the complete candidate round-trip through a
+/// staging that changes nothing else, and `.truss-core/update/` is untouched.
+#[test]
+fn staging_persists_a_self_contained_session_and_mutates_nothing() {
+    let fixture = conflict_fixture();
+    let workspace = &fixture.workspace;
     seed_core_session(workspace);
 
     let addons = workspace.join(".truss-core/addons.json");
     let baseline_root = workspace.join(".truss-core/base-addons");
     let core_session = workspace.join(".truss-core/update");
-
     let before_workspace = snapshot_without(workspace, &[ADDON_SESSION]);
     let before_addons = fs::read(&addons).unwrap();
     let before_baseline = snapshot_digest(&workspace_snapshot(&baseline_root));
     let before_core = workspace_snapshot(&core_session);
 
-    FileSystemAddOnApplier
-        .stage(
-            workspace,
-            &AddOnStageRequest {
-                descriptor: &fixture.descriptor,
-                plan: &fixture.plan,
-            },
-        )
-        .unwrap();
+    stage(&fixture);
 
-    // The session is present, and its DTO names every conflict and frozen path.
-    let session_path = session_root(workspace).join("session.json");
-    assert!(session_path.is_file(), "the session must be persisted");
-    let record: serde_json::Value =
-        serde_json::from_slice(&fs::read(&session_path).unwrap()).unwrap();
-    assert_eq!(record["from_version"], OLD_REF);
-    assert_eq!(record["to_version"], NEW_REF);
-    let conflict_paths = record["conflicts"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|item| item["path"].as_str().unwrap().to_owned())
-        .collect::<Vec<_>>();
-    assert_eq!(conflict_paths, vec![CONFLICT.to_owned()]);
-    assert_eq!(
-        record["frozen_files"].as_array().unwrap().len(),
-        fixture.plan.frozen_files.len()
-    );
-
-    // Every resolution input round-trips byte-for-byte from the plan.
+    // Every conflict input round-trips byte-for-byte from the plan.
     let resolution_conflict = &fixture.plan.resolution_conflicts[0];
     assert_eq!(
         session_bytes(workspace, "base", CONFLICT),
@@ -330,296 +811,111 @@ fn staging_persists_the_session_and_mutates_nothing() {
         session_bytes(workspace, "resolved", CONFLICT),
         resolution_conflict.resolved
     );
-    // And every frozen observation round-trips, absent paths included.
+    // Every frozen observation round-trips, absent paths included.
     for frozen in &fixture.plan.frozen_files {
-        let expected = frozen.content.clone().unwrap_or_default();
-        if frozen.content.is_some() {
+        if let Some(content) = &frozen.content {
             assert_eq!(
                 session_bytes(workspace, "frozen", frozen.path.as_str()),
-                expected,
-                "frozen bytes for {}",
-                frozen.path
+                *content
+            );
+        } else {
+            assert!(
+                !session_root(workspace)
+                    .join("frozen")
+                    .join(frozen.path.as_str())
+                    .exists(),
+                "an absent frozen path must not be stored"
             );
         }
     }
 
-    // Nothing else changed. The session namespace is excluded because staging
-    // legitimately creates it; everything else must be byte-identical.
-    let after_workspace = snapshot_without(workspace, &[ADDON_SESSION]);
-    let after_addons = fs::read(&addons).unwrap();
-    let after_baseline = snapshot_digest(&workspace_snapshot(&baseline_root));
-    let after_core = workspace_snapshot(&core_session);
-
     assert_eq!(
-        before_workspace, after_workspace,
+        snapshot_without(workspace, &[ADDON_SESSION]),
+        before_workspace,
         "staging must not change any managed file, baseline, or provenance"
     );
-    assert_eq!(before_addons, after_addons, "staging changed addons.json");
+    assert_eq!(fs::read(&addons).unwrap(), before_addons);
     assert_eq!(
-        before_baseline, after_baseline,
-        "staging changed the baseline tree"
+        snapshot_digest(&workspace_snapshot(&baseline_root)),
+        before_baseline
     );
-    assert_eq!(before_core, after_core, ".truss-core/update/ was touched");
-    // The clean change is staged, never applied.
-    assert_eq!(fs::read(workspace.join(CLEAN)).unwrap(), BASE);
+    assert_eq!(workspace_snapshot(&core_session), before_core);
+    assert_eq!(fs::read(workspace.join(CLEAN)).unwrap(), CLEAN_LOCAL);
     assert_eq!(fs::read(workspace.join(CONFLICT)).unwrap(), LOCAL_OVERLAP);
-
     write_evidence(
-        "s4-row1-stage.txt",
+        "s4b1-stage.txt",
         &format!(
-            "conflicts={}\nfrozen={}\nclean_change={:?}\nclean_mutation={}\nworkspace_excluding_session_equal={}\nbaseline_equal={}\naddons_equal={}\ncore_session_equal={}\nclean_path_unchanged={}\n",
-            record["conflicts"].as_array().unwrap().len(),
-            record["frozen_files"].as_array().unwrap().len(),
-            kind(&fixture.plan, CLEAN),
-            mutation(&fixture.plan, CLEAN).len(),
-            before_workspace == after_workspace,
-            before_baseline == after_baseline,
-            before_addons == after_addons,
-            before_core == after_core,
-            fs::read(workspace.join(CLEAN)).unwrap() == BASE,
+            "candidate_files={}\nplan_present={}\nworkspace_equal={}\naddons_equal={}\nbaseline_equal={}\ncore_session_equal={}\n",
+            tree_files(&session_root(workspace).join("candidate")),
+            session_root(workspace).join("plan.json").is_file(),
+            snapshot_without(workspace, &[ADDON_SESSION]) == before_workspace,
+            fs::read(&addons).unwrap() == before_addons,
+            snapshot_digest(&workspace_snapshot(&baseline_root)) == before_baseline,
+            workspace_snapshot(&core_session) == before_core,
         ),
     );
 }
 
-/// Acceptance row 2, first fixture: a change to an unrelated frozen managed path
-/// between staging and resume refuses with the competing bytes intact and no
-/// provenance write.
+/// A competing change to any frozen managed path between staging and resume is
+/// refused under the shared lock, with the competing bytes intact.
 #[test]
 fn resume_refuses_unrelated_frozen_drift() {
     let fixture = conflict_fixture();
     let workspace = &fixture.workspace;
     seed_core_session(workspace);
-    FileSystemAddOnApplier
-        .stage(
-            workspace,
-            &AddOnStageRequest {
-                descriptor: &fixture.descriptor,
-                plan: &fixture.plan,
-            },
-        )
-        .unwrap();
-
-    let addons = workspace.join(".truss-core/addons.json");
-    let baseline_root = workspace.join(".truss-core/base-addons");
-    let before_addons = fs::read(&addons).unwrap();
-    let before_baseline = snapshot_digest(&workspace_snapshot(&baseline_root));
-
-    // The barrier: CARRIER is frozen and not the conflicted path. Change it.
-    write_bytes(workspace, CARRIER, COMPETING);
-    let drifted = snapshot_without(workspace, &[ADDON_SESSION]);
-
-    let error = FileSystemAddOnApplier
-        .resume(
-            workspace,
-            &AddOnResumeRequest {
-                descriptor: &fixture.descriptor,
-                payload_root: &fixture.next_payload,
-            },
-        )
-        .unwrap_err()
-        .to_string();
-
-    assert!(
-        error.contains("workspace changed"),
-        "expected a frozen-drift refusal, got: {error}"
-    );
-    assert_eq!(
-        fs::read(workspace.join(CARRIER)).unwrap(),
-        COMPETING,
-        "the competing bytes must survive the refusal"
-    );
-    assert_eq!(
-        snapshot_without(workspace, &[ADDON_SESSION]),
-        drifted,
-        "the refused resume changed the workspace"
-    );
-    assert_eq!(
-        fs::read(&addons).unwrap(),
-        before_addons,
-        "the refused resume wrote provenance"
-    );
-    assert_eq!(
-        snapshot_digest(&workspace_snapshot(&baseline_root)),
-        before_baseline,
-        "the refused resume changed the baseline"
-    );
-    assert!(
-        session_root(workspace).join("session.json").is_file(),
-        "the refused resume must keep the session for a retry or abort"
-    );
-
-    write_evidence(
-        "s4-row2-refusal.txt",
-        &format!(
-            "target={CARRIER}\nobserved_bytes={}\ncompeting_bytes={}\nrefusal={error}\ncompetitor_survives={}\nworkspace_unchanged_by_refusal={}\naddons_equal={}\nbaseline_equal={}\nsession_alive={}\n",
-            digest(CARRIER_BYTES),
-            digest(COMPETING),
-            fs::read(workspace.join(CARRIER)).unwrap() == COMPETING,
-            snapshot_without(workspace, &[ADDON_SESSION]) == drifted,
-            fs::read(&addons).unwrap() == before_addons,
-            snapshot_digest(&workspace_snapshot(&baseline_root)) == before_baseline,
-            session_root(workspace).join("session.json").is_file(),
-        ),
-    );
-}
-
-/// Acceptance row 2, second fixture: resolving every conflict and resuming
-/// applies all changes, writes provenance, and clears only the owned session.
-#[test]
-fn resume_applies_the_resolution_and_clears_only_the_owned_session() {
-    let fixture = conflict_fixture();
-    let workspace = &fixture.workspace;
-    seed_core_session(workspace);
-    FileSystemAddOnApplier
-        .stage(
-            workspace,
-            &AddOnStageRequest {
-                descriptor: &fixture.descriptor,
-                plan: &fixture.plan,
-            },
-        )
-        .unwrap();
-    // The operator resolution replaces the staged conflict-marked bytes.
+    stage(&fixture);
     write_bytes(
         workspace,
         &format!("{ADDON_SESSION}/{ADDON}/resolved/{CONFLICT}"),
         RESOLVED,
     );
-    let core_session = workspace.join(".truss-core/update");
-    let before_core = workspace_snapshot(&core_session);
 
-    let receipt = FileSystemAddOnApplier
-        .resume(
-            workspace,
-            &AddOnResumeRequest {
-                descriptor: &fixture.descriptor,
-                payload_root: &fixture.next_payload,
-            },
-        )
-        .unwrap();
-    assert!(receipt.backup_path.is_some());
+    write_bytes(workspace, CARRIER, COMPETING);
+    let before = surfaces(workspace);
+    let drifted = before.workspace.clone();
 
-    // Workspace: the conflict takes the resolution, the clean change lands, the
-    // carrier and unrelated preserve paths are untouched.
-    assert_eq!(fs::read(workspace.join(CONFLICT)).unwrap(), RESOLVED);
-    assert_eq!(fs::read(workspace.join(CLEAN)).unwrap(), CLEAN_NEXT);
-    assert_eq!(fs::read(workspace.join(CARRIER)).unwrap(), CARRIER_BYTES);
+    let error = FileSystemAddOnApplier
+        .resume(workspace, &fixture.descriptor.name)
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("workspace changed"), "got: {error}");
+    assert_eq!(fs::read(workspace.join(CARRIER)).unwrap(), COMPETING);
+    assert_surfaces_unchanged(&before, workspace, "frozen drift");
     assert_eq!(
-        fs::read(workspace.join(UNRELATED)).unwrap(),
-        UNRELATED_BYTES
+        snapshot_without(workspace, &[ADDON_SESSION]),
+        drifted,
+        "the refused resume changed the workspace"
     );
-
-    // Baseline: the payload bytes per path, not the resolved workspace bytes.
-    assert_eq!(
-        baseline_bytes(workspace, CONFLICT).unwrap(),
-        NEXT_OVERLAP,
-        "the baseline must record the payload bytes"
-    );
-    assert_eq!(baseline_bytes(workspace, CLEAN).unwrap(), CLEAN_NEXT);
-    assert_eq!(baseline_bytes(workspace, CARRIER).unwrap(), CARRIER_BYTES);
-    assert_eq!(
-        baseline_bytes(workspace, UNRELATED).unwrap(),
-        UNRELATED_BYTES
-    );
-
-    // Provenance: the new ref, new core version, and payload digests.
-    let record: serde_json::Value =
-        serde_json::from_slice(&fs::read(workspace.join(".truss-core/addons.json")).unwrap())
-            .unwrap();
-    let demo = &record["addons"].as_array().unwrap()[0];
-    assert_eq!(demo["name"], ADDON);
-    assert_eq!(demo["source_ref"], NEW_REF);
-    assert_eq!(demo["source_core_version"], NEW_CORE);
-    let recorded = demo["files"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|file| {
-            (
-                file["path"].as_str().unwrap().to_owned(),
-                file["upstream_sha256"].as_str().unwrap().to_owned(),
-            )
-        })
-        .collect::<Vec<_>>();
-    assert_eq!(
-        recorded,
-        vec![
-            (CARRIER.to_owned(), digest(CARRIER_BYTES)),
-            (CONFLICT.to_owned(), digest(NEXT_OVERLAP)),
-            (CLEAN.to_owned(), digest(CLEAN_NEXT)),
-            (UNRELATED.to_owned(), digest(UNRELATED_BYTES)),
-        ]
-    );
-
-    // Only the owned session is cleared; a seeded core session survives, and no
-    // transaction journal or backup is left behind.
     assert!(
-        !session_root(workspace).exists(),
-        "the owned add-on session must be cleared"
-    );
-    assert_eq!(
-        workspace_snapshot(&core_session),
-        before_core,
-        "resume must not touch the core session"
-    );
-    assert!(!workspace.join(".truss-core/transaction.json").exists());
-    // A successful apply keeps its own backup snapshot and reports it.
-    let backup = workspace.join(receipt.backup_path.as_deref().unwrap());
-    assert!(
-        backup.is_dir(),
-        "the successful resume must keep its backup"
-    );
-    assert_eq!(
-        fs::read_dir(workspace.join(".truss-backup"))
-            .unwrap()
-            .count(),
-        1,
-        "a successful resume must keep exactly its own backup"
+        session_root(workspace).join("session.json").is_file(),
+        "the refused resume must keep the session"
     );
 
     write_evidence(
-        "s4-row2-resume.txt",
+        "s4b1-frozen-drift.txt",
         &format!(
-            "conflict_workspace={}\nconflict_baseline={}\nclean_workspace={}\ncarrier={}\nsource_ref={NEW_REF}\nsource_core_version={NEW_CORE}\nsession_cleared={}\ncore_session_equal={}\nbackup={}\n",
-            digest(&fs::read(workspace.join(CONFLICT)).unwrap()),
-            digest(&baseline_bytes(workspace, CONFLICT).unwrap()),
-            digest(&fs::read(workspace.join(CLEAN)).unwrap()),
-            digest(&fs::read(workspace.join(CARRIER)).unwrap()),
-            !session_root(workspace).exists(),
-            workspace_snapshot(&core_session) == before_core,
-            receipt.backup_path.is_some(),
+            "target={CARRIER}\ncompeting_bytes={}\nrefusal={error}\ncompetitor_survives={}\nsession_alive={}\n",
+            digest(COMPETING),
+            fs::read(workspace.join(CARRIER)).unwrap() == COMPETING,
+            session_root(workspace).join("session.json").is_file(),
         ),
     );
 }
 
-/// Acceptance row 3: abort removes only the owned add-on session, leaves the
-/// workspace, baseline, `addons.json`, the sibling add-on session, and the core
-/// session untouched, and is safe to repeat.
+/// Abort removes only the owned add-on session, leaves the workspace, baseline,
+/// `addons.json`, the sibling add-on session, and the core session untouched,
+/// and is safe to repeat.
 #[test]
 fn abort_is_scoped_and_idempotent() {
     let fixture = conflict_fixture();
     let workspace = &fixture.workspace;
     seed_core_session(workspace);
-    // A sibling add-on session, so removing the shared container cannot be
-    // mistaken for removing only the owned session.
     write_bytes(workspace, SIBLING_SESSION, SIBLING_BYTES);
-    FileSystemAddOnApplier
-        .stage(
-            workspace,
-            &AddOnStageRequest {
-                descriptor: &fixture.descriptor,
-                plan: &fixture.plan,
-            },
-        )
-        .unwrap();
+    stage(&fixture);
     assert!(session_root(workspace).join("session.json").is_file());
 
-    let addons = workspace.join(".truss-core/addons.json");
-    let baseline_root = workspace.join(".truss-core/base-addons");
+    let before = surfaces(workspace);
     let core_session = workspace.join(".truss-core/update");
-    let before_workspace = snapshot_without(workspace, &[ADDON_SESSION]);
-    let before_addons = fs::read(&addons).unwrap();
-    let before_baseline = snapshot_digest(&workspace_snapshot(&baseline_root));
     let before_core = workspace_snapshot(&core_session);
 
     assert!(
@@ -628,40 +924,22 @@ fn abort_is_scoped_and_idempotent() {
             .unwrap(),
         "the first abort must remove the owned session"
     );
-    let after_first = fs::read(workspace.join(SIBLING_SESSION)).unwrap();
     assert!(
         !session_root(workspace).exists(),
         "the owned session must be gone"
     );
     assert_eq!(
-        after_first, SIBLING_BYTES,
+        fs::read(workspace.join(SIBLING_SESSION)).unwrap(),
+        SIBLING_BYTES,
         "the sibling session was touched"
     );
-    assert_eq!(
-        fs::read(workspace.join(CORE_SESSION)).unwrap(),
-        CORE_SESSION_BYTES,
-        "the core session was touched"
-    );
-
     assert!(
         !FileSystemAddOnApplier
             .abort(workspace, &fixture.descriptor.name)
             .unwrap(),
         "the second abort must report that nothing was removed"
     );
-
-    // The three surfaces are unchanged by either abort, and the second abort was
-    // a no-op.
-    assert_eq!(
-        snapshot_without(workspace, &[ADDON_SESSION]),
-        before_workspace,
-        "abort changed the workspace, baseline, or provenance"
-    );
-    assert_eq!(fs::read(&addons).unwrap(), before_addons);
-    assert_eq!(
-        snapshot_digest(&workspace_snapshot(&baseline_root)),
-        before_baseline
-    );
+    assert_surfaces_unchanged(&before, workspace, "abort");
     assert_eq!(workspace_snapshot(&core_session), before_core);
     assert_eq!(
         fs::read(workspace.join(SIBLING_SESSION)).unwrap(),
@@ -669,17 +947,208 @@ fn abort_is_scoped_and_idempotent() {
     );
 
     write_evidence(
-        "s4-row3-abort.txt",
+        "s4b1-abort.txt",
         &format!(
-            "first_removed=true\nsecond_removed=false\nowned_session_present={}\nsibling_present={}\ncore_session_equal={}\nworkspace_equal={}\naddons_equal={}\nbaseline_equal={}\ncarrier={}\nclean={}\n",
+            "first_removed=true\nsecond_removed=false\nowned_session_present={}\nsibling_present={}\ncore_session_equal={}\n",
             session_root(workspace).exists(),
             workspace.join(SIBLING_SESSION).exists(),
             workspace_snapshot(&core_session) == before_core,
-            snapshot_without(workspace, &[ADDON_SESSION]) == before_workspace,
-            fs::read(&addons).unwrap() == before_addons,
-            snapshot_digest(&workspace_snapshot(&baseline_root)) == before_baseline,
-            digest(&fs::read(workspace.join(CARRIER)).unwrap()),
-            digest(&fs::read(workspace.join(CLEAN)).unwrap()),
+        ),
+    );
+}
+
+/// Reporting row: stage a session for the largest shipped add-on payload and
+/// report the resulting session size in bytes.
+#[test]
+fn largest_shipped_addon_payload_reports_the_session_size() {
+    let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .to_path_buf();
+    let manifest = repo.join("scripts/delivery-install-files.txt");
+    let tmp = tempfile::tempdir().unwrap();
+    let workspace = tmp.path().join("workspace");
+    fs::create_dir_all(&workspace).unwrap();
+    seed_core_state(&workspace);
+    let foreign: [PathBuf; 0] = [];
+
+    let describe = |root: &Path, source_ref: &str| {
+        FileSystemAddOnPayload
+            .describe(&AddOnPayloadSpec {
+                root,
+                manifest: &manifest,
+                name: "delivery",
+                source_ref,
+                source_core_version: "0.1.13",
+                foreign_manifests: &foreign,
+            })
+            .unwrap()
+    };
+    let old = describe(&repo, OLD_REF);
+    FileSystemAddOnState
+        .apply(
+            &workspace,
+            &AddOnInstallRequest {
+                descriptor: &old,
+                payload_root: &repo,
+            },
+        )
+        .unwrap();
+
+    // The next payload mirrors the shipped one with exactly one path changed,
+    // and the consumer edits that same path, so the plan conflicts once.
+    let next_payload = tmp.path().join("next-payload");
+    for file in &old.files {
+        write_bytes(
+            &next_payload,
+            file.path.as_str(),
+            &fs::read(repo.join(file.path.as_str())).unwrap(),
+        );
+    }
+    let target = old.files[0].path.clone();
+    let mut changed = fs::read(next_payload.join(target.as_str())).unwrap();
+    changed.extend_from_slice(b"\n# upstream change\n");
+    fs::write(next_payload.join(target.as_str()), &changed).unwrap();
+    write_bytes(&workspace, target.as_str(), b"consumer edit\n");
+
+    let next = describe(&next_payload, NEW_REF);
+    let plan = FileSystemAddOnPlanner
+        .plan(
+            &workspace,
+            &AddOnPlanRequest {
+                descriptor: &next,
+                payload_root: &next_payload,
+            },
+        )
+        .unwrap();
+    assert_eq!(plan.conflicts.len(), 1);
+    FileSystemAddOnApplier
+        .stage(
+            &workspace,
+            &AddOnStageRequest {
+                descriptor: &next,
+                payload_root: &next_payload,
+                plan: &plan,
+            },
+        )
+        .unwrap();
+
+    let session = workspace.join(ADDON_SESSION).join("delivery");
+    let session_bytes = tree_size(&session);
+    let session_files = tree_files(&session);
+    let payload_bytes = old
+        .files
+        .iter()
+        .map(|file| fs::metadata(repo.join(file.path.as_str())).unwrap().len())
+        .sum::<u64>();
+
+    write_evidence(
+        "s4b1-largest-session.txt",
+        &format!(
+            "addon=delivery\nmanifest_paths={}\npayload_bytes={payload_bytes}\nsession_files={session_files}\nsession_bytes={session_bytes}\n",
+            old.files.len(),
+        ),
+    );
+    assert!(session.join("session.json").is_file());
+    assert!(session_files >= old.files.len() * 2 + 2);
+    assert!(session_bytes > payload_bytes);
+}
+
+/// Candidate material rejects symlinks and path escapes on both stage and load.
+#[cfg(unix)]
+#[test]
+fn candidate_material_rejects_symlinks_and_escapes() {
+    let tmp = tempfile::tempdir().unwrap();
+    let outside = tmp.path().join("outside");
+    fs::create_dir_all(&outside).unwrap();
+    fs::write(outside.join("secret.md"), b"outside\n").unwrap();
+
+    // Stage: a declared payload path that is a symlink is refused, and the
+    // refusal leaves no session behind.
+    let fixture = conflict_fixture();
+    let workspace = &fixture.workspace;
+    fs::remove_file(fixture.next_payload.join(CLEAN)).unwrap();
+    std::os::unix::fs::symlink(outside.join("secret.md"), fixture.next_payload.join(CLEAN))
+        .unwrap();
+    let error = FileSystemAddOnApplier
+        .stage(
+            workspace,
+            &AddOnStageRequest {
+                descriptor: &fixture.descriptor,
+                payload_root: &fixture.next_payload,
+                plan: &fixture.plan,
+            },
+        )
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("symlink"), "stage: got {error}");
+    assert!(
+        !session_root(workspace).exists(),
+        "a refused stage must leave no session"
+    );
+
+    // Load: a candidate file replaced by a symlink is refused.
+    let fixture = conflict_fixture();
+    let workspace = &fixture.workspace;
+    stage(&fixture);
+    let candidate = session_root(workspace).join("candidate").join(CLEAN);
+    fs::remove_file(&candidate).unwrap();
+    std::os::unix::fs::symlink(outside.join("secret.md"), &candidate).unwrap();
+    let before = surfaces(workspace);
+    let error = FileSystemAddOnApplier
+        .resume(workspace, &fixture.descriptor.name)
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("symlink"), "load file: got {error}");
+    assert_surfaces_unchanged(&before, workspace, "candidate symlink");
+
+    // Load: a symlinked directory component that escapes the session is
+    // refused, so a declared path cannot be resolved outside the session.
+    let fixture = conflict_fixture();
+    let workspace = &fixture.workspace;
+    stage(&fixture);
+    let components = Path::new(CLEAN).parent().unwrap();
+    let directory = session_root(workspace).join("candidate").join(components);
+    fs::remove_dir_all(&directory).unwrap();
+    std::os::unix::fs::symlink(&outside, &directory).unwrap();
+    let before = surfaces(workspace);
+    let error = FileSystemAddOnApplier
+        .resume(workspace, &fixture.descriptor.name)
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("symlink"), "load dir: got {error}");
+    assert_surfaces_unchanged(&before, workspace, "candidate directory symlink");
+
+    // Load: an extra candidate path is a path-set mismatch, and relative paths
+    // with a `..` component are structurally rejected by `RelativePath`.
+    assert!(RelativePath::parse("../escape.md").is_err());
+    assert!(RelativePath::parse("a/../../b").is_err());
+    let fixture = conflict_fixture();
+    let workspace = &fixture.workspace;
+    stage(&fixture);
+    write_bytes(
+        workspace,
+        &format!("{ADDON_SESSION}/{ADDON}/candidate/extra.md"),
+        b"extra\n",
+    );
+    let before = surfaces(workspace);
+    let error = FileSystemAddOnApplier
+        .resume(workspace, &fixture.descriptor.name)
+        .unwrap_err()
+        .to_string();
+    assert!(
+        error.contains("path set differs"),
+        "load extra: got {error}"
+    );
+    assert_surfaces_unchanged(&before, workspace, "extra candidate path");
+
+    write_evidence(
+        "s4b1-candidate-safety.txt",
+        &format!(
+            "stage_symlink_refused=true\nload_file_symlink_refused=true\nload_dir_symlink_refused=true\nextra_path_refused=true\nrelative_path_escape_rejected={}\n",
+            RelativePath::parse("../escape.md").is_err(),
         ),
     );
 }
@@ -690,7 +1159,7 @@ fn write_evidence(name: &str, body: &str) {
         .unwrap()
         .parent()
         .unwrap()
-        .join("target/s4-evidence");
+        .join("target/s4b1-evidence");
     fs::create_dir_all(&directory).unwrap();
     fs::write(directory.join(name), body).unwrap();
 }

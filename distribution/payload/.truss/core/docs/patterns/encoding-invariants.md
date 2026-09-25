@@ -53,7 +53,7 @@ The failure must be actionable. Prefer a diagnostic such as:
 
 ```text
 public/orders imports internal/storage: public packages must not import internal
-packages (.truss-core/docs/architecture.md). Depend on the public storage interface instead.
+packages (.truss/core/docs/architecture.md). Depend on the public storage interface instead.
 ```
 
 Avoid bare messages such as `validation failed` or diagnostics that require the

@@ -11,7 +11,7 @@ rerun before claiming improvement.
 
 ## Establish Authority
 
-- Read `AGENTS.md`, `.truss-core/docs/WORKFLOW.md`, and applicable local instructions.
+- Read `AGENTS.md`, `.truss/core/docs/WORKFLOW.md`, and applicable local instructions.
 - Confirm the request authorizes changing Truss behavior. Inspection or a
   request to report friction does not authorize edits.
 - Record the initial repository root, revision, branch, status, and unrelated
@@ -34,8 +34,8 @@ Use an observed task trajectory when available. Record:
 Do not diagnose a worker limitation from one run. If no observed baseline
 exists, stop with an experiment proposal; do not manufacture one.
 
-Copy `.truss-core/docs/templates/truss-improvement.md` to
-`.truss-core/docs/plans/active/truss-improvement-<slug>.md`. Reuse an existing active
+Copy `.truss/core/docs/templates/truss-improvement.md` to
+`.truss/core/docs/plans/active/truss-improvement-<slug>.md`. Reuse an existing active
 record for the same experiment.
 
 ## 2. Locate The Earliest Gap
@@ -96,7 +96,7 @@ authority behavior, and maintenance cost.
   the job.
 
 Record the decision, evidence, owner, and removal condition. Move the record to
-`.truss-core/docs/plans/completed/` only after native validation and the fresh-rerun
+`.truss/core/docs/plans/completed/` only after native validation and the fresh-rerun
 decision. Preserve a removed intervention's result in the completed record.
 
 ## Report

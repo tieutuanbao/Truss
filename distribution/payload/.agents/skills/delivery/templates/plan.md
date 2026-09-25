@@ -4,7 +4,7 @@ Transient. For a repository-hosted run it is deleted in the release commit,
 before the release-binding review, after anything durable has moved into the
 decision record or the documents that own the changed paths. For an approved
 consumer-local run it is never committed: it lives at
-`.truss/delivery-runs/<run-key>/plan.md`, its immutable counterpart is
+`.truss/delivery/runs/<run-key>/plan.md`, its immutable counterpart is
 `approved-envelope.md` in the same directory, and delivery does not delete it.
 
 One coherent contract. One acceptance table. Split tasks only when each has
@@ -22,7 +22,7 @@ Decision record: `<path>`
 decision record and this plan; leave it empty until that commit exists rather
 than guessing it. For an approved consumer-local run, the exact
 pre-implementation commit of the candidate, whose approval identity lives in the
-local receipt `.truss/authority/approvals/<run-key>.md` instead of in a commit.
+local receipt `.truss/delivery/approvals/<run-key>.md` instead of in a commit.
 
 ## Goal
 

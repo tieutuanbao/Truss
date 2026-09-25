@@ -9,8 +9,8 @@ Turn an accepted rule into a focused guard without creating new product policy.
 
 ## 1. Read The Owners
 
-Read applicable `AGENTS.md`, `.truss-core/docs/WORKFLOW.md`, and the complete
-[encoding pattern](../../../.truss-core/docs/patterns/encoding-invariants.md). Locate the
+Read applicable `AGENTS.md`, `.truss/core/docs/WORKFLOW.md`, and the complete
+[encoding pattern](../../../.truss/core/docs/patterns/encoding-invariants.md). Locate the
 repository's product or technical authority and its native validation owner.
 
 ## 2. Pass The Authority Gate

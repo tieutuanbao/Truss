@@ -26,8 +26,8 @@ the skill produces proposals until the user approves specific content.
 
 ### 1. Establish The Starting Point
 
-Read `AGENTS.md`, `.truss-core/docs/WORKFLOW.md`, applicable
-`.truss-core/docs/decisions/`, and any input documents the user supplies. If
+Read `AGENTS.md`, `.truss/core/docs/WORKFLOW.md`, applicable
+`.truss/core/docs/decisions/`, and any input documents the user supplies. If
 external planning documents (for example BMAD briefs or specs) are supplied,
 treat them as source material, not authority. Capture the current revision and
 dirty state before proposing anything.
@@ -49,9 +49,9 @@ delivery-routed unless the owner waives that.
 
 | Content | Destination |
 | --- | --- |
-| Goal, users, expected behavior, scope, acceptance criteria | `.truss-core/docs/product/<initiative>.md` |
-| Lasting product or architecture choices | `.truss-core/docs/decisions/<decision>.md` (proposal status) |
-| First implementation slice, owner, and validation intent | One plan in `.truss-core/docs/plans/active/`, only when the work needs durable memory |
+| Goal, users, expected behavior, scope, acceptance criteria | `.truss/core/docs/product/<initiative>.md` |
+| Lasting product or architecture choices | `.truss/core/docs/decisions/<decision>.md` (proposal status) |
+| First implementation slice, owner, and validation intent | One plan in `.truss/core/docs/plans/active/`, only when the work needs durable memory |
 
 Keep each document small and split by topic. The plan references the
 authority; it never restates it as a second specification. An acceptance

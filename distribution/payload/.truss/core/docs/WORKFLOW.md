@@ -6,7 +6,7 @@ runtime signals are the system of record.
 ## Communication
 
 Every user-facing reply — answers, questions, progress updates, and
-completion reports — applies `.truss-core/docs/communication.md` when it is
+completion reports — applies `.truss/core/docs/communication.md` when it is
 configured. It records a reply-style level the repository owner chose:
 `expert`, `intermediate`, or `layperson`, defined in that file. Missing or
 unconfigured preferences never block work; answer in clear, neutral language
@@ -23,7 +23,7 @@ durable change.
 When re-explanation requests recur or the configured level clearly
 mismatches the conversation, proactively propose switching levels, naming
 the target level and the observed signal. Record the change in
-`.truss-core/docs/communication.md` with its date and source only after the
+`.truss/core/docs/communication.md` with its date and source only after the
 owner chooses it. To configure initially, propose all three levels with a
 worked example of the same answer at each level; the owner's pick is
 recorded with its date and source.
@@ -31,22 +31,22 @@ recorded with its date and source.
 ## Repository Map
 
 - `AGENTS.md`: entry map and authority boundary.
-- `README.md`, `.truss-core/docs/product/`, architecture, and decisions: current intent and
+- `README.md`, `.truss/core/docs/product/`, architecture, and decisions: current intent and
   constraints.
-- `.truss-core/docs/plans/`: durable work; `.truss-core/docs/templates/`: optional structures.
+- `.truss/core/docs/plans/`: durable work; `.truss/core/docs/templates/`: optional structures.
 - Code, tests, CI, and runtime signals: executable and observable truth.
 
-Use `.truss-core/docs/README.md` for the complete map.
+Use `.truss/core/docs/README.md` for the complete map.
 
 ## Select The Work Shape
 
 ### Does The Work Need Durable Memory?
 
 Use an ephemeral plan for bounded work. Create one plan in
-`.truss-core/docs/plans/active/` when work spans sessions, coordinates contributors, has
+`.truss/core/docs/plans/active/` when work spans sessions, coordinates contributors, has
 meaningful dependencies, needs recovery, or cannot safely resume from its diff.
 
-Use `.truss-core/docs/templates/exec-plan.md`. Keep progress and task-local decisions in the
+Use `.truss/core/docs/templates/exec-plan.md`. Keep progress and task-local decisions in the
 same file; avoid parallel task records without an independent audience.
 
 A delivered change may additionally use its own transient control artifacts
@@ -139,7 +139,7 @@ No parallel lifecycle record is required.
 Create or resume one active plan. Keep outcome, context, approach, risk,
 recovery, progress, decisions, and validation current. Implement in verifiable
 groups, promote lasting decisions, run focused and repository proof, then record
-the result and move the plan to `.truss-core/docs/plans/completed/`.
+the result and move the plan to `.truss/core/docs/plans/completed/`.
 
 ### Delivered Change
 
@@ -155,12 +155,12 @@ delivered change still obeys this workflow: authority gates, durable plans
 when the work needs them, and revision-bound proof. Delivery's own transient
 plan is a per-run control artifact; anything that must outlive the run moves
 into the durable decision record or an execution plan under
-`.truss-core/docs/plans/active/`.
+`.truss/core/docs/plans/active/`.
 
 For an approved consumer-local run, the delivery control artifacts are private
 and are never committed: the approved envelope and the transient plan live under
-`.truss/delivery-runs/<run-key>/`, and the approval receipt lives at
-`.truss/authority/approvals/<run-key>.md`. Nothing durable may be left only
+`.truss/delivery/runs/<run-key>/`, and the approval receipt lives at
+`.truss/delivery/approvals/<run-key>.md`. Nothing durable may be left only
 there; it moves into this repository's decision record or an execution plan
 before the run closes, exactly as for a repository-hosted run.
 
@@ -182,7 +182,7 @@ proposal structure, not proof that the application is operable.
 
 During ordinary work, report reusable agent friction without changing the
 Truss for that new purpose. When the user explicitly invokes
-`$improve-truss`, use `.truss-core/docs/templates/truss-improvement.md` to:
+`$improve-truss`, use `.truss/core/docs/templates/truss-improvement.md` to:
 
 1. preserve the observed baseline and human intervention;
 2. locate the earliest missing context, capability, owner, authority, proof, or

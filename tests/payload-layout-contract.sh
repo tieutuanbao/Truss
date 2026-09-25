@@ -112,6 +112,21 @@ LEGACY_PREFIX = ".truss-core/"
 LEGACY_DIRECTORY = ".truss-core"
 
 
+# The renames this plan applies to the shipped text. L5 compares the mirror
+# against the pre-refactor counterpart after normalising the counterpart through
+# the same renames, so the rule still catches real drift while permitting the
+# content change the plan exists to make.
+CONTENT_RENAMES = ((".truss-core", ".truss/core"),
+                   (".truss/delivery-runs/", ".truss/delivery/runs/"),
+                   (".truss/authority/approvals/", ".truss/delivery/approvals/"))
+
+
+def normalise_counterpart(data):
+    for old, new in CONTENT_RENAMES:
+        data = data.replace(old.encode(), new.encode())
+    return data
+
+
 def legacy_counterpart(dest):
     """The pre-refactor path holding the bytes for a destination.
 
@@ -357,11 +372,12 @@ def check_duplicate_window(entries):
                  % (dest, os.path.relpath(legacy, ROOT)))
             continue
         with open(mirrored, "rb") as left, open(legacy, "rb") as right:
-            if left.read() != right.read():
+            if left.read() != normalise_counterpart(right.read()):
                 fail("payload-layout-contract L5",
                      "distribution/payload/%s differs from its pre-refactor "
-                     "counterpart %s; during the duplicate window they must be "
-                     "byte-identical" % (dest, os.path.relpath(legacy, ROOT)))
+                     "counterpart %s beyond the plan's renames; during the "
+                     "duplicate window no other divergence is permitted"
+                     % (dest, os.path.relpath(legacy, ROOT)))
     for name in ENTRYPOINT_BLOCKS:
         moved = os.path.join(ENTRY, name)
         legacy = os.path.join(ROOT, "scripts", name)
@@ -377,10 +393,11 @@ def check_duplicate_window(entries):
                  "window" % name)
             continue
         with open(moved, "rb") as left, open(legacy, "rb") as right:
-            if left.read() != right.read():
+            if left.read() != normalise_counterpart(right.read()):
                 fail("payload-layout-contract L5",
-                     "distribution/entrypoints/%s differs from scripts/%s during "
-                     "the duplicate window" % (name, name))
+                     "distribution/entrypoints/%s differs from scripts/%s beyond "
+                     "the plan's renames; during the duplicate window no other "
+                     "divergence is permitted" % (name, name))
 
 
 def check_legacy_directory():

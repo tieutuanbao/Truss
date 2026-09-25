@@ -82,7 +82,7 @@ not, append the block. Touch nothing else.
 ## Discovery
 
 Run these commands. They are the catalogue. Do not copy a list from this
-package, from memory, or from `.truss-core/docs/`.
+package, from memory, or from `.truss/core/docs/`.
 
 - Claude Code models: `claude -p "/model" --output-format json`
 - Claude Code effort: `claude -p "/effort" --output-format json`

@@ -286,8 +286,8 @@ def self_test() -> None:
     zeros = "0" * 64
     blobs = {
         (revision, ".agents/skills/onboard-repository/SKILL.md"): b"skill\n",
-        (revision, ".truss-core/docs/source.md"): b"authority\nsecond\n",
-        (revision, ".truss-core/docs/test.md"): b"old\n",
+        (revision, ".truss/core/docs/source.md"): b"authority\nsecond\n",
+        (revision, ".truss/core/docs/test.md"): b"old\n",
     }
 
     def read_blob(test_revision: str, path: str) -> bytes:
@@ -315,12 +315,12 @@ def self_test() -> None:
                 "text": "Use new guidance.",
                 "classification": "Authoritative",
                 "sources": [
-                    {"path": ".truss-core/docs/source.md", "start_line": 1, "end_line": 1, "role": "authority"}
+                    {"path": ".truss/core/docs/source.md", "start_line": 1, "end_line": 1, "role": "authority"}
                 ],
             }
         ],
         "hunks": [
-            {"id": "H1", "destination": ".truss-core/docs/test.md", "after_text": "new\n", "unknowns": []}
+            {"id": "H1", "destination": ".truss/core/docs/test.md", "after_text": "new\n", "unknowns": []}
         ],
         "limitations": ["self-test"],
     }

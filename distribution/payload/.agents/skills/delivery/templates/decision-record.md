@@ -10,8 +10,8 @@ cannot record its own SHA before it exists.
 
 For an approved consumer-local run this decision record is a private artifact:
 it is never committed and never staged. Write it under
-`.truss/delivery-runs/<run-key>/` and obtain approval through the local receipt
-`.truss/authority/approvals/<run-key>.md` instead of through a baseline commit.
+`.truss/delivery/runs/<run-key>/` and obtain approval through the local receipt
+`.truss/delivery/approvals/<run-key>.md` instead of through a baseline commit.
 
 ---
 

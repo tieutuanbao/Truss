@@ -5,15 +5,15 @@ and real project evidence. It records what the business needs and how anyone
 can tell whether a later implementation meets it.
 
 Write it to a real project-owned path that the approved envelope names — for
-example `.truss-core/docs/product/<feature>.md`. A copy of this template with
+example `.truss/core/docs/product/<feature>.md`. A copy of this template with
 its placeholders intact is not completed analysis and must not be handed to the
 planner. Every requirement needs a stable ID that the decision record and the
 task plan can cite back to this document.
 
 For an approved consumer-local run this analysis is a private artifact: it is
 never committed and never staged. Write it under
-`.truss/delivery-runs/<run-key>/` and obtain approval through the local receipt
-`.truss/authority/approvals/<run-key>.md` instead of through a baseline commit.
+`.truss/delivery/runs/<run-key>/` and obtain approval through the local receipt
+`.truss/delivery/approvals/<run-key>.md` instead of through a baseline commit.
 
 Proposals here remain drafts until a human approves them; this template does not
 grant authority and does not replace the repository decision record.

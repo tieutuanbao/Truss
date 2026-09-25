@@ -62,8 +62,8 @@ Read applicable instructions and the smallest repository map available. Record
 pre-existing dirt before doing anything else. If instructions conflict, follow
 the narrower instruction and report the conflict.
 
-When `.truss-core/manifest.json` exists and an installed managed file
-conflicts with `.truss-core/base/<path>`, treat the installed file as active
+When `.truss/core/manifest.json` exists and an installed managed file
+conflicts with `.truss/core/base/<path>`, treat the installed file as active
 instructions for the current run. For a correction proposal, verify the base
 file against its manifest checksum and show the conflict. Propose replacing
 only content inside managed markers and preserve all consumer-owned content
@@ -329,7 +329,7 @@ a patch preview; keep it in the gap report until authority or a user decision
 exists.
 
 When no maintained operational guide exists, use
-`.truss-core/docs/templates/application-runbook.md` only to structure a proposed
+`.truss/core/docs/templates/application-runbook.md` only to structure a proposed
 consumer-owned guide. The template supplies headings, not commands or authority:
 omit unsupported instructions from the patch and retain them as unknowns.
 

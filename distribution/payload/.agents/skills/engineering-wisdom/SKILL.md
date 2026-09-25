@@ -10,7 +10,7 @@ Repository intent, code, tests, and observed behavior remain authoritative.
 
 ## Establish Scope
 
-1. Read `AGENTS.md`, `.truss-core/docs/WORKFLOW.md`, and only the repository material
+1. Read `AGENTS.md`, `.truss/core/docs/WORKFLOW.md`, and only the repository material
    relevant to the request.
 2. Confirm that the user explicitly invoked this skill. Installation alone is
    not activation.

@@ -81,7 +81,7 @@ Minimal input shape:
       "classification": "Authoritative",
       "sources": [
         {
-          "path": ".truss-core/docs/source.md",
+          "path": ".truss/core/docs/source.md",
           "start_line": 10,
           "end_line": 12,
           "role": "authority"

@@ -130,13 +130,13 @@ For an approved consumer-local run (decision `0006`), the code baseline is the
 exact pre-implementation commit, and business analysis, the approved decision
 record, the approved execution envelope, and the transient plan are private
 artifacts that must not be staged: they live under
-`.truss/delivery-runs/<run-key>/`, with the approved envelope as an immutable
+`.truss/delivery/runs/<run-key>/`, with the approved envelope as an immutable
 `approved-envelope.md` snapshot separate from mutable `plan.md` progress.
 Mutable progress never changes the approved digest, and a change to scope or
 envelope produces a new snapshot, a new receipt, and a new approval. Gate 1
 approval binds the candidate root, the baseline commit, the snapshot path, and
 its SHA-256, recorded in the local-only receipt
-`.truss/authority/approvals/<run-key>.md`, which carries the run-key, the
+`.truss/delivery/approvals/<run-key>.md`, which carries the run-key, the
 candidate root, the baseline commit, the approved-envelope path and its
 SHA-256, the owner's approval note, and the approval date. The receipt is never
 committed, and a one-line echo of the digest goes to the Orca run record as a
@@ -148,17 +148,17 @@ mismatched, or unapproved snapshot or receipt blocks acceptance. Delivery never
 deletes these artifacts on its own.
 
 Before dispatching any work in a consumer-local run, Control verifies that the
-candidate excludes `.truss/`, `.truss-core/`, the installed skill directories,
+candidate excludes `.truss/`, `.truss/core/`, the installed skill directories,
 and the entrypoint files through `.git/info/exclude`, and records that check in
 the envelope prerequisites. A local-only candidate that cannot establish those
 rules stops instead of mutating the candidate.
 
 The transient delivery plan is a per-run control artifact, not a durable
-repository record. It does not live in `.truss-core/docs/plans/active/`. When the work
+repository record. It does not live in `.truss/core/docs/plans/active/`. When the work
 also needs memory that outlives the run — multi-session recovery, decisions
 future work must inherit — that memory belongs in the durable decision record
 and, for cross-session working memory, one execution plan under
-`.truss-core/docs/plans/active/` owned by the repository workflow. Never keep the same
+`.truss/core/docs/plans/active/` owned by the repository workflow. Never keep the same
 progress in both places: the transient plan holds per-run task state, the
 durable record holds what survives the run.
 
@@ -351,7 +351,7 @@ second permission surface some trusses still prompt for even when tool
 approval is skipped. Do not stage that file. In a repository-hosted run, delete
 it after the worker returns: Control owns that dispatch artifact, not `git
 clean`. In a consumer-local run the dispatch prompt and the handoff report live
-under `.truss/delivery-runs/<run-key>/` beside the approved envelope and the
+under `.truss/delivery/runs/<run-key>/` beside the approved envelope and the
 plan, and Control retains them until the owner deletes them explicitly: delivery
 deletes no run artifact on its own. The handoff is likewise a file in the
 worktree; its path travels as `payload.reportPath` and the message body stays

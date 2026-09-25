@@ -566,7 +566,7 @@ def self_test() -> None:
         ],
         "claims": [
             {"id": "C1", "hunk_id": "H1", "text": "New guidance.", "classification": "Authoritative", "sources": [
-                {"revision": revision, "path": ".truss-core/docs/WORKFLOW.md", "start_line": 1, "end_line": 1, "content_sha256": zeros, "role": "authority"}
+                {"revision": revision, "path": ".truss/core/docs/WORKFLOW.md", "start_line": 1, "end_line": 1, "content_sha256": zeros, "role": "authority"}
             ]}
         ],
         "hunks": [
@@ -612,20 +612,20 @@ def self_test() -> None:
 
     v2_original = b"one\ntwo\nthree\n"
     v2_patch = (
-        "diff --git a/.truss-core/docs/test.md b/.truss-core/docs/test.md\n"
+        "diff --git a/.truss/core/docs/test.md b/.truss/core/docs/test.md\n"
         "index 0000000..1111111 100644\n"
-        "--- a/.truss-core/docs/test.md\n"
-        "+++ b/.truss-core/docs/test.md\n"
+        "--- a/.truss/core/docs/test.md\n"
+        "+++ b/.truss/core/docs/test.md\n"
         "@@ -1,3 +1,3 @@\n"
         " one\n"
         "-two\n"
         "+changed\n"
         " three\n"
     )
-    v2_after = apply_unified_diff(v2_original, v2_patch, ".truss-core/docs/test.md", "self-test-v2")
+    v2_after = apply_unified_diff(v2_original, v2_patch, ".truss/core/docs/test.md", "self-test-v2")
     require(v2_after == b"one\nchanged\nthree\n", "v2 in-memory patch application failed")
     try:
-        apply_unified_diff(v2_original.replace(b"two", b"different"), v2_patch, ".truss-core/docs/test.md", "self-test-v2")
+        apply_unified_diff(v2_original.replace(b"two", b"different"), v2_patch, ".truss/core/docs/test.md", "self-test-v2")
     except CapsuleError:
         pass
     else:

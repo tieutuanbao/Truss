@@ -412,7 +412,7 @@ project/
     ├── delivery/             # local-only: per-run working memory
     │   ├── runs/<run-key>/
     │   └── approvals/<run-key>.md
-    └── authority/            # this project's own authority (tracked in git)
+    └── authority/            # this project's own authority (local-only)
         ├── architecture/
         └── decisions/
 ```
@@ -429,10 +429,10 @@ the other two. `delivery/` holds one delivery run's working memory — its plan,
 its approved envelope, its dispatch artifacts, and its approval receipt — and is
 written by the delivery skill, never committed. `authority/` holds that
 project's own durable authority — architecture notes, decision records, plans,
-and product documents — tracked in that project's git. A consumer
-that keeps Truss in version control commits `.truss/core/` and ignores
-`.truss/delivery/`; a consumer running Truss local-only
-ignores `.truss/` with a single rule.
+and product documents — and is never committed either. A consumer that keeps
+Truss in version control commits `.truss/core/` and ignores `.truss/delivery/`
+and `.truss/authority/`; a consumer running Truss local-only ignores `.truss/`
+with a single rule.
 
 Optional profiles add their own skills under `.agents/skills/`. Exact payloads
 are declared by the manifests in [`scripts/`](#scripts-reference).

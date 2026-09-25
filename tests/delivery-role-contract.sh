@@ -114,6 +114,14 @@ PATH = {
     "manifest": os.environ.get("CONTRACT_MANIFEST",
                                os.path.join(ROOT, "scripts/delivery-install-files.txt")),
     "authority": os.path.join(ROOT, ".truss-core/docs/decisions/0004-seven-role-delivery.md"),
+    "workflow": os.environ.get(
+        "CONTRACT_WORKFLOW", os.path.join(ROOT, ".truss-core/docs/WORKFLOW.md")),
+    "plans_readme": os.environ.get(
+        "CONTRACT_PLANS_README",
+        os.path.join(ROOT, ".truss-core/docs/plans/README.md")),
+    "assets_plans_readme": os.environ.get(
+        "CONTRACT_ASSETS_PLANS_README",
+        os.path.join(ROOT, "crates/truss/assets/.truss-core/docs/plans/README.md")),
 }
 
 PROBLEMS = []
@@ -340,6 +348,42 @@ def check_migration():
              "delivery-setup migration does not introduce the project-manager row with `current` cells")
 
 
+PRIVATE_RUN_DIR = ".truss/delivery-runs/<run-key>/"
+APPROVAL_RECEIPT = ".truss/authority/approvals/<run-key>.md"
+SNAPSHOT_FILE = "approved-envelope.md"
+
+# Decision 0006 terms the delivery skill must carry for a consumer-local run.
+R8_REQUIRED = [
+    PRIVATE_RUN_DIR,
+    APPROVAL_RECEIPT,
+    SNAPSHOT_FILE,
+    "consumer-local",
+    "must not be staged",
+    "blocks acceptance",
+    "info/exclude",
+]
+
+# The unconditional commitment of the transient plan, superseded for a
+# consumer-local run by decision 0006.
+R9_FORBIDDEN = "Commit them before\nimplementation begins"
+
+
+def check_envelope():
+    skill = read("delivery")
+    if skill is None:
+        return
+    for token in R8_REQUIRED:
+        if token not in skill:
+            fail("delivery-role-contract R8",
+                 "delivery SKILL.md does not name %r; decision 0006 requires the run "
+                 "path, the approval receipt, the immutable snapshot, the exclude "
+                 "prerequisite, and the fail-closed acceptance rule" % token)
+    if R9_FORBIDDEN in skill:
+        fail("delivery-role-contract R9",
+             "delivery SKILL.md still commits the transient plan unconditionally; "
+             "decision 0006 makes that conditional on a consumer-local run")
+
+
 def main():
     command = sys.argv[1] if len(sys.argv) > 1 else "all"
     if command in ("roles", "all"):
@@ -350,6 +394,8 @@ def main():
         check_manifest()
     if command in ("migration", "all"):
         check_migration()
+    if command in ("envelope", "all"):
+        check_envelope()
     if PROBLEMS:
         return 1
     return 0
@@ -420,6 +466,27 @@ open(sys.argv[2], "w", encoding="utf-8").write(
 PY
 neg "a migration row that maps a retired role to a retired role is rejected" "R6" \
   env CONTRACT_SETUP_SKILL="$WORK/ng5-setup.md" python3 "$CONTRACT" migration
+
+python3 - "$REPO/.agents/skills/delivery/SKILL.md" "$WORK/ng6-skill.md" <<'PY'
+import sys
+text = open(sys.argv[1], encoding="utf-8").read()
+open(sys.argv[2], "w", encoding="utf-8").write(
+    text.replace(".truss/authority/approvals/<run-key>.md", "the approval receipt", 1))
+PY
+neg "a skill that drops the approval receipt path is rejected" "R8" \
+  env CONTRACT_DELIVERY_SKILL="$WORK/ng6-skill.md" python3 "$CONTRACT" envelope
+
+python3 - "$REPO/.agents/skills/delivery/SKILL.md" "$WORK/ng7-skill.md" <<'PY'
+import sys
+text = open(sys.argv[1], encoding="utf-8").read()
+open(sys.argv[2], "w", encoding="utf-8").write(
+    text + "\nCommit them before\nimplementation begins — that commit is the acceptance baseline.\n")
+PY
+neg "a skill that commits the transient plan unconditionally is rejected" "R9" \
+  env CONTRACT_DELIVERY_SKILL="$WORK/ng7-skill.md" python3 "$CONTRACT" envelope
+
+pos "the repository delivery skill carries the consumer-local envelope contract" \
+  python3 "$CONTRACT" envelope
 echo
 
 echo "== delivery-role-contract summary: $OK ok, $BAD failed =="

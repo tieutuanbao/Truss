@@ -122,8 +122,30 @@ separate role. A design audit, when one is needed, is a fresh non-author
 Architectural work uses `templates/decision-record.md` (durable, with the
 requirements-traceability mapping), `templates/business-analysis.md` (durable
 product analysis), and `templates/plan.md` (transient, deleted in the release
-commit, before the release-binding integration acceptance). Commit them before
-implementation begins — that commit is the acceptance baseline.
+commit, before the release-binding integration acceptance). For a
+repository-hosted run, commit them before implementation begins — that commit is
+the acceptance baseline.
+
+For an approved consumer-local run (decision `0006`), the code baseline is the
+exact pre-implementation commit, and business analysis, the approved decision
+record, the approved execution envelope, and the transient plan are private
+artifacts that must not be staged: they live under
+`.truss/delivery-runs/<run-key>/`, with the approved envelope as an immutable
+`approved-envelope.md` snapshot separate from mutable `plan.md` progress. Gate 1
+approval binds the candidate root, the baseline commit, the snapshot path, and
+its SHA-256, recorded in the local-only receipt
+`.truss/authority/approvals/<run-key>.md`. An independent accepting session
+obtains the snapshot and the receipt through an authorized private handoff,
+recomputes the digest, and binds its verdict to the final candidate HEAD and the
+approved envelope identity; a missing, unreadable, mismatched, or unapproved
+snapshot or receipt blocks acceptance. Delivery never deletes these artifacts on
+its own.
+
+Before dispatching any work in a consumer-local run, Control verifies that the
+candidate excludes `.truss/`, `.truss-core/`, the installed skill directories,
+and the entrypoint files through `.git/info/exclude`, and records that check in
+the envelope prerequisites. A local-only candidate that cannot establish those
+rules stops instead of mutating the candidate.
 
 The transient delivery plan is a per-run control artifact, not a durable
 repository record. It does not live in `.truss-core/docs/plans/active/`. When the work
@@ -221,8 +243,9 @@ Shape changes representation and acceptance depth, not safeguards:
   transient plan or separate task acceptance; one whole-change independent
   acceptance.
 - Architectural: committed business analysis, decision record, and transient
-  plan carrying the envelope; task acceptance per task, then integration
-  acceptance.
+  plan carrying the envelope, or — for an approved consumer-local run — the same
+  envelope as private artifacts bound by an approval receipt; task acceptance
+  per task, then integration acceptance.
 
 The repository workflow's durable-memory requirement still applies when
 work spans sessions or needs recovery; neither shape duplicates progress.
@@ -581,7 +604,9 @@ no LLM worker and makes no post-acceptance candidate edit.
 
 1. Complete implementation and, for Architectural work, its task acceptance.
 2. Reconcile owning documentation, move anything durable out of the transient
-   plan, and commit the complete candidate.
+   plan, and commit the complete candidate. For a consumer-local run, nothing
+   private is committed and no run artifact is deleted here: the transient plan
+   stays on disk, because delivery does not delete run artifacts on its own.
 3. Run the focused instruments and project closure gates on exact HEAD.
 4. If the envelope authorises publishing: push the feature branch and create
    or update a draft pull request, and run the applicable integration

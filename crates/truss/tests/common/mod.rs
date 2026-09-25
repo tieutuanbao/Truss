@@ -70,9 +70,9 @@ pub fn seed_core_state(workspace: &Path) {
 }
 
 /// A complete workspace snapshot: every path with its type and, for a file,
-/// its content digest; for a symlink, its target. Path set, type, and content
-/// are compared, so a mutation-free operation must leave this string
-/// byte-identical.
+/// its size and content digest; for a symlink, its target. Path set, type,
+/// size, and content are compared, so a mutation-free operation must leave
+/// this string byte-identical.
 pub fn workspace_snapshot(root: &Path) -> String {
     let mut lines = Vec::new();
     walk_snapshot(root, root, &mut lines);
@@ -102,7 +102,11 @@ fn walk_snapshot(root: &Path, directory: &Path, lines: &mut Vec<String>) {
             walk_snapshot(root, &path, lines);
         } else if metadata.is_file() {
             let bytes = fs::read(&path).unwrap();
-            lines.push(format!("file {relative} {:x}", Sha256::digest(&bytes)));
+            lines.push(format!(
+                "file {relative} {} {:x}",
+                metadata.len(),
+                Sha256::digest(&bytes)
+            ));
         } else {
             lines.push(format!("other {relative}"));
         }

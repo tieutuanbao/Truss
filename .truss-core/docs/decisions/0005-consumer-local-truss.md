@@ -4,7 +4,7 @@ Date: 2026-09-25
 
 ## Status
 
-Accepted
+Accepted (item 5 amended, see Amendment)
 
 ## Context
 
@@ -143,3 +143,39 @@ Tradeoffs:
   (`.gitignore:26`), yet decisions 0001-0004 are tracked, because ignore rules
   do not affect tracked files. Whether this record is force-added or stays
   local-only is an owner decision.
+
+## Amendment
+
+Date: 2026-09-25. Amended by 0007 (source and installed separation).
+
+Item 5 is too broad. It treats every file in a source checkout as a source
+artifact, but a source checkout also contains installed outputs, and those may
+be local-only. Replacement boundary:
+
+> Distribution sources and product authority remain tracked. Installed outputs
+> in a source checkout may be local-only after all distribution and build
+> dependencies have been moved to tracked canonical sources. Source migration is
+> explicit; history is not rewritten.
+
+Retained from item 5: the bytes installed for another user must belong to the
+recorded `source_ref`, and the source-payload contract in
+`.truss-core/docs/product/installation-profiles.md` still applies to
+distribution sources. Dropped: the blanket exemption of a source checkout from
+local-only treatment of its installed outputs.
+
+Owner decisions recorded after this record was accepted, carried into 0007:
+
+- Distribution payload source moves to a tracked `distribution/` tree; product
+  authority becomes local-only under `.truss/authority/`.
+- Delivery run artifacts live under `.truss/delivery-runs/`, replacing the
+  `.truss-delivery/runs/<run-key>/plan.md` path used in item 4.
+- The tracked authority documents that exist today (`ARCHITECTURE.md`,
+  `TRUSS.md`, `product/installation-profiles.md`, `decisions/0001-0005`) are
+  untracked with `git rm --cached` plus an exclude rule. Earlier commits retain
+  their content; history is not rewritten.
+- A fresh clone carries no agent entrypoint and no installed skill until the
+  installer runs; `README.md` is the only tracked entrypoint until then.
+- A single payload layout is supported: the post-refactor layout. Installing
+  from a pre-refactor tag through the raw base URL is unsupported and must fail
+  explicitly; `--source-git <old tag>` remains valid because that ref carries
+  its own bootstrap.

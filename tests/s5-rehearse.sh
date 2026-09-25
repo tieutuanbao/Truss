@@ -566,10 +566,30 @@ st=$?
 check "old installer --force clobbers the consumer edit" \
   "$([ "$st" = 0 ] && [ "$(file_hash "$EV/w2c-force/$PAYLOAD_PROBE")" != "$CONSUMER_C" ]; echo $?)"
 # The consumer's bytes must still exist, and exist as bytes rather than as a file
-# whose name merely matches: the old installer backs a forced overwrite up under
+# whose name merely matches. The old installer backs a forced overwrite up under
 # `.truss-backup/<timestamp>/<relative path>`, one timestamped directory per run,
-# so exactly one backup copy of the probed path must hash to the consumer's edit.
-BACKUP_PROBE_COPIES="$(find "$EV/w2c-force/.truss-backup" -type f -name 'trusses.md' 2>/dev/null || true)"
+# and the relative path is the destination string (copy_file in
+# d9357b9:scripts/install-truss.sh:147, BACKUP_DIR at :867), so the only entry that
+# counts is `.truss-backup/<timestamp>/$PAYLOAD_PROBE` with exactly one directory
+# segment in place of `<timestamp>`. Selecting by basename would accept an
+# unrelated entry that happens to share the basename (the CLI's own backup tree
+# under `.truss-backup/<session-id>/state/base/...` carries the same basename), so
+# the selector matches that shape, and the middle segment is asserted to be a
+# single non-empty segment.
+BACKUP_ROOT="$EV/w2c-force/.truss-backup"
+BACKUP_PROBE_COPIES=""
+while IFS= read -r candidate; do
+  [ -n "$candidate" ] || continue
+  middle="${candidate#"$BACKUP_ROOT"/}"
+  middle="${middle%"/$PAYLOAD_PROBE"}"
+  case "$middle" in
+    ""|*/*) continue ;;
+  esac
+  BACKUP_PROBE_COPIES="${BACKUP_PROBE_COPIES}${BACKUP_PROBE_COPIES:+
+}${candidate}"
+done <<EOF
+$(find "$BACKUP_ROOT" -mindepth 2 -type f -path "$BACKUP_ROOT/*/$PAYLOAD_PROBE" 2>/dev/null || true)
+EOF
 BACKUP_PROBE_TOTAL="$(printf '%s\n' "$BACKUP_PROBE_COPIES" | grep -c . || true)"
 BACKUP_PROBE_MATCHING=0
 while IFS= read -r candidate; do

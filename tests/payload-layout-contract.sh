@@ -20,12 +20,9 @@
 #   L5  the payload mirror's bytes are the recorded bytes: every payload file's
 #       sha256 equals its entry in tests/payload-layout-digests.txt, and the
 #       mirror's file set equals the manifest destination set minus the generated
-#       one. Both entrypoint copies must exist. Of the two, only
-#       claude-truss-block.md is still byte-identical to its scripts/
-#       counterpart and is compared as such; agent-truss-block.md is compared
-#       after un-applying the decision-0008 rename, because scripts/
-#       agent-truss-block.md remains a live legacy-pathed input the shell route
-#       still ships and this plan does not rename it.
+#       one. Both entrypoint copies must exist and each must be byte-identical
+#       to its scripts/ counterpart, which holds a straight copy for the shell
+#       route until the duplicate-removal plan retires it.
 #   L6  the generated declaration agrees with the literals the CLI composes
 #       AGENTS.md from.
 #   L7  the payload mirror carries no .truss-core directory; the installed
@@ -458,15 +455,12 @@ def check_entrypoints_present():
 def check_entrypoint_counterparts():
     """Each entrypoint copy still corresponds to the scripts/ file it replaces.
 
-    The two files differ by design, so each gets the relation it actually has:
-
-    - claude-truss-block.md carries no installed path at all, so it must be
-      byte-identical to scripts/claude-truss-block.md.
-    - agent-truss-block.md is the renamed canonical text, while
-      scripts/agent-truss-block.md stays legacy-pathed because the shell route
-      still reads it (scripts/install-truss.sh:182). It must therefore equal its
-      scripts/ counterpart once the decision-0008 rename is un-applied: no other
-      divergence is permitted, so an unrelated edit to either file is rejected.
+    Both blocks now carry the canonical new-root paths, and scripts/ holds a
+    straight copy of each block for the shell route
+    (scripts/install-truss.sh:182), so each pair must be byte-identical: any
+    divergence between the two copies of one block is rejected. The
+    duplicate-removal plan retires the scripts/ copies and points the shell
+    route at distribution/entrypoints.
     """
     for name in ENTRYPOINT_BLOCKS:
         moved = os.path.join(ENTRY, name)
@@ -475,20 +469,11 @@ def check_entrypoint_counterparts():
             continue
         moved_bytes = read_bytes(moved)
         counterpart_bytes = read_bytes(counterpart)
-        if name == "claude-truss-block.md":
-            if moved_bytes != counterpart_bytes:
-                fail("payload-layout-contract L5",
-                     "distribution/entrypoints/%s differs from scripts/%s; the Claude "
-                     "shim block carries no installed path, so the two must be "
-                     "byte-identical" % (name, name))
-            continue
-        unrenamed = moved_bytes.replace(NEW_PREFIX.encode(), LEGACY_PREFIX.encode())
-        if unrenamed != counterpart_bytes:
+        if moved_bytes != counterpart_bytes:
             fail("payload-layout-contract L5",
-                 "distribution/entrypoints/%s differs from scripts/%s beyond the "
-                 "decision-0008 rename; scripts/ still supplies this block to the "
-                 "shell route, so the only permitted difference is %s becoming %s"
-                 % (name, name, LEGACY_PREFIX, NEW_PREFIX.rstrip("/")))
+                 "distribution/entrypoints/%s differs from scripts/%s; both copies of "
+                 "one block must be byte-identical while the duplicate window lasts"
+                 % (name, name))
 
 
 def check_legacy_directory():

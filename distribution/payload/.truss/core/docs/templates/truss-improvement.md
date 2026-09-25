@@ -51,4 +51,4 @@ pending or did not exercise the intervention.
 ## Result
 
 Record the bounded conclusion, limitations, follow-up, and retained or removed
-artifacts before moving the file to `.truss/core/docs/plans/completed/`.
+artifacts before moving the file to `.truss/authority/plans/completed/`.

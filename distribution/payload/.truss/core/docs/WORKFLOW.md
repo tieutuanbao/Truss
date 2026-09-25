@@ -31,9 +31,9 @@ recorded with its date and source.
 ## Repository Map
 
 - `AGENTS.md`: entry map and authority boundary.
-- `README.md`, `.truss/core/docs/product/`, architecture, and decisions: current intent and
+- `README.md`, `.truss/authority/product/`, architecture, and decisions: current intent and
   constraints.
-- `.truss/core/docs/plans/`: durable work; `.truss/core/docs/templates/`: optional structures.
+- `.truss/authority/plans/`: durable work; `.truss/core/docs/templates/`: optional structures.
 - Code, tests, CI, and runtime signals: executable and observable truth.
 
 Use `.truss/core/docs/README.md` for the complete map.
@@ -43,7 +43,7 @@ Use `.truss/core/docs/README.md` for the complete map.
 ### Does The Work Need Durable Memory?
 
 Use an ephemeral plan for bounded work. Create one plan in
-`.truss/core/docs/plans/active/` when work spans sessions, coordinates contributors, has
+`.truss/authority/plans/active/` when work spans sessions, coordinates contributors, has
 meaningful dependencies, needs recovery, or cannot safely resume from its diff.
 
 Use `.truss/core/docs/templates/exec-plan.md`. Keep progress and task-local decisions in the
@@ -139,7 +139,7 @@ No parallel lifecycle record is required.
 Create or resume one active plan. Keep outcome, context, approach, risk,
 recovery, progress, decisions, and validation current. Implement in verifiable
 groups, promote lasting decisions, run focused and repository proof, then record
-the result and move the plan to `.truss/core/docs/plans/completed/`.
+the result and move the plan to `.truss/authority/plans/completed/`.
 
 ### Delivered Change
 
@@ -155,7 +155,7 @@ delivered change still obeys this workflow: authority gates, durable plans
 when the work needs them, and revision-bound proof. Delivery's own transient
 plan is a per-run control artifact; anything that must outlive the run moves
 into the durable decision record or an execution plan under
-`.truss/core/docs/plans/active/`.
+`.truss/authority/plans/active/`.
 
 For an approved consumer-local run, the delivery control artifacts are private
 and are never committed: the approved envelope and the transient plan live under

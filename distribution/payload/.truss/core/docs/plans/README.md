@@ -28,14 +28,14 @@ For an explicitly authorized baseline-to-rerun Truss experiment, use
 ## Lifecycle
 
 ```text
-.truss/core/docs/plans/active/<slug>.md
+.truss/authority/plans/active/<slug>.md
   -> update progress and decisions during implementation
   -> record final validation and result
-  -> move to .truss/core/docs/plans/completed/<slug>.md
+  -> move to .truss/authority/plans/completed/<slug>.md
 ```
 
 The plan is the primary task artifact. Promote a lasting product or architecture
-decision into `.truss/core/docs/decisions/`; keep task-local choices in the plan.
+decision into `.truss/authority/decisions/`; keep task-local choices in the plan.
 
 ## Active Plans
 

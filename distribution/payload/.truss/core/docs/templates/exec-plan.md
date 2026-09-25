@@ -42,7 +42,7 @@ changes the approach.
 
 - YYYY-MM-DD: Task-local decision and reason.
 
-Promote lasting product or architecture decisions into `.truss/core/docs/decisions/`.
+Promote lasting product or architecture decisions into `.truss/authority/decisions/`.
 
 ## Validation
 
@@ -53,4 +53,4 @@ Promote lasting product or architecture decisions into `.truss/core/docs/decisio
 ## Result
 
 Complete after implementation. Record the verified outcome, limitations, and
-follow-up before moving the plan to `.truss/core/docs/plans/completed/`.
+follow-up before moving the plan to `.truss/authority/plans/completed/`.

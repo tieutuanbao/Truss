@@ -18,7 +18,7 @@ only `core/`, which holds the installed payload plus the installation state
 `base-addons/`, and the update namespaces). `delivery/` holds one delivery run's
 working memory — its plan, its approved envelope, its dispatch artifacts, and its
 approval receipt — and is written by the delivery skill, never committed, and
-never touched by the CLI. `authority/` holds durable product authority such as
+never touched by the CLI. `authority/` holds that project's own durable authority such as
 architecture notes and decision records. A repository holding a legacy
 `.truss-core/` installation is read at that root; a repository holding both roots
 is refused rather than resolved by precedence.

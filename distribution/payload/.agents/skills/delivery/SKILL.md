@@ -154,11 +154,11 @@ the envelope prerequisites. A local-only candidate that cannot establish those
 rules stops instead of mutating the candidate.
 
 The transient delivery plan is a per-run control artifact, not a durable
-repository record. It does not live in `.truss/core/docs/plans/active/`. When the work
+repository record. It does not live in `.truss/authority/plans/active/`. When the work
 also needs memory that outlives the run — multi-session recovery, decisions
 future work must inherit — that memory belongs in the durable decision record
 and, for cross-session working memory, one execution plan under
-`.truss/core/docs/plans/active/` owned by the repository workflow. Never keep the same
+`.truss/authority/plans/active/` owned by the repository workflow. Never keep the same
 progress in both places: the transient plan holds per-run task state, the
 durable record holds what survives the run.
 

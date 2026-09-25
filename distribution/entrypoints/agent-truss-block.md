@@ -9,9 +9,9 @@ validation material.
   read-only. Inspect only what is needed; change nothing.
 - For a bounded change, inspect affected behavior and proof, implement, and
   validate. No control-plane operation is required.
-- Use one `.truss/core/docs/plans/active/` file when work spans sessions, coordinates
+- Use one `.truss/authority/plans/active/` file when work spans sessions, coordinates
   contributors, has dependencies, or needs recovery. Move it to
-  `.truss/core/docs/plans/completed/` only after validation.
+  `.truss/authority/plans/completed/` only after validation.
 - Before editing, identify repository authority for each new externally
   observable policy. If materially different choices remain open, stop before
   edits; configurable defaults are not authority.

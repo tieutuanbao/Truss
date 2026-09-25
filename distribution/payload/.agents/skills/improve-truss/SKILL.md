@@ -35,7 +35,7 @@ Do not diagnose a worker limitation from one run. If no observed baseline
 exists, stop with an experiment proposal; do not manufacture one.
 
 Copy `.truss/core/docs/templates/truss-improvement.md` to
-`.truss/core/docs/plans/active/truss-improvement-<slug>.md`. Reuse an existing active
+`.truss/authority/plans/active/truss-improvement-<slug>.md`. Reuse an existing active
 record for the same experiment.
 
 ## 2. Locate The Earliest Gap
@@ -96,7 +96,7 @@ authority behavior, and maintenance cost.
   the job.
 
 Record the decision, evidence, owner, and removal condition. Move the record to
-`.truss/core/docs/plans/completed/` only after native validation and the fresh-rerun
+`.truss/authority/plans/completed/` only after native validation and the fresh-rerun
 decision. Preserve a removed intervention's result in the completed record.
 
 ## Report

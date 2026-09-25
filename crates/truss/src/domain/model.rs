@@ -356,10 +356,10 @@ mod tests {
             assert!(RelativePath::parse(invalid).is_err(), "accepted {invalid}");
         }
         assert_eq!(
-            RelativePath::parse(".truss-core/docs/WORKFLOW.md")
+            RelativePath::parse(".truss/core/docs/WORKFLOW.md")
                 .unwrap()
                 .as_str(),
-            ".truss-core/docs/WORKFLOW.md"
+            ".truss/core/docs/WORKFLOW.md"
         );
     }
 

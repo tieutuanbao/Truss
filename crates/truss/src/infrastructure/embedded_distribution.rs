@@ -99,79 +99,79 @@ impl CoreDistributionPort for EmbeddedCoreDistribution {
         )?;
         add(
             &mut files,
-            ".truss-core/docs/WORKFLOW.md",
-            include_bytes!("../../../../distribution/payload/.truss-core/docs/WORKFLOW.md"),
+            ".truss/core/docs/WORKFLOW.md",
+            include_bytes!("../../../../distribution/payload/.truss/core/docs/WORKFLOW.md"),
         )?;
         add(
             &mut files,
-            ".truss-core/docs/communication.md",
-            include_bytes!("../../../../distribution/payload/.truss-core/docs/communication.md"),
+            ".truss/core/docs/communication.md",
+            include_bytes!("../../../../distribution/payload/.truss/core/docs/communication.md"),
         )?;
         add(
             &mut files,
-            ".truss-core/docs/README.md",
-            include_bytes!("../../../../distribution/payload/.truss-core/docs/README.md"),
+            ".truss/core/docs/README.md",
+            include_bytes!("../../../../distribution/payload/.truss/core/docs/README.md"),
         )?;
         add(
             &mut files,
-            ".truss-core/docs/patterns/encoding-invariants.md",
+            ".truss/core/docs/patterns/encoding-invariants.md",
             include_bytes!(
-                "../../../../distribution/payload/.truss-core/docs/patterns/encoding-invariants.md"
+                "../../../../distribution/payload/.truss/core/docs/patterns/encoding-invariants.md"
             ),
         )?;
         add(
             &mut files,
-            ".truss-core/docs/product/README.md",
-            include_bytes!("../../../../distribution/payload/.truss-core/docs/product/README.md"),
+            ".truss/core/docs/product/README.md",
+            include_bytes!("../../../../distribution/payload/.truss/core/docs/product/README.md"),
         )?;
         add(
             &mut files,
-            ".truss-core/docs/plans/README.md",
-            include_bytes!("../../../../distribution/payload/.truss-core/docs/plans/README.md"),
+            ".truss/core/docs/plans/README.md",
+            include_bytes!("../../../../distribution/payload/.truss/core/docs/plans/README.md"),
         )?;
         add(
             &mut files,
-            ".truss-core/docs/plans/active/README.md",
+            ".truss/core/docs/plans/active/README.md",
             include_bytes!(
-                "../../../../distribution/payload/.truss-core/docs/plans/active/README.md"
+                "../../../../distribution/payload/.truss/core/docs/plans/active/README.md"
             ),
         )?;
         add(
             &mut files,
-            ".truss-core/docs/plans/completed/README.md",
+            ".truss/core/docs/plans/completed/README.md",
             include_bytes!(
-                "../../../../distribution/payload/.truss-core/docs/plans/completed/README.md"
+                "../../../../distribution/payload/.truss/core/docs/plans/completed/README.md"
             ),
         )?;
         add(
             &mut files,
-            ".truss-core/docs/decisions/README.md",
-            include_bytes!("../../../../distribution/payload/.truss-core/docs/decisions/README.md"),
+            ".truss/core/docs/decisions/README.md",
+            include_bytes!("../../../../distribution/payload/.truss/core/docs/decisions/README.md"),
         )?;
         add(
             &mut files,
-            ".truss-core/docs/templates/application-runbook.md",
-            include_bytes!("../../../../distribution/payload/.truss-core/docs/templates/application-runbook.md"),
+            ".truss/core/docs/templates/application-runbook.md",
+            include_bytes!("../../../../distribution/payload/.truss/core/docs/templates/application-runbook.md"),
         )?;
         add(
             &mut files,
-            ".truss-core/docs/templates/decision.md",
+            ".truss/core/docs/templates/decision.md",
             include_bytes!(
-                "../../../../distribution/payload/.truss-core/docs/templates/decision.md"
+                "../../../../distribution/payload/.truss/core/docs/templates/decision.md"
             ),
         )?;
         add(
             &mut files,
-            ".truss-core/docs/templates/exec-plan.md",
+            ".truss/core/docs/templates/exec-plan.md",
             include_bytes!(
-                "../../../../distribution/payload/.truss-core/docs/templates/exec-plan.md"
+                "../../../../distribution/payload/.truss/core/docs/templates/exec-plan.md"
             ),
         )?;
         add(
             &mut files,
-            ".truss-core/docs/templates/truss-improvement.md",
+            ".truss/core/docs/templates/truss-improvement.md",
             include_bytes!(
-                "../../../../distribution/payload/.truss-core/docs/templates/truss-improvement.md"
+                "../../../../distribution/payload/.truss/core/docs/templates/truss-improvement.md"
             ),
         )?;
         Ok(CoreDistribution {
@@ -303,7 +303,7 @@ mod tests {
         let plans = distribution
             .files
             .iter()
-            .find(|file| file.path.as_str() == ".truss-core/docs/plans/README.md")
+            .find(|file| file.path.as_str() == ".truss/core/docs/plans/README.md")
             .unwrap();
         assert!(!String::from_utf8_lossy(&plans.content).contains("rust-truss-core"));
         for skill in [

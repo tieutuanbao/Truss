@@ -30,7 +30,7 @@ fn cli_installs_reports_and_diagnoses_a_fresh_core() {
         "{}",
         String::from_utf8_lossy(&dry.stderr)
     );
-    assert!(!root.path().join(".truss-core").exists());
+    assert!(!root.path().join(".truss/core").exists());
 
     let install = Command::new(binary)
         .args(["install", "--directory"])
@@ -47,8 +47,8 @@ fn cli_installs_reports_and_diagnoses_a_fresh_core() {
     assert_eq!(output["operation"], "install");
     assert_eq!(output["applied"], true);
     assert!(root.path().join("AGENTS.md").is_file());
-    assert!(root.path().join(".truss-core/manifest.json").is_file());
-    assert!(root.path().join(".truss-core/base/AGENTS.md").is_file());
+    assert!(root.path().join(".truss/core/manifest.json").is_file());
+    assert!(root.path().join(".truss/core/base/AGENTS.md").is_file());
     assert!(!root.path().join("truss.db").exists());
 
     let status = Command::new(binary)
@@ -129,7 +129,7 @@ const CORE_SESSION: &[u8] = b"{\"schema_version\":1}\n";
 fn managed_snapshot(workspace: &Path) -> String {
     common::workspace_snapshot(workspace)
         .lines()
-        .filter(|line| !line.contains(".truss-core/addon-update"))
+        .filter(|line| !line.contains(".truss/core/addon-update"))
         .collect::<Vec<_>>()
         .join("\n")
 }
@@ -314,8 +314,8 @@ fn cli_addon_cycle_installs_reports_updates_resolves_and_aborts() {
     fixture.core_state(&mut transcript);
 
     // A core conflict session is seeded so the add-on abort can be shown to
-    // leave `.truss-core/update/` byte-identical.
-    let core_session = fixture.workspace.join(".truss-core/update/session.json");
+    // leave `.truss/core/update/` byte-identical.
+    let core_session = fixture.workspace.join(".truss/core/update/session.json");
     fs::create_dir_all(core_session.parent().unwrap()).unwrap();
     fs::write(&core_session, CORE_SESSION).unwrap();
 
@@ -434,7 +434,7 @@ fn cli_addon_cycle_installs_reports_updates_resolves_and_aborts() {
 
     // 6. Seed a conflict: a consumer edit plus a disjoint upstream change.
     fs::write(fixture.workspace.join(ADDON_SKILL), b"local edit\n").unwrap();
-    let addons_before = fs::read(fixture.workspace.join(".truss-core/addons.json")).unwrap();
+    let addons_before = fs::read(fixture.workspace.join(".truss/core/addons.json")).unwrap();
     let conflict_before = managed_snapshot(&fixture.workspace);
     let conflict_args =
         fixture.update_args("update", &fixture.payload_c, &fixture.manifest_c, REF_C);
@@ -454,7 +454,7 @@ fn cli_addon_cycle_installs_reports_updates_resolves_and_aborts() {
         REFERENCE_B
     );
     assert_eq!(
-        fs::read(fixture.workspace.join(".truss-core/addons.json")).unwrap(),
+        fs::read(fixture.workspace.join(".truss/core/addons.json")).unwrap(),
         addons_before
     );
     assert!(fixture.status(&mut transcript)["session_pending"]
@@ -464,7 +464,7 @@ fn cli_addon_cycle_installs_reports_updates_resolves_and_aborts() {
     // 7. The operator edits the session's own resolved content, then continues
     //    by name alone (the command takes no payload).
     let resolved = fixture.workspace.join(format!(
-        ".truss-core/addon-update/{ADDON}/resolved/{ADDON_SKILL}"
+        ".truss/core/addon-update/{ADDON}/resolved/{ADDON_SKILL}"
     ));
     fs::write(&resolved, RESOLVED_SKILL).unwrap();
     let continue_output = run(
@@ -621,7 +621,7 @@ fn cli_addon_dry_run_and_conflicted_update_never_mutate() {
 
     // The dry run leaves the workspace, the baseline, and addons.json identical.
     let before = common::workspace_snapshot(&fixture.workspace);
-    let addons_before = fs::read(fixture.workspace.join(".truss-core/addons.json")).unwrap();
+    let addons_before = fs::read(fixture.workspace.join(".truss/core/addons.json")).unwrap();
     let mut dry_args =
         fixture.update_args("update", &fixture.payload_b, &fixture.manifest_b, REF_B);
     dry_args.push("--dry-run".to_owned());
@@ -631,7 +631,7 @@ fn cli_addon_dry_run_and_conflicted_update_never_mutate() {
     let after = common::workspace_snapshot(&fixture.workspace);
     assert_eq!(after, before, "a dry run must be byte-identical");
     assert_eq!(
-        fs::read(fixture.workspace.join(".truss-core/addons.json")).unwrap(),
+        fs::read(fixture.workspace.join(".truss/core/addons.json")).unwrap(),
         addons_before
     );
 
@@ -658,13 +658,13 @@ fn cli_addon_dry_run_and_conflicted_update_never_mutate() {
         REFERENCE_A
     );
     assert_eq!(
-        fs::read(fixture.workspace.join(".truss-core/addons.json")).unwrap(),
+        fs::read(fixture.workspace.join(".truss/core/addons.json")).unwrap(),
         addons_before
     );
     assert!(fixture
         .workspace
         .join(format!(
-            ".truss-core/addon-update/{ADDON}/resolved/{ADDON_SKILL}"
+            ".truss/core/addon-update/{ADDON}/resolved/{ADDON_SKILL}"
         ))
         .is_file());
 
@@ -680,7 +680,7 @@ fn cli_addon_dry_run_and_conflicted_update_never_mutate() {
             conflict_after == conflict_before,
             String::from_utf8_lossy(&fs::read(fixture.workspace.join(ADDON_SKILL)).unwrap()),
             String::from_utf8_lossy(&fs::read(fixture.workspace.join(ADDON_REFERENCE)).unwrap()),
-            fixture.workspace.join(format!(".truss-core/addon-update/{ADDON}/session.json")).is_file(),
+            fixture.workspace.join(format!(".truss/core/addon-update/{ADDON}/session.json")).is_file(),
         ),
     );
 }
@@ -965,7 +965,7 @@ fn cli_addon_real_delivery_cycle_installs_updates_resolves_and_aborts() {
     fixture.core_state(&mut transcript);
 
     // A core conflict session plus `AGENTS.md` must survive every add-on step.
-    let core_session = fixture.workspace.join(".truss-core/update/session.json");
+    let core_session = fixture.workspace.join(".truss/core/update/session.json");
     fs::create_dir_all(core_session.parent().unwrap()).unwrap();
     fs::write(&core_session, CORE_SESSION).unwrap();
     let agents_path = fixture.workspace.join("AGENTS.md");
@@ -1023,7 +1023,7 @@ fn cli_addon_real_delivery_cycle_installs_updates_resolves_and_aborts() {
 
     // 4. A dry run to ref B reports exactly one Update and mutates nothing.
     let before = common::workspace_snapshot(&fixture.workspace);
-    let addons_before = fs::read(fixture.workspace.join(".truss-core/addons.json")).unwrap();
+    let addons_before = fs::read(fixture.workspace.join(".truss/core/addons.json")).unwrap();
     let mut dry = fixture.update_args(&fixture.payload_b, DELIVERY_REF_B);
     dry.push("--dry-run".to_owned());
     let dry = dry.iter().map(String::as_str).collect::<Vec<_>>();
@@ -1043,7 +1043,7 @@ fn cli_addon_real_delivery_cycle_installs_updates_resolves_and_aborts() {
         "an add-on update dry run must mutate nothing"
     );
     assert_eq!(
-        fs::read(fixture.workspace.join(".truss-core/addons.json")).unwrap(),
+        fs::read(fixture.workspace.join(".truss/core/addons.json")).unwrap(),
         addons_before
     );
 
@@ -1061,7 +1061,7 @@ fn cli_addon_real_delivery_cycle_installs_updates_resolves_and_aborts() {
     // 6. A seeded conflict: consumer edit plus an upstream change on the same
     //    managed path, with a disjoint clean change staged and never applied.
     fs::write(fixture.workspace.join(DELIVERY_SUBJECT), b"consumer edit\n").unwrap();
-    let addons_before = fs::read(fixture.workspace.join(".truss-core/addons.json")).unwrap();
+    let addons_before = fs::read(fixture.workspace.join(".truss/core/addons.json")).unwrap();
     let conflict_before = managed_snapshot(&fixture.workspace);
     let args = fixture.update_args(&fixture.payload_c, DELIVERY_REF_C);
     let args = args.iter().map(String::as_str).collect::<Vec<_>>();
@@ -1079,7 +1079,7 @@ fn cli_addon_real_delivery_cycle_installs_updates_resolves_and_aborts() {
         "the clean subset of a conflicted plan must be staged, never applied"
     );
     assert_eq!(
-        fs::read(fixture.workspace.join(".truss-core/addons.json")).unwrap(),
+        fs::read(fixture.workspace.join(".truss/core/addons.json")).unwrap(),
         addons_before
     );
     assert!(fixture.status(&mut transcript)["session_pending"]
@@ -1090,7 +1090,7 @@ fn cli_addon_real_delivery_cycle_installs_updates_resolves_and_aborts() {
     // 7. The operator edits the session's own `resolved/` content, then the
     //    payload-free `continue` completes.
     let resolved = fixture.workspace.join(format!(
-        ".truss-core/addon-update/{DELIVERY}/resolved/{DELIVERY_SUBJECT}"
+        ".truss/core/addon-update/{DELIVERY}/resolved/{DELIVERY_SUBJECT}"
     ));
     fs::write(&resolved, DELIVERY_RESOLVED).unwrap();
     let continued = json(&run(
@@ -1233,8 +1233,8 @@ fn cli_addon_real_delivery_stray_path_is_refused() {
         before, after,
         "the workspace surface must be unchanged by the refusal"
     );
-    assert!(!fixture.workspace.join(".truss-core/addons.json").exists());
-    assert!(!fixture.workspace.join(".truss-core/base-addons").exists());
+    assert!(!fixture.workspace.join(".truss/core/addons.json").exists());
+    assert!(!fixture.workspace.join(".truss/core/base-addons").exists());
 
     evidence_s4b4(
         "s4b4-row2-stray-refusal.txt",
@@ -1242,21 +1242,21 @@ fn cli_addon_real_delivery_stray_path_is_refused() {
             "stray={DELIVERY_STRAY}\nexit={}\nnamed=true\nworkspace_unchanged={}\naddons_json_absent={}\nbaseline_absent={}\nrefusal={}\n",
             refused.status.code().unwrap_or(-1),
             before == after,
-            !fixture.workspace.join(".truss-core/addons.json").exists(),
-            !fixture.workspace.join(".truss-core/base-addons").exists(),
+            !fixture.workspace.join(".truss/core/addons.json").exists(),
+            !fixture.workspace.join(".truss/core/base-addons").exists(),
             error.trim(),
         ),
     );
 }
 
-/// Acceptance row 3: a state whose `.truss-core` holds only `.gitignore` and
+/// Acceptance row 3: a state whose `.truss/core` holds only `.gitignore` and
 /// `lock` is refused as invalid before any observation, so the foreign set is
 /// never silently empty.
 #[test]
 fn cli_addon_incomplete_core_state_is_refused_before_observation() {
     let fixture = RealDeliveryFixture::new();
     let mut transcript = String::new();
-    let state_root = fixture.workspace.join(".truss-core");
+    let state_root = fixture.workspace.join(".truss/core");
     fs::create_dir_all(&state_root).unwrap();
     fs::write(state_root.join(".gitignore"), common::CORE_STATE_IGNORE).unwrap();
     fs::write(state_root.join("lock"), b"").unwrap();
@@ -1279,8 +1279,8 @@ fn cli_addon_incomplete_core_state_is_refused_before_observation() {
         before, after,
         "an invalid core state must be refused without mutation"
     );
-    assert!(!fixture.workspace.join(".truss-core/addons.json").exists());
-    assert!(!fixture.workspace.join(".truss-core/base-addons").exists());
+    assert!(!fixture.workspace.join(".truss/core/addons.json").exists());
+    assert!(!fixture.workspace.join(".truss/core/base-addons").exists());
 
     evidence_s4b4(
         "s4b4-row3-incomplete-core-state.txt",
@@ -1296,7 +1296,7 @@ fn cli_addon_incomplete_core_state_is_refused_before_observation() {
 // S4b4 remediation — recorded ownership from the workspace's own state.
 //
 // The repository manifest and the shipped binary are untouched: the ownership
-// set comes from `.truss-core/manifest.json` and `.truss-core/addons.json`, so
+// set comes from `.truss/core/manifest.json` and `.truss/core/addons.json`, so
 // the real command line needs no second manifest flag.
 // ---------------------------------------------------------------------------
 
@@ -1362,7 +1362,7 @@ fn remediation_args(
     ]
 }
 
-/// Acceptance row A: with two add-ons recorded in `.truss-core/addons.json`
+/// Acceptance row A: with two add-ons recorded in `.truss/core/addons.json`
 /// sharing a parent, the real `addon install` and `addon update` refuse a
 /// descriptor that declares the other add-on's exact path, before any
 /// mutation, and name the owner.
@@ -1407,8 +1407,8 @@ fn cli_addon_recorded_ownership_collision_is_refused() {
     );
     assert!(json(&sibling_install)["applied"].as_bool().unwrap());
 
-    let addons_path = workspace.join(".truss-core/addons.json");
-    let baselines_root = workspace.join(".truss-core/base-addons");
+    let addons_path = workspace.join(".truss/core/addons.json");
+    let baselines_root = workspace.join(".truss/core/base-addons");
     let sibling_baseline = common::workspace_snapshot(&baselines_root);
 
     // 1. `install` with a descriptor declaring the sibling's exact path and
@@ -1539,7 +1539,7 @@ fn cli_addon_recorded_ownership_collision_is_refused() {
     );
     // No plan was built, so no add-on session was staged either.
     assert!(!workspace
-        .join(format!(".truss-core/addon-update/{REMEDIATION_ADDON}"))
+        .join(format!(".truss/core/addon-update/{REMEDIATION_ADDON}"))
         .exists());
 
     // The add-on under test still records only its own path; the sibling still

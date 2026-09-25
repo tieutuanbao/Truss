@@ -6,8 +6,9 @@ use serde::{Deserialize, Serialize};
 
 use super::state_io::{
     acquire_lock, copy_bytes, copy_file, copy_tree, ensure_state_ignore, ensure_workspace_root,
-    hash_bytes, io_error, read_json, reject_symlink, remove_dir_if_exists, state_root,
-    validate_path, validate_state_path, validate_workspace_root, write_json_atomic,
+    hash_bytes, io_error, read_json, reject_symlink, remove_dir_if_exists,
+    resolve_state_root as resolve_root, state_root, validate_path, validate_state_path,
+    validate_workspace_root, write_json_atomic,
 };
 use super::transaction::{self, ProvenanceKind, ProvenanceWriter};
 use crate::application::{InstallationStatePort, PortError};
@@ -20,6 +21,10 @@ use crate::domain::{
 pub struct FileSystemInstallationState;
 
 impl InstallationStatePort for FileSystemInstallationState {
+    fn resolve_state_root(&self, root: &Path) -> Result<PathBuf, PortError> {
+        resolve_root(root)
+    }
+
     fn recover_interrupted(&self, root: &Path) -> Result<bool, PortError> {
         ensure_workspace_root(root)?;
         let state_root = state_root(root);

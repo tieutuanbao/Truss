@@ -16,8 +16,51 @@ use crate::domain::{ContentHash, DomainError, RelativePath};
 // write style, and one state root, so there is a single writer per repository
 // rather than one style per distribution.
 
+/// The installed tree's root directory name for a new installation.
+pub(crate) const NEW_STATE_DIR: &str = ".truss/core";
+
+/// The installed tree's root directory name before decision 0008.
+pub(crate) const LEGACY_STATE_DIR: &str = ".truss-core";
+
+/// The legacy root path, for a read of an installation that predates 0008.
+pub(crate) fn legacy_state_root(root: &Path) -> PathBuf {
+    root.join(LEGACY_STATE_DIR)
+}
+
+fn root_is_installed(path: &Path) -> bool {
+    path.join("manifest.json").exists() || path.join("base").exists()
+}
+
+/// The root a command should operate on, resolving presence rather than
+/// configuration so a read and a write in one command agree.
+///
+/// A repository holding both trees is a refusal, not a precedence: two trees
+/// mean two locks, two baselines, and a stale one of each.
+pub(crate) fn resolve_state_root(root: &Path) -> Result<PathBuf, PortError> {
+    let new = root.join(NEW_STATE_DIR);
+    let legacy = legacy_state_root(root);
+    if root_is_installed(&new) && root_is_installed(&legacy) {
+        return Err(PortError::new(format!(
+            "both {} and {} hold a Truss installation; decide which tree this repository \
+             keeps before running Truss (plan 4B adds `truss migrate`)",
+            NEW_STATE_DIR, LEGACY_STATE_DIR
+        )));
+    }
+    if root_is_installed(&legacy) {
+        return Ok(legacy);
+    }
+    Ok(new)
+}
+
+/// The resolved root without the conflict error, for call sites that only need
+/// a path. Precedence matches `resolve_state_root`: a legacy installation wins
+/// while it is the only installed tree.
 pub(crate) fn state_root(root: &Path) -> PathBuf {
-    root.join(".truss-core")
+    let new = root.join(NEW_STATE_DIR);
+    if root_is_installed(&new) || !root_is_installed(&legacy_state_root(root)) {
+        return new;
+    }
+    legacy_state_root(root)
 }
 
 /// Rules the core-owned shared `.truss-core/.gitignore` must carry.
@@ -321,4 +364,52 @@ pub(crate) fn domain_error(error: DomainError) -> PortError {
 
 pub(crate) fn io_error(error: std::io::Error) -> PortError {
     PortError::new(error.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+
+    use super::{resolve_state_root, state_root};
+
+    #[test]
+    fn state_root_prefers_the_new_root_and_refuses_a_conflicting_pair() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+
+        // A fresh repository resolves to the new root.
+        assert_eq!(state_root(root), root.join(".truss").join("core"));
+        assert_eq!(
+            resolve_state_root(root).unwrap(),
+            root.join(".truss").join("core")
+        );
+
+        // A legacy installation resolves to the legacy root.
+        fs::create_dir_all(root.join(".truss-core")).unwrap();
+        fs::write(root.join(".truss-core/manifest.json"), b"{}").unwrap();
+        assert_eq!(state_root(root), root.join(".truss-core"));
+        assert_eq!(resolve_state_root(root).unwrap(), root.join(".truss-core"));
+
+        // A new-root installation resolves to the new root.
+        fs::create_dir_all(root.join(".truss/core")).unwrap();
+        fs::write(root.join(".truss/core/manifest.json"), b"{}").unwrap();
+        fs::remove_dir_all(root.join(".truss-core")).unwrap();
+        assert_eq!(
+            resolve_state_root(root).unwrap(),
+            root.join(".truss").join("core")
+        );
+
+        // Both trees present is a refusal naming both paths.
+        fs::create_dir_all(root.join(".truss-core")).unwrap();
+        fs::write(root.join(".truss-core/manifest.json"), b"{}").unwrap();
+        let error = resolve_state_root(root).unwrap_err().to_string();
+        assert!(
+            error.contains(".truss/core"),
+            "error names the new root: {error}"
+        );
+        assert!(
+            error.contains(".truss-core"),
+            "error names the legacy root: {error}"
+        );
+    }
 }

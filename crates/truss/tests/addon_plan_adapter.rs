@@ -263,7 +263,7 @@ fn describe(payload: &Path, manifest: &Path) -> AddOnDescriptor {
 
 /// Seed valid core state, install the recorded baseline, and return the
 /// workspace. The baseline bytes are recorded through the S2 state writer, so
-/// `addons.json` and `.truss-core/base-addons/<name>/` hold exactly the payload
+/// `addons.json` and `.truss/core/base-addons/<name>/` hold exactly the payload
 /// bytes the adapter later reads back.
 fn install_baseline(workspace: &Path, payload: &Path, manifest: &Path, files: &[(&str, &[u8])]) {
     write_payload(payload, files);
@@ -488,7 +488,7 @@ fn every_classification_row_matches_the_contract() {
             observed(&fixture.plan, SUBJECT),
         ));
         assert!(
-            fixture.workspace.join(".truss-core/addons.json").is_file(),
+            fixture.workspace.join(".truss/core/addons.json").is_file(),
             "row {}: the fixture must have a recorded baseline",
             row.name
         );
@@ -603,8 +603,8 @@ fn dry_run_reports_the_plan_and_mutates_nothing() {
     write_bytes(&workspace, DR_OVERLAP, LOCAL_OVERLAP);
     write_bytes(&workspace, DR_MODIFIED, CONSUMER_BYTES);
 
-    let addons_path = workspace.join(".truss-core/addons.json");
-    let baseline_root = workspace.join(".truss-core/base-addons");
+    let addons_path = workspace.join(".truss/core/addons.json");
+    let baseline_root = workspace.join(".truss/core/base-addons");
     let before = workspace_snapshot(&workspace);
     let addons_before = fs::read(&addons_path).unwrap();
     let baseline_before = snapshot_digest(&workspace_snapshot(&baseline_root));
@@ -749,7 +749,7 @@ fn adapter_refuses_without_core_state_and_creates_nothing() {
         "a refusal must not create or change core state"
     );
     assert!(
-        !workspace.join(".truss-core").exists(),
+        !workspace.join(".truss/core").exists(),
         "the adapter must never create the core state root"
     );
     write_evidence(

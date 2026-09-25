@@ -78,6 +78,7 @@ where
         payload_spec: &AddOnPayloadSpec<'_>,
         dry_run: bool,
     ) -> Result<AddOnUpdateReport, PortError> {
+        self.state.resolve_state_root(root)?;
         let descriptor = self.payload.describe(payload_spec)?;
         self.reject_recorded_ownership(root, &descriptor)?;
         let mut report = AddOnUpdateReport::preview(&descriptor, dry_run);
@@ -112,6 +113,7 @@ where
         payload_spec: &AddOnPayloadSpec<'_>,
         dry_run: bool,
     ) -> Result<AddOnUpdateReport, PortError> {
+        self.state.resolve_state_root(root)?;
         let descriptor = self.payload.describe(payload_spec)?;
         self.reject_recorded_ownership(root, &descriptor)?;
         let plan = self.planner.plan(
@@ -164,6 +166,7 @@ where
         root: &Path,
         name: &AddOnName,
     ) -> Result<AddOnUpdateReport, PortError> {
+        self.state.resolve_state_root(root)?;
         let receipt = self.executor.resume(root, name)?;
         let mut report = AddOnUpdateReport::for_name(name);
         report.applied = true;
@@ -173,6 +176,7 @@ where
 
     /// Remove only the owned add-on conflict session for `name`.
     pub fn abort(&self, root: &Path, name: &AddOnName) -> Result<bool, PortError> {
+        self.state.resolve_state_root(root)?;
         self.executor.abort(root, name)
     }
 

@@ -19,7 +19,7 @@ impl CoreDistributionPort for DistributionFixture {
 #[test]
 fn update_merges_non_overlapping_changes_and_stops_on_policy_overlap() {
     let root = tempfile::tempdir().unwrap();
-    let path = root.path().join(".truss-core/docs/WORKFLOW.md");
+    let path = root.path().join(".truss/core/docs/WORKFLOW.md");
     let version_one = application("1.0.0", b"one\ntwo\nthree\n");
     version_one.install(root.path(), false).unwrap();
 
@@ -37,13 +37,13 @@ fn update_merges_non_overlapping_changes_and_stops_on_policy_overlap() {
     assert!(root
         .path()
         .join(applied.backup_path.unwrap())
-        .join("files/.truss-core/docs/WORKFLOW.md")
+        .join("files/.truss/core/docs/WORKFLOW.md")
         .is_file());
 
-    let manifest_before = fs::read(root.path().join(".truss-core/manifest.json")).unwrap();
+    let manifest_before = fs::read(root.path().join(".truss/core/manifest.json")).unwrap();
     let base_before = fs::read(
         root.path()
-            .join(".truss-core/base/.truss-core/docs/WORKFLOW.md"),
+            .join(".truss/core/base/.truss/core/docs/WORKFLOW.md"),
     )
     .unwrap();
     let local_before = fs::read(&path).unwrap();
@@ -53,13 +53,13 @@ fn update_merges_non_overlapping_changes_and_stops_on_policy_overlap() {
     assert_eq!(conflict.conflicts.len(), 1);
     assert_eq!(fs::read(&path).unwrap(), local_before);
     assert_eq!(
-        fs::read(root.path().join(".truss-core/manifest.json")).unwrap(),
+        fs::read(root.path().join(".truss/core/manifest.json")).unwrap(),
         manifest_before
     );
     assert_eq!(
         fs::read(
             root.path()
-                .join(".truss-core/base/.truss-core/docs/WORKFLOW.md")
+                .join(".truss/core/base/.truss/core/docs/WORKFLOW.md")
         )
         .unwrap(),
         base_before
@@ -72,14 +72,14 @@ fn update_handles_one_sided_add_remove_and_missing_file_rules_atomically() {
     let version_one = application_with_files(
         "1.0.0",
         &[
-            (".truss-core/docs/local.md", b"base local\n"),
-            (".truss-core/docs/upstream.md", b"base upstream\n"),
-            (".truss-core/docs/removed.md", b"remove me\n"),
+            (".truss/core/docs/local.md", b"base local\n"),
+            (".truss/core/docs/upstream.md", b"base upstream\n"),
+            (".truss/core/docs/removed.md", b"remove me\n"),
         ],
     );
     version_one.install(root.path(), false).unwrap();
     fs::write(
-        root.path().join(".truss-core/docs/local.md"),
+        root.path().join(".truss/core/docs/local.md"),
         b"consumer local\n",
     )
     .unwrap();
@@ -87,35 +87,35 @@ fn update_handles_one_sided_add_remove_and_missing_file_rules_atomically() {
     let version_two = application_with_files(
         "2.0.0",
         &[
-            (".truss-core/docs/local.md", b"base local\n"),
-            (".truss-core/docs/upstream.md", b"upstream changed\n"),
-            (".truss-core/docs/added.md", b"new upstream\n"),
+            (".truss/core/docs/local.md", b"base local\n"),
+            (".truss/core/docs/upstream.md", b"upstream changed\n"),
+            (".truss/core/docs/added.md", b"new upstream\n"),
         ],
     );
     let report = version_two.update(root.path(), false).unwrap();
     assert!(report.applied);
     assert_eq!(
-        fs::read(root.path().join(".truss-core/docs/local.md")).unwrap(),
+        fs::read(root.path().join(".truss/core/docs/local.md")).unwrap(),
         b"consumer local\n"
     );
     assert_eq!(
-        fs::read(root.path().join(".truss-core/docs/upstream.md")).unwrap(),
+        fs::read(root.path().join(".truss/core/docs/upstream.md")).unwrap(),
         b"upstream changed\n"
     );
     assert_eq!(
-        fs::read(root.path().join(".truss-core/docs/added.md")).unwrap(),
+        fs::read(root.path().join(".truss/core/docs/added.md")).unwrap(),
         b"new upstream\n"
     );
-    assert!(!root.path().join(".truss-core/docs/removed.md").exists());
+    assert!(!root.path().join(".truss/core/docs/removed.md").exists());
 
-    fs::remove_file(root.path().join(".truss-core/docs/upstream.md")).unwrap();
-    let before = fs::read(root.path().join(".truss-core/docs/local.md")).unwrap();
+    fs::remove_file(root.path().join(".truss/core/docs/upstream.md")).unwrap();
+    let before = fs::read(root.path().join(".truss/core/docs/local.md")).unwrap();
     let version_three = application_with_files(
         "3.0.0",
         &[
-            (".truss-core/docs/local.md", b"would change\n"),
-            (".truss-core/docs/upstream.md", b"upstream changed again\n"),
-            (".truss-core/docs/added.md", b"new upstream\n"),
+            (".truss/core/docs/local.md", b"would change\n"),
+            (".truss/core/docs/upstream.md", b"upstream changed again\n"),
+            (".truss/core/docs/added.md", b"new upstream\n"),
         ],
     );
     let conflict = version_three.update(root.path(), false).unwrap();
@@ -123,9 +123,9 @@ fn update_handles_one_sided_add_remove_and_missing_file_rules_atomically() {
     assert!(conflict
         .conflicts
         .iter()
-        .any(|value| value.path.as_str() == ".truss-core/docs/upstream.md"));
+        .any(|value| value.path.as_str() == ".truss/core/docs/upstream.md"));
     assert_eq!(
-        fs::read(root.path().join(".truss-core/docs/local.md")).unwrap(),
+        fs::read(root.path().join(".truss/core/docs/local.md")).unwrap(),
         before
     );
 }
@@ -133,7 +133,7 @@ fn update_handles_one_sided_add_remove_and_missing_file_rules_atomically() {
 #[test]
 fn overlapping_update_stages_agent_resolution_and_continues_atomically() {
     let root = tempfile::tempdir().unwrap();
-    let path = root.path().join(".truss-core/docs/WORKFLOW.md");
+    let path = root.path().join(".truss/core/docs/WORKFLOW.md");
     let version_one = application("1.0.0", b"rule: base\n");
     version_one.install(root.path(), false).unwrap();
     fs::write(&path, b"rule: local policy\n").unwrap();
@@ -146,7 +146,7 @@ fn overlapping_update_stages_agent_resolution_and_continues_atomically() {
 
     let resolution = root
         .path()
-        .join(".truss-core/update/resolved/.truss-core/docs/WORKFLOW.md");
+        .join(".truss/core/update/resolved/.truss/core/docs/WORKFLOW.md");
     let staged = fs::read_to_string(&resolution).unwrap();
     assert!(staged.contains("<<<<<<< LOCAL"));
     assert!(staged.contains("||||||| BASE"));
@@ -166,7 +166,7 @@ fn overlapping_update_stages_agent_resolution_and_continues_atomically() {
         fs::read(&path).unwrap(),
         b"rule: accepted combined policy\n"
     );
-    assert!(!root.path().join(".truss-core/update").exists());
+    assert!(!root.path().join(".truss/core/update").exists());
     assert_eq!(
         FileSystemInstallationState
             .load(root.path())
@@ -187,7 +187,7 @@ fn overlapping_update_stages_agent_resolution_and_continues_atomically() {
 #[test]
 fn normal_update_replaces_a_pending_plan_with_the_newer_candidate() {
     let root = tempfile::tempdir().unwrap();
-    let path = root.path().join(".truss-core/docs/WORKFLOW.md");
+    let path = root.path().join(".truss/core/docs/WORKFLOW.md");
     application("0.1.4", b"rule: base\n")
         .install(root.path(), false)
         .unwrap();
@@ -198,7 +198,7 @@ fn normal_update_replaces_a_pending_plan_with_the_newer_candidate() {
     assert!(first.resolution_staged);
     fs::write(
         root.path()
-            .join(".truss-core/update/resolved/.truss-core/docs/WORKFLOW.md"),
+            .join(".truss/core/update/resolved/.truss/core/docs/WORKFLOW.md"),
         b"resolution prepared for 0.1.8\n",
     )
     .unwrap();
@@ -214,7 +214,7 @@ fn normal_update_replaces_a_pending_plan_with_the_newer_candidate() {
     assert_eq!(
         fs::read(
             root.path()
-                .join(".truss-core/update/resolved/.truss-core/docs/WORKFLOW.md")
+                .join(".truss/core/update/resolved/.truss/core/docs/WORKFLOW.md")
         )
         .unwrap(),
         b"resolution prepared for 0.1.8\n"
@@ -230,7 +230,7 @@ fn normal_update_replaces_a_pending_plan_with_the_newer_candidate() {
     assert_eq!(session.to_version, "0.2.0");
     let fresh_resolution = fs::read_to_string(
         root.path()
-            .join(".truss-core/update/resolved/.truss-core/docs/WORKFLOW.md"),
+            .join(".truss/core/update/resolved/.truss/core/docs/WORKFLOW.md"),
     )
     .unwrap();
     assert!(fresh_resolution.contains("0.2.0 policy"));
@@ -241,7 +241,7 @@ fn normal_update_replaces_a_pending_plan_with_the_newer_candidate() {
 #[test]
 fn resolution_rejects_workspace_drift_and_can_be_aborted_without_file_changes() {
     let root = tempfile::tempdir().unwrap();
-    let path = root.path().join(".truss-core/docs/WORKFLOW.md");
+    let path = root.path().join(".truss/core/docs/WORKFLOW.md");
     application("1.0.0", b"base\n")
         .install(root.path(), false)
         .unwrap();
@@ -256,7 +256,7 @@ fn resolution_rejects_workspace_drift_and_can_be_aborted_without_file_changes() 
         .contains("changed after conflict detection"));
     assert!(candidate.abort_update(root.path()).unwrap());
     assert_eq!(fs::read(&path).unwrap(), b"changed after staging\n");
-    assert!(!root.path().join(".truss-core/update").exists());
+    assert!(!root.path().join(".truss/core/update").exists());
 }
 
 #[test]
@@ -265,13 +265,13 @@ fn resolution_rejects_drift_in_a_file_that_was_clean_when_staged() {
     let version_one = application_with_files(
         "1.0.0",
         &[
-            (".truss-core/docs/conflict.md", b"base conflict\n"),
-            (".truss-core/docs/clean.md", b"base clean\n"),
+            (".truss/core/docs/conflict.md", b"base conflict\n"),
+            (".truss/core/docs/clean.md", b"base clean\n"),
         ],
     );
     version_one.install(root.path(), false).unwrap();
     fs::write(
-        root.path().join(".truss-core/docs/conflict.md"),
+        root.path().join(".truss/core/docs/conflict.md"),
         b"local conflict\n",
     )
     .unwrap();
@@ -279,33 +279,33 @@ fn resolution_rejects_drift_in_a_file_that_was_clean_when_staged() {
     let version_two = application_with_files(
         "2.0.0",
         &[
-            (".truss-core/docs/conflict.md", b"incoming conflict\n"),
-            (".truss-core/docs/clean.md", b"incoming clean\n"),
+            (".truss/core/docs/conflict.md", b"incoming conflict\n"),
+            (".truss/core/docs/clean.md", b"incoming clean\n"),
         ],
     );
     let stopped = version_two.update(root.path(), false).unwrap();
     assert!(stopped.resolution_staged);
     fs::write(
         root.path()
-            .join(".truss-core/update/resolved/.truss-core/docs/conflict.md"),
+            .join(".truss/core/update/resolved/.truss/core/docs/conflict.md"),
         b"human-approved conflict\n",
     )
     .unwrap();
     fs::write(
-        root.path().join(".truss-core/docs/clean.md"),
+        root.path().join(".truss/core/docs/clean.md"),
         b"changed after review\n",
     )
     .unwrap();
 
     let error = version_two.continue_update(root.path(), false).unwrap_err();
-    assert!(error.to_string().contains(".truss-core/docs/clean.md"));
+    assert!(error.to_string().contains(".truss/core/docs/clean.md"));
     assert_eq!(
-        fs::read(root.path().join(".truss-core/docs/clean.md")).unwrap(),
+        fs::read(root.path().join(".truss/core/docs/clean.md")).unwrap(),
         b"changed after review\n"
     );
     assert!(root
         .path()
-        .join(".truss-core/update/session.json")
+        .join(".truss/core/update/session.json")
         .is_file());
 }
 
@@ -334,9 +334,9 @@ fn candidate_mode_cannot_downgrade_installed_core_state() {
 #[test]
 fn existing_state_gitignore_is_augmented_without_losing_custom_rules() {
     let root = tempfile::tempdir().unwrap();
-    fs::create_dir_all(root.path().join(".truss-core")).unwrap();
+    fs::create_dir_all(root.path().join(".truss/core")).unwrap();
     fs::write(
-        root.path().join(".truss-core/.gitignore"),
+        root.path().join(".truss/core/.gitignore"),
         "/custom-local-state/\n",
     )
     .unwrap();
@@ -345,7 +345,7 @@ fn existing_state_gitignore_is_augmented_without_losing_custom_rules() {
         .install(root.path(), false)
         .unwrap();
 
-    let ignore = fs::read_to_string(root.path().join(".truss-core/.gitignore")).unwrap();
+    let ignore = fs::read_to_string(root.path().join(".truss/core/.gitignore")).unwrap();
     assert!(ignore.contains("/custom-local-state/"));
     assert!(ignore.contains("/update/"));
     assert!(ignore.contains("/update-candidate/"));
@@ -356,7 +356,7 @@ fn application(
     version: &str,
     content: &[u8],
 ) -> CoreApplication<DistributionFixture, FileSystemInstallationState, GitThreeWayMerge> {
-    application_with_files(version, &[(".truss-core/docs/WORKFLOW.md", content)])
+    application_with_files(version, &[(".truss/core/docs/WORKFLOW.md", content)])
 }
 
 fn application_with_files(

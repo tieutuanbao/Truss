@@ -93,7 +93,7 @@ fn assert_record_matches_payload(
             ));
         }
         let copy = workspace
-            .join(".truss-core/base-addons")
+            .join(".truss/core/base-addons")
             .join(name.as_str())
             .join(file.path.as_str());
         let copied = fs::read(&copy)
@@ -147,7 +147,7 @@ fn bare_fixture(tmp: &Path, name: &str) -> (PathBuf, PathBuf, PathBuf) {
 fn install_writes_the_record_after_the_files_and_it_matches_the_payload() {
     let tmp = tempfile::tempdir().unwrap();
     let (payload, workspace, manifest) = fixture(tmp.path(), "install");
-    let manifest_before = fs::read(workspace.join(".truss-core/manifest.json")).unwrap();
+    let manifest_before = fs::read(workspace.join(".truss/core/manifest.json")).unwrap();
     let descriptor = describe(&payload, &manifest, "demo");
 
     let receipt = FileSystemAddOnState
@@ -164,9 +164,9 @@ fn install_writes_the_record_after_the_files_and_it_matches_the_payload() {
 
     // The record is a separate file with its own schema; the core manifest is
     // not created, rewritten, or removed.
-    assert!(workspace.join(".truss-core/addons.json").is_file());
+    assert!(workspace.join(".truss/core/addons.json").is_file());
     assert_eq!(
-        fs::read(workspace.join(".truss-core/manifest.json")).unwrap(),
+        fs::read(workspace.join(".truss/core/manifest.json")).unwrap(),
         manifest_before,
         "the add-on record must not rewrite the core manifest"
     );
@@ -185,7 +185,7 @@ fn install_writes_the_record_after_the_files_and_it_matches_the_payload() {
         );
         let baseline = fs::read(
             workspace
-                .join(".truss-core/base-addons/demo")
+                .join(".truss/core/base-addons/demo")
                 .join(file.path.as_str()),
         )
         .unwrap();
@@ -220,7 +220,7 @@ fn install_writes_the_record_after_the_files_and_it_matches_the_payload() {
         &format!(
             "workspace={}\nrecord={}\n",
             workspace.display(),
-            fs::read_to_string(workspace.join(".truss-core/addons.json")).unwrap()
+            fs::read_to_string(workspace.join(".truss/core/addons.json")).unwrap()
         ),
     );
 }
@@ -255,7 +255,7 @@ fn legacy_install_with_one_edited_byte_is_refused() {
 
     let record_before = FileSystemAddOnState.load(&workspace).unwrap();
     assert!(record_before.is_none());
-    assert!(!workspace.join(".truss-core/addons.json").exists());
+    assert!(!workspace.join(".truss/core/addons.json").exists());
 
     let error = FileSystemAddOnState
         .apply(&workspace, &request(&descriptor, &payload))
@@ -268,7 +268,7 @@ fn legacy_install_with_one_edited_byte_is_refused() {
 
     let record_after = FileSystemAddOnState.load(&workspace).unwrap();
     assert!(record_after.is_none());
-    assert!(!workspace.join(".truss-core/addons.json").exists());
+    assert!(!workspace.join(".truss/core/addons.json").exists());
 
     evidence(
         "s2-adoption-refusal.txt",
@@ -291,7 +291,7 @@ fn adoption_stop_writes_no_record_and_leaves_the_tree_unchanged() {
     let descriptor = describe(&payload, &manifest, "demo");
 
     assert!(
-        workspace.join(".truss-core/lock").is_file(),
+        workspace.join(".truss/core/lock").is_file(),
         "the fixture must start from a valid core state"
     );
     let before = workspace_snapshot(&workspace);
@@ -306,11 +306,11 @@ fn adoption_stop_writes_no_record_and_leaves_the_tree_unchanged() {
         "a refused adoption must leave the fixture tree unchanged"
     );
     assert!(
-        workspace.join(".truss-core").exists(),
+        workspace.join(".truss/core").exists(),
         "the pre-existing core state must be untouched, not removed"
     );
-    assert!(!workspace.join(".truss-core/addons.json").exists());
-    assert!(!workspace.join(".truss-core/base-addons").exists());
+    assert!(!workspace.join(".truss/core/addons.json").exists());
+    assert!(!workspace.join(".truss/core/base-addons").exists());
 
     evidence(
         "s2-stop-tree-hashes.txt",
@@ -318,7 +318,7 @@ fn adoption_stop_writes_no_record_and_leaves_the_tree_unchanged() {
             "before={}\nafter={}\nrefusal={error}\naddons_json_present={}\n",
             snapshot_digest(&before),
             snapshot_digest(&after),
-            workspace.join(".truss-core/addons.json").exists()
+            workspace.join(".truss/core/addons.json").exists()
         ),
     );
 }
@@ -329,8 +329,8 @@ fn adoption_stop_writes_no_record_and_leaves_the_tree_unchanged() {
 /// This is the fixture that rejects the bootstrap-on-refusal implementation:
 /// `2968c03` called `fs::create_dir_all(&state_root)` and
 /// `ensure_state_ignore(&state_root)` before its locked refusal, so it left
-/// `.truss-core/`, `.truss-core/.gitignore`, and normally
-/// `.truss-core/lock` behind and changes this snapshot.
+/// `.truss/core/`, `.truss/core/.gitignore`, and normally
+/// `.truss/core/lock` behind and changes this snapshot.
 #[test]
 fn addon_apply_without_core_state_refuses_without_mutation() {
     let tmp = tempfile::tempdir().unwrap();
@@ -350,10 +350,10 @@ fn addon_apply_without_core_state_refuses_without_mutation() {
         "a missing core state must be refused without mutation"
     );
     assert!(
-        !workspace.join(".truss-core").exists(),
+        !workspace.join(".truss/core").exists(),
         "add-on apply must never create the core state root"
     );
-    assert!(!workspace.join(".truss-core/addons.json").exists());
+    assert!(!workspace.join(".truss/core/addons.json").exists());
 
     evidence(
         "s2b-row3-no-core-state.txt",
@@ -361,7 +361,7 @@ fn addon_apply_without_core_state_refuses_without_mutation() {
             "before={}\nafter={}\nrefusal={error}\ncore_state_present_after={}\n",
             snapshot_digest(&before),
             snapshot_digest(&after),
-            workspace.join(".truss-core").exists()
+            workspace.join(".truss/core").exists()
         ),
     );
 }
@@ -407,8 +407,8 @@ fn locked_observation_refuses_after_preflight_passes_and_preserves_the_competing
         error.contains("add-on adoption mismatch"),
         "the locked observation must refuse the competing edit, got: {error}"
     );
-    assert!(!workspace.join(".truss-core/addons.json").exists());
-    assert!(!workspace.join(".truss-core/base-addons").exists());
+    assert!(!workspace.join(".truss/core/addons.json").exists());
+    assert!(!workspace.join(".truss/core/base-addons").exists());
 
     evidence(
         "s2b-row3-locked-refusal.txt",
@@ -416,8 +416,8 @@ fn locked_observation_refuses_after_preflight_passes_and_preserves_the_competing
             "post_change={}\nafter={}\nrefusal={error}\naddons_json_present={}\nbase_addons_present={}\n",
             snapshot_digest(&post_change),
             snapshot_digest(&after),
-            workspace.join(".truss-core/addons.json").exists(),
-            workspace.join(".truss-core/base-addons").exists()
+            workspace.join(".truss/core/addons.json").exists(),
+            workspace.join(".truss/core/base-addons").exists()
         ),
     );
 }
@@ -433,38 +433,38 @@ fn invalid_core_state_is_refused_without_mutation() {
 
     let mut cases: Vec<Case> = Vec::new();
     cases.push(("missing-ignore-file", |workspace: &Path| {
-        fs::remove_file(workspace.join(".truss-core/.gitignore")).unwrap();
+        fs::remove_file(workspace.join(".truss/core/.gitignore")).unwrap();
     }));
     cases.push(("missing-ignore-rule", |workspace: &Path| {
-        fs::write(workspace.join(".truss-core/.gitignore"), "/lock\n").unwrap();
+        fs::write(workspace.join(".truss/core/.gitignore"), "/lock\n").unwrap();
     }));
     cases.push(("missing-lock", |workspace: &Path| {
-        fs::remove_file(workspace.join(".truss-core/lock")).unwrap();
+        fs::remove_file(workspace.join(".truss/core/lock")).unwrap();
     }));
     cases.push(("missing-manifest", |workspace: &Path| {
         // Decision 0003 clause 13: a core state without manifest.json is
         // invalid, so the foreign path set can never be silently empty.
-        fs::remove_file(workspace.join(".truss-core/manifest.json")).unwrap();
+        fs::remove_file(workspace.join(".truss/core/manifest.json")).unwrap();
     }));
     cases.push(("non-regular-lock", |workspace: &Path| {
-        let lock = workspace.join(".truss-core/lock");
+        let lock = workspace.join(".truss/core/lock");
         fs::remove_file(&lock).unwrap();
         fs::create_dir(&lock).unwrap();
     }));
     cases.push(("state-root-is-a-file", |workspace: &Path| {
-        fs::remove_dir_all(workspace.join(".truss-core")).unwrap();
-        fs::write(workspace.join(".truss-core"), b"not a state root").unwrap();
+        fs::remove_dir_all(workspace.join(".truss/core")).unwrap();
+        fs::write(workspace.join(".truss/core"), b"not a state root").unwrap();
     }));
     #[cfg(unix)]
     {
         cases.push(("symlinked-lock", |workspace: &Path| {
-            let lock = workspace.join(".truss-core/lock");
+            let lock = workspace.join(".truss/core/lock");
             fs::remove_file(&lock).unwrap();
             std::os::unix::fs::symlink("real-lock", &lock).unwrap();
         }));
         cases.push(("symlinked-state-root", |workspace: &Path| {
-            let state_root = workspace.join(".truss-core");
-            let real = workspace.join(".truss-core-real");
+            let state_root = workspace.join(".truss/core");
+            let real = workspace.join(".truss/core-real");
             fs::rename(&state_root, &real).unwrap();
             std::os::unix::fs::symlink(&real, &state_root).unwrap();
         }));
@@ -490,11 +490,11 @@ fn invalid_core_state_is_refused_without_mutation() {
             "{label}: an invalid core state must be refused without mutation"
         );
         assert!(
-            !workspace.join(".truss-core/addons.json").exists(),
+            !workspace.join(".truss/core/addons.json").exists(),
             "{label}"
         );
         assert!(
-            !workspace.join(".truss-core/base-addons").exists(),
+            !workspace.join(".truss/core/base-addons").exists(),
             "{label}"
         );
         observed.push_str(&format!("{label}: {error}\n"));
@@ -524,11 +524,11 @@ fn legacy_install_with_an_extra_managed_path_is_refused() {
         error.contains("is not declared by the payload"),
         "expected an extra-path refusal, got: {error}"
     );
-    assert!(!workspace.join(".truss-core/addons.json").exists());
+    assert!(!workspace.join(".truss/core/addons.json").exists());
 }
 
 /// Synchronization proof for the Blocking finding: the observation that
-/// authorizes `commit` runs while the shared `.truss-core/lock` is held, so a
+/// authorizes `commit` runs while the shared `.truss/core/lock` is held, so a
 /// competing writer cannot slip a consumer edit between observation and write.
 ///
 /// The witness spawns the competing writer from inside `observe` and joins it
@@ -729,7 +729,7 @@ fn recorded_owners_reports_the_core_and_every_other_recorded_add_on() {
     // The core entry is exactly the core manifest's path list, read from the
     // workspace, not from a caller-supplied manifest.
     let core_manifest: serde_json::Value =
-        serde_json::from_slice(&fs::read(workspace.join(".truss-core/manifest.json")).unwrap())
+        serde_json::from_slice(&fs::read(workspace.join(".truss/core/manifest.json")).unwrap())
             .unwrap();
     let mut core_paths = owners[0]
         .1
@@ -793,7 +793,7 @@ fn recorded_owners_reports_the_core_and_every_other_recorded_add_on() {
 fn recorded_owners_refuses_when_the_core_manifest_is_absent() {
     let tmp = tempfile::tempdir().unwrap();
     let (_payload, workspace, _manifest) = bare_fixture(tmp.path(), "owners-absent");
-    let state_root = workspace.join(".truss-core");
+    let state_root = workspace.join(".truss/core");
     fs::create_dir_all(&state_root).unwrap();
     fs::write(state_root.join(".gitignore"), common::CORE_STATE_IGNORE).unwrap();
     fs::write(state_root.join("lock"), b"").unwrap();

@@ -33,22 +33,23 @@ pub fn write_file(root: &Path, relative: &str, content: &str) {
 }
 
 pub fn seed_core_state(workspace: &Path) {
-    let state_root = workspace.join(".truss-core");
+    let state_root = workspace.join(".truss/core");
     fs::create_dir_all(&state_root).unwrap();
     fs::write(state_root.join(".gitignore"), CORE_STATE_IGNORE).unwrap();
     fs::write(state_root.join("lock"), b"").unwrap();
-    // Decision 0003 clause 13 makes `.truss-core/manifest.json` part of a
+    // Decision 0003 clause 13 makes `.truss/core/manifest.json` part of a
     // valid pre-existing core state, so the fixture must be the real installed
     // shape: the embedded core payload, the four core skill trees, and the
-    // digest-checked `.truss-core/base/` copies. A `.gitignore` + `lock` only
-    // fixture is the incomplete state the add-on path must refuse.
+    // digest-checked `.truss/core/base/` copies. A `.gitignore` + `lock` only
+    // fixture is the incomplete state the add-on path must refuse. Decision
+    // 0008 makes `.truss/core` the installed root for this shape.
     let distribution = EmbeddedCoreDistribution.current().unwrap();
     let mut files = Vec::new();
     for file in &distribution.files {
         write_bytes(workspace, file.path.as_str(), &file.content);
         write_bytes(
             workspace,
-            &format!(".truss-core/base/{}", file.path.as_str()),
+            &format!(".truss/core/base/{}", file.path.as_str()),
             &file.content,
         );
         files.push(json!({

@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::domain::{
     ApplyReceipt, CoreDistribution, FrozenWorkspaceFile, InstallationState, MergeOutcome,
@@ -43,6 +43,12 @@ pub trait CoreDistributionPort {
 }
 
 pub trait InstallationStatePort {
+    /// The state root this command must operate on, or a refusal when the
+    /// repository holds both the new and the legacy tree. Every mutating use
+    /// case resolves the root before it plans or writes anything, so the
+    /// refusal lands before the first mutation rather than between two of them.
+    fn resolve_state_root(&self, root: &Path) -> Result<PathBuf, PortError>;
+
     fn recover_interrupted(&self, root: &Path) -> Result<bool, PortError>;
     fn transaction_pending(&self, root: &Path) -> Result<bool, PortError>;
     fn load(&self, root: &Path) -> Result<Option<InstallationState>, PortError>;

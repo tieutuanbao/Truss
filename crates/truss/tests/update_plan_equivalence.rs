@@ -14,7 +14,7 @@ use truss::domain::{
     ResolutionConflict, UpdatePlanInput, WorkspaceMutation,
 };
 
-const PATH: &str = ".truss-core/docs/plan.txt";
+const PATH: &str = ".truss/core/docs/plan.txt";
 
 const BASE: &[u8] = b"base\n";
 const NEXT: &[u8] = b"next\n";
@@ -312,7 +312,7 @@ fn every_matrix_row_matches_the_extracted_planner() {
 #[test]
 fn path_outside_the_baseline_upstream_union_is_never_planned() {
     let planned = RelativePath::parse(PATH).unwrap();
-    let local_only = RelativePath::parse(".truss-core/docs/local-only.txt").unwrap();
+    let local_only = RelativePath::parse(".truss/core/docs/local-only.txt").unwrap();
     let mut input = UpdatePlanInput {
         resolutions: BTreeMap::new(),
         ..UpdatePlanInput::default()

@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use super::PortError;
 use crate::domain::{AddOnDescriptor, AddOnName, AddOnState, RelativePath};
@@ -28,6 +28,11 @@ pub struct AddOnRecordReceipt {
 /// `.truss-core/addons.json`, with its own schema version, and its baseline
 /// copies live under `.truss-core/base-addons/<add-on>/`.
 pub trait AddOnStatePort {
+    /// The state root this operation must operate on, or a refusal when the
+    /// repository holds both the new and the legacy tree. Add-on operations
+    /// resolve it before they stage, adopt, or write provenance.
+    fn resolve_state_root(&self, root: &Path) -> Result<PathBuf, PortError>;
+
     /// Load the installed add-on record, or `None` when no record exists.
     /// An unreadable, schema-mismatched, or digest-mismatched record is an
     /// error rather than an absent record.

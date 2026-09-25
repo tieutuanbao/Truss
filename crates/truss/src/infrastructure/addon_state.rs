@@ -8,9 +8,9 @@ use serde::{Deserialize, Serialize};
 
 use super::state_io::{
     acquire_existing_lock, copy_bytes, copy_bytes_atomic, domain_error, ensure_workspace_root,
-    hash_bytes, io_error, read_json, reject_symlink, remove_dir_if_exists, state_root,
-    transaction_id, validate_core_state, validate_path, validate_state_path,
-    validate_workspace_root, write_json_atomic,
+    hash_bytes, io_error, read_json, reject_symlink, remove_dir_if_exists,
+    resolve_state_root as resolve_root, state_root, transaction_id, validate_core_state,
+    validate_path, validate_state_path, validate_workspace_root, write_json_atomic,
 };
 use super::FileSystemInstallationState;
 use crate::application::{
@@ -36,6 +36,10 @@ pub(crate) const CORE_OWNER: &str = "truss-core";
 pub struct FileSystemAddOnState;
 
 impl AddOnStatePort for FileSystemAddOnState {
+    fn resolve_state_root(&self, root: &Path) -> Result<PathBuf, PortError> {
+        resolve_root(root)
+    }
+
     fn load(&self, root: &Path) -> Result<Option<AddOnState>, PortError> {
         if !root.exists() {
             return Ok(None);

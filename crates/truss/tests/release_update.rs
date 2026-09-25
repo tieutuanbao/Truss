@@ -63,20 +63,20 @@ fn latest_release_handoff_retains_candidate_across_agent_resolved_conflict() {
     );
     assert!(workspace
         .path()
-        .join(".truss-core/update-candidate")
+        .join(".truss/core/update-candidate")
         .join(if cfg!(windows) { "truss.exe" } else { "truss" })
         .is_file());
 
     fs::write(
         workspace
             .path()
-            .join(".truss-core/update/resolved/AGENTS.md"),
+            .join(".truss/core/update/resolved/AGENTS.md"),
         b"human-approved combined authority\n",
     )
     .unwrap();
     let retained_candidate = workspace
         .path()
-        .join(".truss-core/update-candidate")
+        .join(".truss/core/update-candidate")
         .join(if cfg!(windows) { "truss.exe" } else { "truss" });
     fs::write(&retained_candidate, b"tampered candidate").unwrap();
     let tampered = run_update(
@@ -110,7 +110,7 @@ fn latest_release_handoff_retains_candidate_across_agent_resolved_conflict() {
         fs::read(workspace.path().join("AGENTS.md")).unwrap(),
         b"human-approved combined authority\n"
     );
-    assert!(!workspace.path().join(".truss-core/update").exists());
+    assert!(!workspace.path().join(".truss/core/update").exists());
 }
 
 #[test]
@@ -222,10 +222,10 @@ fn update_refuses_to_replace_an_executable_outside_the_selected_repository() {
             }],
         )
         .unwrap();
-    fs::create_dir_all(workspace.path().join(".truss-core/bin")).unwrap();
+    fs::create_dir_all(workspace.path().join(".truss/core/bin")).unwrap();
     fs::copy(
         env!("CARGO_BIN_EXE_truss"),
-        workspace.path().join(".truss-core/bin/truss"),
+        workspace.path().join(".truss/core/bin/truss"),
     )
     .unwrap();
 
@@ -299,7 +299,7 @@ fn update_recovers_an_outdated_executable_before_starting_another_core_update() 
             }],
         )
         .unwrap();
-    let retained = workspace.path().join(".truss-core/update-candidate/truss");
+    let retained = workspace.path().join(".truss/core/update-candidate/truss");
     fs::create_dir_all(retained.parent().unwrap()).unwrap();
     fs::copy(&release_binary, &retained).unwrap();
 
@@ -316,7 +316,7 @@ fn update_recovers_an_outdated_executable_before_starting_another_core_update() 
     assert_eq!(preview_json["applied"], false);
     assert!(workspace
         .path()
-        .join(".truss-core/update-candidate")
+        .join(".truss/core/update-candidate")
         .exists());
 
     let output = run_update(
@@ -330,7 +330,7 @@ fn update_recovers_an_outdated_executable_before_starting_another_core_update() 
     assert_eq!(fs::read(workspace.path().join("AGENTS.md")).unwrap(), base);
     assert!(!workspace
         .path()
-        .join(".truss-core/update-candidate")
+        .join(".truss/core/update-candidate")
         .exists());
 }
 
@@ -386,7 +386,7 @@ fn clean_update_replaces_the_selected_repository_executable() {
             }],
         )
         .unwrap();
-    let installed_binary = workspace.path().join(".truss-core/bin/truss");
+    let installed_binary = workspace.path().join(".truss/core/bin/truss");
     fs::create_dir_all(installed_binary.parent().unwrap()).unwrap();
     fs::copy(env!("CARGO_BIN_EXE_truss"), &installed_binary).unwrap();
 
@@ -414,7 +414,7 @@ fn clean_update_replaces_the_selected_repository_executable() {
     );
     assert!(!workspace
         .path()
-        .join(".truss-core/update-candidate")
+        .join(".truss/core/update-candidate")
         .exists());
 }
 

@@ -18,10 +18,14 @@
 #   L4  a generator input exists and resolves strictly beneath
 #       distribution/entrypoints/.
 #   L5  the payload mirror's bytes are the recorded bytes: every payload file's
-#       sha256 equals its entry in tests/payload-layout-digests.txt, the mirror's
-#       file set equals the manifest destination set minus the generated one,
-#       and both entrypoint copies exist and are byte-identical to their
-#       scripts/ counterparts.
+#       sha256 equals its entry in tests/payload-layout-digests.txt, and the
+#       mirror's file set equals the manifest destination set minus the generated
+#       one. Both entrypoint copies must exist. Of the two, only
+#       claude-truss-block.md is still byte-identical to its scripts/
+#       counterpart and is compared as such; agent-truss-block.md is compared
+#       after un-applying the decision-0008 rename, because scripts/
+#       agent-truss-block.md remains a live legacy-pathed input the shell route
+#       still ships and this plan does not rename it.
 #   L6  the generated declaration agrees with the literals the CLI composes
 #       AGENTS.md from.
 #   L7  the payload mirror carries no .truss-core directory; the installed
@@ -107,8 +111,10 @@ GENERATOR_SOURCE = os.path.join(
 
 # The installed destination prefix decision 0008 introduced, and the legacy
 # directory name it replaced. L7 uses the legacy name to prove the mirror carries
-# no directory under it.
+# no directory under it; the two prefixes are the trailing-slash forms L5 un-applies
+# when it compares the generator entrypoint against its scripts/ counterpart.
 NEW_PREFIX = ".truss/core/"
+LEGACY_PREFIX = ".truss-core/"
 LEGACY_DIRECTORY = ".truss-core"
 
 # The recorded byte expectations for the mirror, generated from it at the commit
@@ -123,6 +129,10 @@ def sha256_of(path):
         for chunk in iter(lambda: handle.read(65536), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+def read_bytes(path):
+    with open(path, "rb") as handle:
+        return handle.read()
 
 
 def recorded_digests():
@@ -377,8 +387,11 @@ def check_payload_digests(entries, recorded):
     are stale by design and no longer authoritative content, so the recorded
     digests are the drift guard until the duplicate-removal plan deletes the
     counterparts. The entrypoint blocks are generator inputs rather than manifest
-    destinations, so they are covered here by their own recorded digests instead of
-    by a comparison against the rewritten scripts/ copies.
+    destinations, so digest coverage is what proves their shipped bytes.
+
+    Digest coverage alone does not prove the entrypoints still correspond to the
+    scripts/ files the installers read, so `check_entrypoint_counterparts` asserts
+    that relation separately.
     """
     expected = {}
     for _, _, dest in entries:
@@ -419,6 +432,42 @@ def check_entrypoints_present():
                  "exist there" % name)
 
 
+def check_entrypoint_counterparts():
+    """Each entrypoint copy still corresponds to the scripts/ file it replaces.
+
+    The two files differ by design, so each gets the relation it actually has:
+
+    - claude-truss-block.md carries no installed path at all, so it must be
+      byte-identical to scripts/claude-truss-block.md.
+    - agent-truss-block.md is the renamed canonical text, while
+      scripts/agent-truss-block.md stays legacy-pathed because the shell route
+      still reads it (scripts/install-truss.sh:182). It must therefore equal its
+      scripts/ counterpart once the decision-0008 rename is un-applied: no other
+      divergence is permitted, so an unrelated edit to either file is rejected.
+    """
+    for name in ENTRYPOINT_BLOCKS:
+        moved = os.path.join(ENTRY, name)
+        counterpart = os.path.join(ROOT, "scripts", name)
+        if not os.path.isfile(moved) or not os.path.isfile(counterpart):
+            continue
+        moved_bytes = read_bytes(moved)
+        counterpart_bytes = read_bytes(counterpart)
+        if name == "claude-truss-block.md":
+            if moved_bytes != counterpart_bytes:
+                fail("payload-layout-contract L5",
+                     "distribution/entrypoints/%s differs from scripts/%s; the Claude "
+                     "shim block carries no installed path, so the two must be "
+                     "byte-identical" % (name, name))
+            continue
+        unrenamed = moved_bytes.replace(NEW_PREFIX.encode(), LEGACY_PREFIX.encode())
+        if unrenamed != counterpart_bytes:
+            fail("payload-layout-contract L5",
+                 "distribution/entrypoints/%s differs from scripts/%s beyond the "
+                 "decision-0008 rename; scripts/ still supplies this block to the "
+                 "shell route, so the only permitted difference is %s becoming %s"
+                 % (name, name, LEGACY_PREFIX, NEW_PREFIX.rstrip("/")))
+
+
 def check_legacy_directory():
     """The mirror carries no legacy directory name."""
     if os.path.isdir(os.path.join(PAYLOAD, LEGACY_DIRECTORY)):
@@ -440,6 +489,7 @@ def main():
     check_generated_binding(declarations)
     check_payload_digests(entries, recorded)
     check_entrypoints_present()
+    check_entrypoint_counterparts()
     return 1 if PROBLEMS else 0
 
 
@@ -562,6 +612,26 @@ neg "a missing entrypoint copy is rejected" "L5" run_root "$WORK/l5e"
 # bytes are guarded by their own recorded digests. A mutated block must fail.
 printf '\n<!-- drifted -->\n' >> "$(fixture l5d)/distribution/entrypoints/agent-truss-block.md"
 neg "an entrypoint block whose digest moved is rejected" "L5" run_root "$WORK/l5d"
+
+# Digest coverage proves the block's shipped bytes, not that the copy still
+# corresponds to the scripts/ file its consumer reads. Repoint only the scripts/
+# counterpart of one entrypoint at the legacy text: the digest side is untouched,
+# so only the counterpart relation can catch it.
+printf '.truss-core/docs/WORKFLOW.md\n' > "$(fixture l5c)/scripts/claude-truss-block.md"
+neg "a Claude entrypoint copy diverging from its scripts/ counterpart is rejected" \
+  "L5" run_root "$WORK/l5c"
+
+# The generator entrypoint is compared after un-applying the rename, so the
+# permitted difference is exactly the rename. Mutate it in a way the rename does
+# not explain, leaving scripts/ alone: the digest side is untouched.
+python3 - "$(fixture l5a)/distribution/entrypoints/agent-truss-block.md" <<'PY'
+import sys
+path = sys.argv[1]
+text = open(path, encoding="utf-8").read()
+open(path, "w", encoding="utf-8").write(text.replace("No control-plane operation", "No plane operation", 1))
+PY
+neg "a generator entrypoint diverging from its scripts/ counterpart beyond the rename is rejected" \
+  "L5" run_root "$WORK/l5a"
 
 # --- L6: the generated declaration binds the CLI literals ------------------
 python3 - "$(fixture l6p)/distribution/generated.txt" <<'PY'

@@ -55,13 +55,16 @@ MANIFEST_ENGINEERING_WISDOM="scripts/engineering-wisdom-install-files.txt"
 MANIFEST_DELIVERY="scripts/delivery-install-files.txt"
 MANIFEST_PLANNING="scripts/plan-install-files.txt"
 PAYLOAD_PROBE=".agents/skills/delivery/references/trusses.md"
+# The same path as a mirror source. The dirty-payload refusal judges the bytes the
+# installer stages, which live under distribution/payload/, not the destination.
+PAYLOAD_SOURCE_PROBE="distribution/payload/$PAYLOAD_PROBE"
 # The delivery lane's expected counts come from the delivery manifest, never
 # from a literal, so a manifest change cannot leave a stale constant behind.
 DELIVERY_PATHS="$(awk 'NF && $1 !~ /^#/ { n++ } END { print n + 0 }' "$MANIFEST_DELIVERY")"
 
 cleanup() {
   if [ "$PAYLOAD_TOUCHED" = 1 ]; then
-    cp "$EV/trusses.md.bak" "$PAYLOAD_PROBE"
+    cp "$EV/trusses.md.bak" "$PAYLOAD_SOURCE_PROBE"
   fi
   mkdir -p "$EVIDENCE/rehearse-raw"
   cp "$EV"/*.txt "$EVIDENCE/rehearse-raw/" 2>/dev/null
@@ -111,7 +114,7 @@ paths = [line.strip() for line in open(manifest)
          if line.strip() and not line.strip().startswith('#')]
 problems = []
 
-record_path = os.path.join(ws, '.truss-core/addons.json')
+record_path = os.path.join(ws, '.truss/core/addons.json')
 try:
     state = json.load(open(record_path))
 except Exception as error:  # noqa: BLE001 - reported as a failed check
@@ -120,14 +123,14 @@ except Exception as error:  # noqa: BLE001 - reported as a failed check
 
 addon = next((entry for entry in state['addons'] if entry['name'] == name), None)
 if addon is None:
-    problems.append('no record in .truss-core/addons.json')
+    problems.append('no record in .truss/core/addons.json')
 else:
     if addon['source_ref'] != expected_ref:
         problems.append('recorded ref %s != %s' % (addon['source_ref'], expected_ref))
     recorded = [entry['path'] for entry in addon['files']]
     if recorded != paths:
         problems.append('recorded path set differs from the manifest (%d vs %d)' % (len(recorded), len(paths)))
-    baseline_root = os.path.join(ws, '.truss-core/base-addons', name)
+    baseline_root = os.path.join(ws, '.truss/core/base-addons', name)
     if not os.path.isdir(baseline_root):
         problems.append('no baseline directory')
     for entry in addon['files']:
@@ -141,7 +144,7 @@ else:
             if digest != entry['upstream_sha256']:
                 problems.append('digest mismatch %s' % os.path.relpath(target, ws))
 
-baseline_root = os.path.join(ws, '.truss-core/base-addons', name)
+baseline_root = os.path.join(ws, '.truss/core/base-addons', name)
 baseline = sorted(os.path.relpath(os.path.join(root, name_), baseline_root)
                   for root, _, names in os.walk(baseline_root) for name_ in names)
 if baseline != sorted(paths):
@@ -205,12 +208,15 @@ fi
 
 copy_payload() { # dst
   local dst="$1"
-  mkdir -p "$dst/scripts"
+  mkdir -p "$dst/scripts" "$dst/distribution/payload"
   cp scripts/delivery-install-files.txt "$dst/scripts/"
+  cp distribution/layout-version "$dst/distribution/"
+  # Each manifest line names a destination; the source bytes live in the mirror,
+  # so the fixture copies mirror -> destination exactly as the installer stages.
   while IFS= read -r p; do
     case "$p" in ""|\#*) continue ;; esac
-    mkdir -p "$dst/$(dirname "$p")"
-    cp -p "$REPO/$p" "$dst/$p"
+    mkdir -p "$dst/$(dirname "$p")" "$dst/distribution/payload/$(dirname "$p")"
+    cp -p "$REPO/distribution/payload/$p" "$dst/distribution/payload/$p"
   done < scripts/delivery-install-files.txt
 }
 
@@ -221,7 +227,7 @@ git -C "$EV/gitA" init -q -b main
 git -C "$EV/gitA" add -A
 git -C "$EV/gitA" -c user.email=s5@example.com -c user.name=s5 commit -qm "payload A"
 cp -a "$EV/gitA" "$EV/gitB"
-printf '\n<!-- upstream change in the next release -->\n' >> "$EV/gitB/.agents/skills/delivery/references/trusses.md"
+printf '\n<!-- upstream change in the next release -->\n' >> "$EV/gitB/distribution/payload/$PAYLOAD_PROBE"
 git -C "$EV/gitB" add -A
 git -C "$EV/gitB" -c user.email=s5@example.com -c user.name=s5 commit -qm "payload B changes references/trusses.md"
 EV_A_SHA="$(git -C "$EV/gitA" rev-parse HEAD)"
@@ -238,15 +244,36 @@ cp -a "$EV/raw/truss-v0.1.13/." "$EV/rawm/truss-v0.1.13/"
 printf 'truss-v0.1.14\n' > "$EV/rawm/truss-v0.1.13/scripts/truss-release-tag"
 
 # a local source tree that is not a git checkout
-mkdir -p "$EV/nogit/scripts" "$EV/nogit/.truss-core/docs"
+mkdir -p "$EV/nogit/scripts" "$EV/nogit/.truss/core/docs"
 cp scripts/install-truss.sh "$EV/nogit/scripts/"
 cp AGENTS.md "$EV/nogit/"
-cp .truss-core/docs/TRUSS.md "$EV/nogit/.truss-core/docs/"
+cp .truss-core/docs/TRUSS.md "$EV/nogit/.truss/core/docs/"
 
 # a copy of the installer outside the repository, so it runs in raw-URL mode
 cp scripts/install-truss.sh "$EV/raw/installer-remote.sh"
 
-cp "$PAYLOAD_PROBE" "$EV/trusses.md.bak"
+# A legacy-layout source pinned to the same release tag, for the counterexample
+# lanes below. The pre-change installer resolves each destination relative to the
+# source base URL, so its fixture carries the payload bytes at the root in the
+# pre-0008 shape; the directory name keeps the tag-pinned form that installer
+# requires. Nothing here reads this candidate's root copies.
+copy_legacy_payload() { # dst
+  local dst="$1"
+  mkdir -p "$dst/scripts"
+  cp scripts/delivery-install-files.txt "$dst/scripts/"
+  printf 'truss-v0.1.13\n' > "$dst/scripts/truss-release-tag"
+  while IFS= read -r p; do
+    case "$p" in ""|\#*) continue ;; esac
+    mkdir -p "$dst/$(dirname "$p")"
+    cp -p "$REPO/distribution/payload/$p" "$dst/$p"
+  done < scripts/delivery-install-files.txt
+  # A second payload revision, so the old installer meets a changed upstream path.
+  cp -a "$dst" "$EV/rawlegacy-b"
+  printf '\n<!-- upstream change in the next release -->\n' >> "$EV/rawlegacy-b/$PAYLOAD_PROBE"
+}
+copy_legacy_payload "$EV/rawlegacy/truss-v0.1.13"
+
+cp "$PAYLOAD_SOURCE_PROBE" "$EV/trusses.md.bak"
 echo
 
 # ------------------------------------------------------------ Row A ---------
@@ -272,13 +299,13 @@ LOCAL_SOURCE_REF="$HEAD_SHA"
 if [ -n "$RELEASE_TAG_FILE" ] && git tag --points-at HEAD 2>/dev/null | grep -Fxq "$RELEASE_TAG_FILE"; then
   LOCAL_SOURCE_REF="$RELEASE_TAG_FILE"
 fi
-check "addons.json records the add-on" "$([ -f "$W1/.truss-core/addons.json" ]; echo $?)"
+check "addons.json records the add-on" "$([ -f "$W1/.truss/core/addons.json" ]; echo $?)"
 check "recorded ref is the resolved local source ref (release tag on a tagged HEAD, else HEAD SHA)" \
-  "$([ "$(python3 -c "import json;print(json.load(open('$W1/.truss-core/addons.json'))['addons'][0]['source_ref'])")" = "$LOCAL_SOURCE_REF" ]; echo $?)"
+  "$([ "$(python3 -c "import json;print(json.load(open('$W1/.truss/core/addons.json'))['addons'][0]['source_ref'])")" = "$LOCAL_SOURCE_REF" ]; echo $?)"
 check "recorded digest count equals the delivery manifest's path count" \
-  "$([ "$(python3 -c "import json;print(len(json.load(open('$W1/.truss-core/addons.json'))['addons'][0]['files']))")" = "$DELIVERY_PATHS" ]; echo $?)"
+  "$([ "$(python3 -c "import json;print(len(json.load(open('$W1/.truss/core/addons.json'))['addons'][0]['files']))")" = "$DELIVERY_PATHS" ]; echo $?)"
 check "baseline holds every payload path" \
-  "$([ "$(find "$W1/.truss-core/base-addons/delivery" -type f | wc -l)" = "$DELIVERY_PATHS" ]; echo $?)"
+  "$([ "$(find "$W1/.truss/core/base-addons/delivery" -type f | wc -l)" = "$DELIVERY_PATHS" ]; echo $?)"
 check "every delivery manifest path is present in the workspace" \
   "$(python3 -c "
 import os
@@ -289,17 +316,17 @@ check "installer output names the CLI invocation" \
   "$(grep -q 'addon install --name delivery --manifest' "$EV/row1-install.txt"; echo $?)"
 check "no direct-copy helper survives in the bash installer" \
   "$([ "$(grep -c 'copy_file\|copy_manifest_files\|write_source_file' scripts/install-truss.sh)" = 0 ]; echo $?)"
-"$W1/.truss-core/bin/truss" addon status --name delivery --directory "$W1" --json > "$EV/row1-status.json" 2>&1
+"$W1/.truss/core/bin/truss" addon status --name delivery --directory "$W1" --json > "$EV/row1-status.json" 2>&1
 check "a following addon status reports the record" \
   "$(python3 -c "import json,sys;d=json.load(open('$EV/row1-status.json'));print(0 if d['record'] and len(d['record']['files'])==int(sys.argv[1]) else 1)" "$DELIVERY_PATHS")"
 check "workspace, baseline, and record agree" \
   "$(python3 -c "
 import json,hashlib,os
 w='$W1'
-a=json.load(open(os.path.join(w,'.truss-core/addons.json')))['addons'][0]
+a=json.load(open(os.path.join(w,'.truss/core/addons.json')))['addons'][0]
 bad=0
 for f in a['files']:
-    p=os.path.join(w,f['path']); b=os.path.join(w,'.truss-core/base-addons',a['name'],f['path'])
+    p=os.path.join(w,f['path']); b=os.path.join(w,'.truss/core/base-addons',a['name'],f['path'])
     for q in (p,b):
         if hashlib.sha256(open(q,'rb').read()).hexdigest()!=f['upstream_sha256']: bad=1
     if not os.path.exists(b): bad=1
@@ -309,14 +336,14 @@ echo
 # ------------------------------------------------------------ Row 2 ---------
 echo "== Row 2 rehearsal 1: rerun with the same ref never skips and never clobbers =="
 snap "$W1" > "$EV/row2-before.tree"
-ADDONS_BEFORE="$(file_hash "$W1/.truss-core/addons.json")"
+ADDONS_BEFORE="$(file_hash "$W1/.truss/core/addons.json")"
 scripts/install-truss.sh --directory "$W1" --with-delivery --merge --yes > "$EV/row2-rerun.txt" 2>&1
 st=$?
 check "rerun exits 0" "$st"
 snap "$W1" > "$EV/row2-after.tree"
 check "managed workspace and baseline byte-identical (only .truss-backup is new)" \
   "$(diff -q "$EV/row2-before.tree" "$EV/row2-after.tree" >/dev/null; echo $?)"
-check "addons.json byte-identical" "$([ "$(file_hash "$W1/.truss-core/addons.json")" = "$ADDONS_BEFORE" ]; echo $?)"
+check "addons.json byte-identical" "$([ "$(file_hash "$W1/.truss/core/addons.json")" = "$ADDONS_BEFORE" ]; echo $?)"
 check "rerun reports preserve for the unchanged payload" \
   "$(grep -q 'preserve .agents/skills/delivery/references/trusses.md' "$EV/row2-rerun.txt"; echo $?)"
 check "the old merge-skip wording is absent from the add-on step" \
@@ -329,7 +356,7 @@ TRUSS_CORE_BINARY="$CLI" scripts/install-truss.sh --directory "$EV/w2" --with-de
 st=$?
 check "install from payload A exits 0" "$st"
 check "recorded ref is payload A's commit SHA" \
-  "$([ "$(python3 -c "import json;print(json.load(open('$EV/w2/.truss-core/addons.json'))['addons'][0]['source_ref'])")" = "$EV_A_SHA" ]; echo $?)"
+  "$([ "$(python3 -c "import json;print(json.load(open('$EV/w2/.truss/core/addons.json'))['addons'][0]['source_ref'])")" = "$EV_A_SHA" ]; echo $?)"
 CONFLICT_PATH="$EV/w2/$PAYLOAD_PROBE"
 printf '\n<!-- consumer local edit -->\n' >> "$CONFLICT_PATH"
 CONSUMER="$(file_hash "$CONFLICT_PATH")"
@@ -345,9 +372,9 @@ check "consumer bytes survive in the workspace" "$([ "$(file_hash "$CONFLICT_PAT
 check "nothing else moved: only the owned session appeared" \
   "$(diff "$EV/row2b-before.tree" <(snap "$EV/w2") | grep '^[<>]' | grep -v 'addon-update' | grep -q .; [ $? -ne 0 ]; echo $?)"
 check "recorded ref still payload A" \
-  "$([ "$(python3 -c "import json;print(json.load(open('$EV/w2/.truss-core/addons.json'))['addons'][0]['source_ref'])")" = "$EV_A_SHA" ]; echo $?)"
+  "$([ "$(python3 -c "import json;print(json.load(open('$EV/w2/.truss/core/addons.json'))['addons'][0]['source_ref'])")" = "$EV_A_SHA" ]; echo $?)"
 check "resolved path staged for the conflict" \
-  "$([ -f "$EV/w2/.truss-core/addon-update/delivery/resolved/$PAYLOAD_PROBE" ]; echo $?)"
+  "$([ -f "$EV/w2/.truss/core/addon-update/delivery/resolved/$PAYLOAD_PROBE" ]; echo $?)"
 echo
 
 # ------------------------------------------------------------ Row B ---------
@@ -373,7 +400,7 @@ for spec in "$MANIFEST_ENGINEERING_WISDOM:engineering-wisdom" "$MANIFEST_DELIVER
   line="$(assert_addon_matches_manifest "$WALL" "$name" "$manifest" "$LOCAL_SOURCE_REF")"
   st=$?
   check "$line" "$st"
-  "$WALL/.truss-core/bin/truss" addon status --name "$name" --directory "$WALL" --json > "$EV/status-$name.json" 2>&1
+  "$WALL/.truss/core/bin/truss" addon status --name "$name" --directory "$WALL" --json > "$EV/status-$name.json" 2>&1
   line="$(assert_addon_status_matches_manifest "$EV/status-$name.json" "$name" "$manifest")"
   st=$?
   check "$line" "$st"
@@ -394,18 +421,18 @@ TRUSS_CORE_BINARY="$CLI" TRUSS_SOURCE_BASE_URL="file://$EV/raw/truss-v0.1.13" \
 st=$?
 check "install from the tag-pinned raw source exits 0" "$st"
 check "recorded ref is the resolved release tag" \
-  "$([ "$(python3 -c "import json;print(json.load(open('$EV/w3/.truss-core/addons.json'))['addons'][0]['source_ref'])")" = "truss-v0.1.13" ]; echo $?)"
+  "$([ "$(python3 -c "import json;print(json.load(open('$EV/w3/.truss/core/addons.json'))['addons'][0]['source_ref'])")" = "truss-v0.1.13" ]; echo $?)"
 check "the payload was staged outside the source and installed through the CLI" \
   "$(grep -q 'addon install --name delivery --manifest .*/payload' "$EV/row1-remote.txt"; echo $?)"
 echo
 
 # -------------------------------------------------------------- refusals ----
 echo "== Refusals: stop with a clear message, copy nothing =="
-printf '\n<!-- local dev edit -->\n' >> "$PAYLOAD_PROBE"
+printf '\n<!-- local dev edit -->\n' >> "$PAYLOAD_SOURCE_PROBE"
 PAYLOAD_TOUCHED=1
 scripts/install-truss.sh --directory "$EV/w4" --with-delivery --yes > "$EV/refusal-dirty.txt" 2>&1
 st=$?
-cp "$EV/trusses.md.bak" "$PAYLOAD_PROBE"
+cp "$EV/trusses.md.bak" "$PAYLOAD_SOURCE_PROBE"
 PAYLOAD_TOUCHED=0
 check "an uncommitted local payload refuses" "$([ "$st" -ne 0 ]; echo $?)"
 check "the dirty refusal left the target empty" "$([ "$(find "$EV/w4" -mindepth 1 2>/dev/null | wc -l)" = 0 ]; echo $?)"
@@ -439,29 +466,50 @@ CONSUMER_C="$(file_hash "$EV/w2c/$PAYLOAD_PROBE")"
 cp -a "$EV/w2c" "$EV/w2c-merge"
 cp -a "$EV/w2c" "$EV/w2c-force"
 
-TRUSS_CORE_BINARY="$CLI" TRUSS_SOURCE_BASE_URL="file://$EV/gitB" TRUSS_CORE_SOURCE_BASE_URL="file://$EV/gitB" \
+# The pre-change installer is fed a legacy-layout source pinned to the release
+# tag, which is the shape it was written for: it resolves each destination
+# relative to the source base URL, so a post-0008 source would compare it against
+# a layout it never knew rather than against the state under test.
+#
+# Boundary this revision imposes, asserted rather than assumed: the pre-change
+# installer always delegates its core step to the CLI it stages, so against the
+# post-0008 CLI it cannot complete at all. It reads the target's legacy state and
+# then hands it to a CLI that parses it under the new schema, and it installs the
+# binary at .truss-core while that CLI wrote .truss/core. Decision 0008 records
+# this pairing as unsupported; the counterexample's merge/force semantics are
+# therefore proven against the candidate, whose Row 2 lanes cover preserve and
+# conflict handling, and the boundary is proven here.
+check "the legacy-layout source carries the payload the old installer expects" \
+  "$([ -f "$EV/rawlegacy/truss-v0.1.13/$PAYLOAD_PROBE" ] && [ ! -d "$EV/rawlegacy/truss-v0.1.13/distribution" ]; echo $?)"
+
+TRUSS_CORE_BINARY="$CLI" TRUSS_SOURCE_BASE_URL="file://$EV/rawlegacy-b" \
+  TRUSS_CORE_SOURCE_BASE_URL="file://$EV/rawlegacy-b" \
   bash "$EV/old-install.sh" --directory "$EV/w2c-merge" --with-delivery --merge --yes > "$EV/counterexample-merge.txt" 2>&1
 st=$?
-check "old installer --merge exits 0 while skipping every add-on path" \
-  "$([ "$st" = 0 ] && [ "$(grep -c 'merge keeps existing file' "$EV/counterexample-merge.txt")" = "$DELIVERY_PATHS" ]; echo $?)"
-check "old installer --merge leaves the upstream change unapplied (stale content)" \
-  "$([ "$(grep -c 'upstream change in the next release' "$EV/w2c-merge/$PAYLOAD_PROBE")" = 0 ]; echo $?)"
-check "old installer --merge records no provenance for the new ref" \
-  "$([ "$(python3 -c "import json;print(json.load(open('$EV/w2c-merge/.truss-core/addons.json'))['addons'][0]['source_ref'])")" = "$EV_A_SHA" ]; echo $?)"
+check "the pre-change installer cannot complete against the post-0008 CLI (unsupported pairing)" \
+  "$([ "$st" -ne 0 ]; echo $?)"
+check "the unsupported pairing leaves the consumer bytes untouched" \
+  "$([ "$(file_hash "$EV/w2c-merge/$PAYLOAD_PROBE")" = "$CONSUMER_C" ]; echo $?)"
+check "the pre-change installer never reached its merge skip path" \
+  "$([ "$(grep -c 'merge keeps existing file' "$EV/counterexample-merge.txt")" = 0 ]; echo $?)"
+# The pre-change installer has no provenance format at all: it copies add-on
+# bytes directly and writes no record. That is asserted on the artefact itself,
+# because the tree it would have written into was prepared by the candidate.
+check "the pre-change installer carries no add-on record or digest code" \
+  "$([ "$(grep -c 'addons.json\|upstream_sha256\|source_ref' "$EV/old-install.sh")" = 0 ]; echo $?)"
 
-TRUSS_CORE_BINARY="$CLI" TRUSS_SOURCE_BASE_URL="file://$EV/gitB" TRUSS_CORE_SOURCE_BASE_URL="file://$EV/gitB" \
+TRUSS_CORE_BINARY="$CLI" TRUSS_SOURCE_BASE_URL="file://$EV/rawlegacy-b" \
+  TRUSS_CORE_SOURCE_BASE_URL="file://$EV/rawlegacy-b" \
   bash "$EV/old-install.sh" --directory "$EV/w2c-force" --with-delivery --merge --force --yes > "$EV/counterexample-force.txt" 2>&1
 st=$?
-check "old installer --force clobbers the consumer edit" \
-  "$([ "$st" = 0 ] && [ "$(file_hash "$EV/w2c-force/$PAYLOAD_PROBE")" != "$CONSUMER_C" ]; echo $?)"
-check "old installer --force keeps the consumer bytes only in its own backup" \
-  "$([ "$(find "$EV/w2c-force/.truss-backup" -name 'trusses.md' | wc -l)" -ge 1 ]; echo $?)"
+check "the pre-change installer --force also cannot complete, so it cannot clobber" \
+  "$([ "$st" -ne 0 ] && [ "$(file_hash "$EV/w2c-force/$PAYLOAD_PROBE")" = "$CONSUMER_C" ]; echo $?)"
 
 TRUSS_CORE_BINARY="$CLI" scripts/install-truss.sh --directory "$EV/w2c" --with-delivery --merge --yes \
   --source-git "file://$EV/gitB" > "$EV/candidate-on-same-state.txt" 2>&1
 st=$?
 check "candidate on the same state stages a conflict and keeps the consumer bytes" \
-  "$([ "$st" -ne 0 ] && [ "$(file_hash "$EV/w2c/$PAYLOAD_PROBE")" = "$CONSUMER_C" ] && [ -f "$EV/w2c/.truss-core/addon-update/delivery/resolved/$PAYLOAD_PROBE" ]; echo $?)"
+  "$([ "$st" -ne 0 ] && [ "$(file_hash "$EV/w2c/$PAYLOAD_PROBE")" = "$CONSUMER_C" ] && [ -f "$EV/w2c/.truss/core/addon-update/delivery/resolved/$PAYLOAD_PROBE" ]; echo $?)"
 echo
 
 # ---------------------------------------------------------------- Row 3 -----

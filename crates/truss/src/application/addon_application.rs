@@ -42,10 +42,10 @@ where
 
     /// Report one add-on's recorded provenance and pending session.
     ///
-    /// The record comes from the add-on state port (`.truss-core/addons.json`)
+    /// The record comes from the add-on state port (`<state-root>/addons.json`)
     /// and the pending flag from the add-on execution port
-    /// (`.truss-core/addon-update/<name>/`). The core state port's
-    /// `resolution_pending`, which reads `.truss-core/update/`, is never
+    /// (`<state-root>/addon-update/<name>/`). The core state port's
+    /// `resolution_pending`, which reads `<state-root>/update/`, is never
     /// consulted, so a pending core session cannot be reported as an add-on
     /// session.
     pub fn status(&self, root: &Path, name: &AddOnName) -> Result<AddOnStatusReport, PortError> {
@@ -184,9 +184,9 @@ where
     /// already owns, before anything is planned or applied.
     ///
     /// The ownership set is the workspace's own recorded state, read through
-    /// the add-on state port: the core `.truss-core/manifest.json` entry list
+    /// the add-on state port: the core `<state-root>/manifest.json` entry list
     /// and the recorded paths of every other add-on in
-    /// `.truss-core/addons.json`. No caller supplies it and no command-line flag
+    /// `<state-root>/addons.json`. No caller supplies it and no command-line flag
     /// exists for it, so an empty caller-supplied list can never disable the
     /// check, and an incomplete core state is a refusal rather than an empty
     /// ownership set. The guard runs on dry runs too, so a preview cannot
@@ -267,11 +267,11 @@ impl AddOnUpdateReport {
 pub struct AddOnStatusReport {
     /// Add-on whose status was requested.
     pub name: AddOnName,
-    /// Recorded installation, or `None` when `.truss-core/addons.json` holds no
+    /// Recorded installation, or `None` when `<state-root>/addons.json` holds no
     /// record for this add-on.
     pub record: Option<AddOnRecordStatus>,
     /// True when an add-on conflict session is pending under
-    /// `.truss-core/addon-update/<name>/`.
+    /// `<state-root>/addon-update/<name>/`.
     pub session_pending: bool,
 }
 

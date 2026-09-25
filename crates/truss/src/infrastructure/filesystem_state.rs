@@ -7,8 +7,8 @@ use serde::{Deserialize, Serialize};
 use super::state_io::{
     acquire_lock, copy_bytes, copy_file, copy_tree, ensure_state_ignore, ensure_workspace_root,
     hash_bytes, io_error, read_json, reject_symlink, remove_dir_if_exists,
-    resolve_state_root as resolve_root, state_root, validate_path, validate_state_path,
-    validate_workspace_root, write_json_atomic,
+    resolve_state_root as resolve_root, state_label, state_root, validate_path,
+    validate_state_path, validate_workspace_root, write_json_atomic,
 };
 use super::transaction::{self, ProvenanceKind, ProvenanceWriter};
 use crate::application::{InstallationStatePort, PortError};
@@ -31,7 +31,7 @@ impl InstallationStatePort for FileSystemInstallationState {
         if !state_root.exists() {
             return Ok(false);
         }
-        reject_symlink(&state_root, ".truss-core")?;
+        reject_symlink(&state_root, state_label(&state_root))?;
         fs::create_dir_all(&state_root).map_err(io_error)?;
         ensure_state_ignore(&state_root)?;
         let lock = acquire_lock(&state_root)?;
@@ -101,7 +101,7 @@ impl InstallationStatePort for FileSystemInstallationState {
             .map_err(|error| PortError::new(error.to_string()))?;
         let state_root = state_root(root);
         if state_root.exists() {
-            reject_symlink(&state_root, ".truss-core")?;
+            reject_symlink(&state_root, state_label(&state_root))?;
         }
         fs::create_dir_all(&state_root).map_err(io_error)?;
         ensure_state_ignore(&state_root)?;
@@ -125,7 +125,7 @@ impl InstallationStatePort for FileSystemInstallationState {
             .map_err(|error| PortError::new(error.to_string()))?;
         let state_root = state_root(root);
         if state_root.exists() {
-            reject_symlink(&state_root, ".truss-core")?;
+            reject_symlink(&state_root, state_label(&state_root))?;
         }
         fs::create_dir_all(&state_root).map_err(io_error)?;
         ensure_state_ignore(&state_root)?;
@@ -147,7 +147,7 @@ impl InstallationStatePort for FileSystemInstallationState {
         if !state_root.exists() {
             return Ok(false);
         }
-        reject_symlink(&state_root, ".truss-core")?;
+        reject_symlink(&state_root, state_label(&state_root))?;
         Ok(update_root(&state_root).join("session.json").is_file())
     }
 
@@ -159,7 +159,7 @@ impl InstallationStatePort for FileSystemInstallationState {
         ensure_workspace_root(root)?;
         let state_root = state_root(root);
         if state_root.exists() {
-            reject_symlink(&state_root, ".truss-core")?;
+            reject_symlink(&state_root, state_label(&state_root))?;
         }
         fs::create_dir_all(&state_root).map_err(io_error)?;
         ensure_state_ignore(&state_root)?;
@@ -178,7 +178,7 @@ impl InstallationStatePort for FileSystemInstallationState {
         if !state_root.exists() {
             return Ok(None);
         }
-        reject_symlink(&state_root, ".truss-core")?;
+        reject_symlink(&state_root, state_label(&state_root))?;
         load_resolution_session(&state_root)
     }
 
@@ -191,12 +191,12 @@ impl InstallationStatePort for FileSystemInstallationState {
         if !state_root.exists() {
             return Ok(false);
         }
-        reject_symlink(&state_root, ".truss-core")?;
+        reject_symlink(&state_root, state_label(&state_root))?;
         let lock = acquire_lock(&state_root)?;
         let path = update_root(&state_root);
         let removed = path.exists();
         if removed {
-            reject_symlink(&path, ".truss-core/update")?;
+            reject_symlink(&path, &format!("{}/update", state_label(&state_root)))?;
         }
         let result = remove_dir_if_exists(&path).map(|_| removed);
         FileExt::unlock(&lock).map_err(io_error)?;
@@ -213,7 +213,7 @@ fn stage_resolution_locked(
     }
     let update_root = update_root(state_root);
     if update_root.exists() {
-        reject_symlink(&update_root, ".truss-core/update")?;
+        reject_symlink(&update_root, &format!("{}/update", state_label(state_root)))?;
     }
     remove_dir_if_exists(&update_root)?;
     fs::create_dir_all(&update_root).map_err(io_error)?;
@@ -267,8 +267,11 @@ fn load_resolution_session(
     if !session_path.exists() {
         return Ok(None);
     }
-    reject_symlink(&update_root, ".truss-core/update")?;
-    reject_symlink(&session_path, ".truss-core/update/session.json")?;
+    reject_symlink(&update_root, &format!("{}/update", state_label(state_root)))?;
+    reject_symlink(
+        &session_path,
+        &format!("{}/update/session.json", state_label(state_root)),
+    )?;
     let dto: ResolutionSessionDto = read_json(&session_path)?;
     if dto.schema_version != 2 {
         return Err(PortError::new(format!(
@@ -434,7 +437,7 @@ fn load_state(root: &Path) -> Result<Option<InstallationState>, PortError> {
     if !state_root.exists() {
         return Ok(None);
     }
-    reject_symlink(&state_root, ".truss-core")?;
+    reject_symlink(&state_root, state_label(&state_root))?;
     let manifest_path = state_root.join("manifest.json");
     if !manifest_path.exists() {
         return Ok(None);
@@ -557,7 +560,7 @@ mod tests {
             schema_version: InstallationState::SCHEMA_VERSION,
             core_version: "1.0.0".to_owned(),
             files: vec![BaselineFile {
-                path: RelativePath::parse(".truss-core/docs/WORKFLOW.md").unwrap(),
+                path: RelativePath::parse(".truss/core/docs/WORKFLOW.md").unwrap(),
                 content: content.to_vec(),
                 hash: hash_bytes(content).unwrap(),
             }],
@@ -569,14 +572,14 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let store = FileSystemInstallationState;
         let mutation = WorkspaceMutation::Write {
-            path: RelativePath::parse(".truss-core/docs/WORKFLOW.md").unwrap(),
+            path: RelativePath::parse(".truss/core/docs/WORKFLOW.md").unwrap(),
             content: b"local".to_vec(),
         };
         store
             .apply(root.path(), &state(b"base"), &[mutation])
             .unwrap();
         assert_eq!(
-            fs::read(root.path().join(".truss-core/docs/WORKFLOW.md")).unwrap(),
+            fs::read(root.path().join(".truss/core/docs/WORKFLOW.md")).unwrap(),
             b"local"
         );
         assert_eq!(store.load(root.path()).unwrap().unwrap(), state(b"base"));
@@ -586,7 +589,7 @@ mod tests {
     fn incomplete_transaction_is_rolled_back_before_new_work() {
         let root = tempfile::tempdir().unwrap();
         let store = FileSystemInstallationState;
-        let path = RelativePath::parse(".truss-core/docs/WORKFLOW.md").unwrap();
+        let path = RelativePath::parse(".truss/core/docs/WORKFLOW.md").unwrap();
         store
             .apply(
                 root.path(),
@@ -639,7 +642,7 @@ mod tests {
     fn apply_failure_restores_workspace_and_prior_provenance() {
         let root = tempfile::tempdir().unwrap();
         let store = FileSystemInstallationState;
-        let path = RelativePath::parse(".truss-core/docs/WORKFLOW.md").unwrap();
+        let path = RelativePath::parse(".truss/core/docs/WORKFLOW.md").unwrap();
         store
             .apply(
                 root.path(),
@@ -682,11 +685,14 @@ mod tests {
 
         let root = tempfile::tempdir().unwrap();
         let outside = tempfile::tempdir().unwrap();
-        symlink(outside.path(), root.path().join(".truss-core")).unwrap();
+        // The installed tree is `.truss/core`, so its parent exists before the
+        // managed component itself is replaced by a symlink.
+        fs::create_dir_all(root.path().join(".truss")).unwrap();
+        symlink(outside.path(), root.path().join(".truss/core")).unwrap();
         let error = FileSystemInstallationState
             .validate_managed_path(
                 root.path(),
-                &RelativePath::parse(".truss-core/docs/WORKFLOW.md").unwrap(),
+                &RelativePath::parse(".truss/core/docs/WORKFLOW.md").unwrap(),
             )
             .unwrap_err();
         assert!(error.to_string().contains("refusing symlink"));
@@ -697,15 +703,16 @@ mod tests {
         use std::os::unix::fs::symlink;
 
         let root = tempfile::tempdir().unwrap();
+        fs::create_dir_all(root.path().join(".truss")).unwrap();
         symlink(
             root.path().join("missing-target"),
-            root.path().join(".truss-core"),
+            root.path().join(".truss/core"),
         )
         .unwrap();
         let error = FileSystemInstallationState
             .validate_managed_path(
                 root.path(),
-                &RelativePath::parse(".truss-core/docs/WORKFLOW.md").unwrap(),
+                &RelativePath::parse(".truss/core/docs/WORKFLOW.md").unwrap(),
             )
             .unwrap_err();
         assert!(error.to_string().contains("refusing symlink"));

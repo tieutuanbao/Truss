@@ -1,3 +1,5 @@
+mod common;
+
 use std::fs;
 
 use sha2::{Digest, Sha256};
@@ -6,6 +8,8 @@ use truss::domain::{
     ContentHash, CoreDistribution, DistributionFile, InstallationCondition, RelativePath,
 };
 use truss::infrastructure::{FileSystemInstallationState, GitThreeWayMerge};
+
+use common::workspace_snapshot;
 
 #[derive(Clone)]
 struct DistributionFixture(CoreDistribution);
@@ -350,6 +354,47 @@ fn existing_state_gitignore_is_augmented_without_losing_custom_rules() {
     assert!(ignore.contains("/update/"));
     assert!(ignore.contains("/update-candidate/"));
     assert!(ignore.contains("/addon-update/"));
+}
+
+/// Finding 2: the refusal must be proven against a real repository, on the
+/// complete path set, not merely by asserting that a port method went uncalled.
+/// `workspace_snapshot` captures every path with its type and content digest, so
+/// an install that wrote before failing cannot pass this test.
+#[test]
+fn install_refuses_a_repository_holding_both_roots_on_a_real_tree() {
+    let root = tempfile::tempdir().unwrap();
+
+    // A real legacy installation, written by the CLI itself.
+    application("1.0.0", b"legacy policy\n")
+        .install(root.path(), false)
+        .unwrap();
+    fs::rename(
+        root.path().join(".truss/core"),
+        root.path().join(".truss-core"),
+    )
+    .unwrap();
+
+    // Now a real new-root installation beside it, so both trees exist.
+    fs::create_dir_all(root.path().join(".truss/core")).unwrap();
+    fs::write(root.path().join(".truss/core/manifest.json"), b"{}").unwrap();
+
+    let before = workspace_snapshot(root.path());
+
+    let error = application("2.0.0", b"new policy\n")
+        .install(root.path(), false)
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains(".truss/core"), "names the new root: {error}");
+    assert!(
+        error.contains(".truss-core"),
+        "names the legacy root: {error}"
+    );
+
+    let after = workspace_snapshot(root.path());
+    assert_eq!(
+        before, after,
+        "a refused install must leave every path, type, and byte unchanged"
+    );
 }
 
 fn application(

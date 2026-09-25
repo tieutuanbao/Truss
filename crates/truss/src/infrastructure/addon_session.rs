@@ -1,7 +1,9 @@
 //! Persistence for the add-on conflict-session namespace.
 //!
 //! A staged add-on conflict session lives under
-//! `.truss-core/addon-update/<name>/`, never `.truss-core/update/`, because an
+//! `<state-root>/addon-update/<name>/` (`.truss/core/addon-update/<name>/` for a
+//! 0008 installation, `<state-root>/addon-update/<name>/` for a legacy one), never
+//! `<state-root>/update/`, because an
 //! older binary reads that path as a core session (decision
 //! `.truss-core/docs/decisions/0003-add-on-state-ownership.md`, clause 7).
 //!
@@ -16,7 +18,7 @@
 //! Layout of one schema-2 session:
 //!
 //! ```text
-//! .truss-core/addon-update/<name>/
+//! <state-root>/addon-update/<name>/
 //!   session.json                 schema 2: identity, ordered descriptor paths
 //!                                and digests, plan digest, path lists
 //!   candidate/<managed-path>     payload bytes for every descriptor path
@@ -41,7 +43,8 @@ use sha2::{Digest, Sha256};
 
 use super::addon_payload::read_declared_file;
 use super::state_io::{
-    copy_bytes, io_error, read_json, reject_symlink, remove_dir_if_exists, write_json_atomic,
+    copy_bytes, io_error, read_json, reject_symlink, remove_dir_if_exists, state_label,
+    write_json_atomic,
 };
 use crate::application::PortError;
 use crate::domain::{
@@ -50,7 +53,7 @@ use crate::domain::{
     UpdateConflict, UpdatePlan, WorkspaceMutation,
 };
 
-/// Directory under `.truss-core/` that holds every add-on conflict session.
+/// Directory under the state root that holds every add-on conflict session.
 pub(crate) const ADDON_UPDATE_DIR: &str = "addon-update";
 const SESSION_FILE: &str = "session.json";
 const PLAN_FILE: &str = "plan.json";
@@ -98,7 +101,7 @@ pub(crate) struct StagedAddOnSession {
 /// bytes for every descriptor path, every frozen workspace observation, and the
 /// materialised `plan.json` are written before `session.json`, so a session is
 /// never visible while its material is partial. The caller already holds the
-/// shared `.truss-core/lock` and has validated the pre-existing core state;
+/// shared `<state-root>/lock` and has validated the pre-existing core state;
 /// this function writes nothing outside the owned add-on namespace.
 pub(crate) fn stage_addon_session(
     state_root: &Path,
@@ -128,11 +131,17 @@ pub(crate) fn stage_addon_session(
     }
     let parent = addon_update_root(state_root);
     if parent.exists() {
-        reject_symlink(&parent, ".truss-core/addon-update")?;
+        reject_symlink(
+            &parent,
+            &format!("{}/addon-update", state_label(state_root)),
+        )?;
     }
     let session_root = addon_session_root(state_root, name);
     if session_root.exists() {
-        reject_symlink(&session_root, &format!(".truss-core/addon-update/{name}"))?;
+        reject_symlink(
+            &session_root,
+            &format!("{}/addon-update/{name}", state_label(state_root)),
+        )?;
     }
     remove_dir_if_exists(&session_root)?;
     fs::create_dir_all(&session_root).map_err(io_error)?;
@@ -221,10 +230,16 @@ pub(crate) fn load_addon_session(
     if !session_path.exists() {
         return Ok(None);
     }
-    reject_symlink(&session_root, &format!(".truss-core/addon-update/{name}"))?;
+    reject_symlink(
+        &session_root,
+        &format!("{}/addon-update/{name}", state_label(state_root)),
+    )?;
     reject_symlink(
         &session_path,
-        &format!(".truss-core/addon-update/{name}/session.json"),
+        &format!(
+            "{}/addon-update/{name}/session.json",
+            state_label(state_root)
+        ),
     )?;
     let probe: SchemaProbeDto = read_json(&session_path)?;
     match probe.schema_version {
@@ -235,7 +250,8 @@ pub(crate) fn load_addon_session(
     let dto: ResolutionSessionDto = read_json(&session_path)?;
     if dto.name != name.as_str() {
         return Err(PortError::new(format!(
-            "staged add-on session at .truss-core/addon-update/{name} names {}; refusing to reinterpret it",
+            "staged add-on session at {}/addon-update/{name} names {}; refusing to reinterpret it",
+            state_label(state_root),
             dto.name
         )));
     }
@@ -263,7 +279,7 @@ pub(crate) fn load_addon_session(
     let plan_path = session_root.join(PLAN_FILE);
     reject_symlink(
         &plan_path,
-        &format!(".truss-core/addon-update/{name}/plan.json"),
+        &format!("{}/addon-update/{name}/plan.json", state_label(state_root)),
     )?;
     let plan_bytes = fs::read(&plan_path).map_err(|error| {
         PortError::new(format!(
@@ -326,20 +342,26 @@ pub(crate) fn load_addon_session(
 /// Remove only the owned add-on session directory.
 ///
 /// Returns `true` when a session was present. It is idempotent: a second call
-/// removes nothing and returns `false`. The `.truss-core/addon-update/`
+/// removes nothing and returns `false`. The `<state-root>/addon-update/`
 /// container is removed only when this was its last session, so another
-/// add-on's staged session is never touched, and `.truss-core/update/` is never
+/// add-on's staged session is never touched, and `<state-root>/update/` is never
 /// read, written, or cleared. It never reads the session document, so a schema
 /// 1 or unsupported session stays abortable.
 pub(crate) fn clear_addon_session(state_root: &Path, name: &AddOnName) -> Result<bool, PortError> {
     let parent = addon_update_root(state_root);
     if parent.exists() {
-        reject_symlink(&parent, ".truss-core/addon-update")?;
+        reject_symlink(
+            &parent,
+            &format!("{}/addon-update", state_label(state_root)),
+        )?;
     }
     let session_root = addon_session_root(state_root, name);
     let removed = session_root.exists();
     if removed {
-        reject_symlink(&session_root, &format!(".truss-core/addon-update/{name}"))?;
+        reject_symlink(
+            &session_root,
+            &format!("{}/addon-update/{name}", state_label(state_root)),
+        )?;
         remove_dir_if_exists(&session_root)?;
     }
     if parent.exists() {
@@ -457,7 +479,7 @@ fn verify_candidate(session_root: &Path, descriptor: &AddOnDescriptor) -> Result
     }
     reject_symlink(
         &candidate_root,
-        &format!(".truss-core/addon-update/{}/candidate", descriptor.name),
+        &format!("addon-update/{}/candidate", descriptor.name),
     )?;
     let found = collect_candidate_paths(&candidate_root)?;
     let declared = descriptor

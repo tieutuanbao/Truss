@@ -662,8 +662,12 @@ mod tests {
         }
     }
 
+    /// This proves the refusal precedes the mutating port call. The claim that
+    /// the tree is left byte-identical belongs to
+    /// `install_refuses_a_repository_holding_both_roots_on_a_real_tree` in
+    /// `tests/update_lifecycle.rs`, which snapshots a real repository.
     #[test]
-    fn install_refuses_a_repository_holding_both_roots_without_writing() {
+    fn install_refuses_a_repository_holding_both_roots_before_the_mutating_port_call() {
         let apply_calls = Rc::new(RefCell::new(0u32));
         let state = StateFixture {
             apply_calls: Rc::clone(&apply_calls),

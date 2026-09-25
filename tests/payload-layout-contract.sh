@@ -39,6 +39,29 @@
 # commit that landed the rename and is reviewed as data, so any later content
 # change in the mirror fails L5 instead of being normalised away.
 #
+# Maintaining the digest baseline: tests/payload-layout-digests.txt is a reviewed
+# baseline, not a generated report. When a payload change is legitimate, regenerate
+# it and commit the new values in the same commit as the payload change:
+#
+#   python3 - <<'PY'
+#   import hashlib, os
+#   roots = ("distribution/payload", "distribution/entrypoints")
+#   rows = []
+#   for root in roots:
+#       for base, _, names in os.walk(root):
+#           for name in names:
+#               path = os.path.join(base, name)
+#               with open(path, "rb") as handle:
+#                   rows.append((path, hashlib.sha256(handle.read()).hexdigest()))
+#   with open("tests/payload-layout-digests.txt", "w", encoding="utf-8") as out:
+#       for path, digest in sorted(rows):
+#           out.write("%s  %s\n" % (digest, path))
+#   PY
+#
+# It covers both distribution/payload/** and distribution/entrypoints/**, so no
+# entrypoint can drift outside the baseline. The loader skips blank lines only, so
+# the file itself carries no comment header: a '#' line is not a valid record.
+#
 # Requirements: bash, python3, find. No new dependency.
 set -uo pipefail
 

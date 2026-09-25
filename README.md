@@ -505,11 +505,11 @@ the GNOME screen reader and is not the execution-plane command.
 
 | Document | Purpose |
 | --- | --- |
-| [Product model](.truss/core/docs/TRUSS.md) | Responsibilities, boundaries, profiles, and evidence model |
-| [Architecture](.truss/core/docs/ARCHITECTURE.md) | Rust layers, installation state, transactions, and trust boundaries |
+| [Product model](.truss-core/docs/TRUSS.md) | Responsibilities, boundaries, profiles, and evidence model. Source-authority document: present in a Truss source checkout, not installed into a consumer. |
+| [Architecture](.truss-core/docs/ARCHITECTURE.md) | Rust layers, installation state, transactions, and trust boundaries. Source-authority document: present in a Truss source checkout, not installed into a consumer. |
 | [Repository workflow](.truss/core/docs/WORKFLOW.md) | Work shapes, task flows, validation, and completion standards |
 | [Documentation map](.truss/core/docs/README.md) | Entry point to product, decisions, plans, patterns, and templates |
-| [Installation contract](.truss/core/docs/product/installation-profiles.md) | Exact profile, conflict, update, and release-source behavior |
+| [Installation contract](.truss-core/docs/product/installation-profiles.md) | Exact profile, conflict, update, and release-source behavior. Source-authority document: present in a Truss source checkout, not installed into a consumer. |
 | [Encoding invariants](.truss/core/docs/patterns/encoding-invariants.md) | Turning accepted rules into mechanical validation |
 
 ## 🧪 Development

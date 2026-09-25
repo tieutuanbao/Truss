@@ -1,8 +1,11 @@
 # Plan template
 
-Transient. Deleted in the release commit, before the release-binding review,
-after anything durable has moved into the decision record or the documents
-that own the changed paths.
+Transient. For a repository-hosted run it is deleted in the release commit,
+before the release-binding review, after anything durable has moved into the
+decision record or the documents that own the changed paths. For an approved
+consumer-local run it is never committed: it lives at
+`.truss/delivery-runs/<run-key>/plan.md`, its immutable counterpart is
+`approved-envelope.md` in the same directory, and delivery does not delete it.
 
 One coherent contract. One acceptance table. Split tasks only when each has
 its own test cycle and can be reviewed independently; batch same-shaped

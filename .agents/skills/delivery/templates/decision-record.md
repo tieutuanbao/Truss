@@ -8,6 +8,11 @@ If the project has a frontmatter convention for decision documents, follow it â€
 never write the SHA of the commit that will carry the field, because a commit
 cannot record its own SHA before it exists.
 
+For an approved consumer-local run this decision record is a private artifact:
+it is never committed and never staged. Write it under
+`.truss/delivery-runs/<run-key>/` and obtain approval through the local receipt
+`.truss/authority/approvals/<run-key>.md` instead of through a baseline commit.
+
 ---
 
 # <Decision, stated as an outcome rather than a task>

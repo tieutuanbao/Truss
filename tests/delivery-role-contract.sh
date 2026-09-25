@@ -382,6 +382,22 @@ def check_envelope():
         fail("delivery-role-contract R9",
              "delivery SKILL.md still commits the transient plan unconditionally; "
              "decision 0006 makes that conditional on a consumer-local run")
+    plan = read("plan")
+    ba = read("ba")
+    decision = read("decision")
+    for text in (plan, ba, decision):
+        if text is None:
+            return
+    if PRIVATE_RUN_DIR not in plan or "never committed" not in plan:
+        fail("delivery-role-contract R10",
+             "templates/plan.md does not name %r and the never-committed rule; "
+             "decision 0006 fixes the private run path" % PRIVATE_RUN_DIR)
+    for path, text in ((".agents/skills/delivery/templates/business-analysis.md", ba),
+                       (".agents/skills/delivery/templates/decision-record.md", decision)):
+        if "consumer-local" not in text or "never committed" not in text:
+            fail("delivery-role-contract R10",
+                 "%s does not state the consumer-local never-committed rule of "
+                 "decision 0006" % path)
 
 
 def main():
@@ -484,6 +500,24 @@ open(sys.argv[2], "w", encoding="utf-8").write(
 PY
 neg "a skill that commits the transient plan unconditionally is rejected" "R9" \
   env CONTRACT_DELIVERY_SKILL="$WORK/ng7-skill.md" python3 "$CONTRACT" envelope
+
+python3 - "$REPO/.agents/skills/delivery/templates/plan.md" "$WORK/ng8-plan.md" <<'PY'
+import sys
+text = open(sys.argv[1], encoding="utf-8").read()
+open(sys.argv[2], "w", encoding="utf-8").write(
+    text.replace(".truss/delivery-runs/", "the run directory"))
+PY
+neg "a plan template without the private run path is rejected" "R10" \
+  env CONTRACT_PLAN_TEMPLATE="$WORK/ng8-plan.md" python3 "$CONTRACT" envelope
+
+python3 - "$REPO/.agents/skills/delivery/templates/decision-record.md" "$WORK/ng9-decision.md" <<'PY'
+import sys
+text = open(sys.argv[1], encoding="utf-8").read()
+open(sys.argv[2], "w", encoding="utf-8").write(
+    text.replace("never committed", "usually committed"))
+PY
+neg "a decision template that drops the never-committed rule is rejected" "R10" \
+  env CONTRACT_DECISION_TEMPLATE="$WORK/ng9-decision.md" python3 "$CONTRACT" envelope
 
 pos "the repository delivery skill carries the consumer-local envelope contract" \
   python3 "$CONTRACT" envelope

@@ -641,8 +641,12 @@ override_protected_target_paths() {
       continue
     fi
 
-    mkdir -p "$BACKUP_DIR"
-    mv "$TARGET_DIR/$protected" "$BACKUP_DIR/$protected"
+    # The installed root is `.truss/core`, two path segments. Create the
+    # destination's own parent and not only the backup directory, or the move
+    # has no `.truss/` to land in.
+    local backup_path="$BACKUP_DIR/$protected"
+    mkdir -p "$(dirname "$backup_path")"
+    mv "$TARGET_DIR/$protected" "$backup_path"
     log "removed  $protected (backup: ${BACKUP_DIR#$TARGET_DIR/}/$protected)"
   done
 

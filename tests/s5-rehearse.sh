@@ -20,6 +20,9 @@
 #          on the identical state
 #   Row 3  PowerShell parity, static only: pwsh is not available here, so the
 #          execution gap is declared and no byte-level parity is claimed
+#   Override  the replaced installed root is moved into the backup at its
+#          original relative path, including the two-segment `.truss/core`
+#          root whose destination parent a one-level mkdir never created
 #   Row A  this script is the committed instrument; `git ls-tree` proves it
 #   Row B  all three add-ons (engineering-wisdom, delivery, planning) install
 #          through the CLI, each judged against the path set its own existing
@@ -527,6 +530,37 @@ bash "$EV/nogit/scripts/install-truss.sh" --directory "$EV/w10" --with-delivery 
 st=$?
 check "a local source that is not a git checkout refuses" "$([ "$st" -ne 0 ]; echo $?)"
 check "the non-git refusal left the target empty" "$([ "$(find "$EV/w10" -mindepth 1 2>/dev/null | wc -l)" = 0 ]; echo $?)"
+echo
+
+# ------------------------------------------------------------- override -----
+echo "== Override: the replaced root is moved into the backup at its original path =="
+# The installed root is two path segments. The override backup must create the
+# destination's own parent, not only the backup directory: with a one-level mkdir
+# the move has no `.truss/` to land in, and the installer exits 1 after having
+# already removed AGENTS.md. The PowerShell route is asserted statically only,
+# because this host has no `pwsh`.
+WOV="$EV/wov"
+OV_LABEL=".truss/core"
+mkdir -p "$WOV/$OV_LABEL/docs"
+printf 'consumer sentinel\n' > "$WOV/$OV_LABEL/MARKER"
+printf 'consumer bytes\n' > "$WOV/$OV_LABEL/docs/WORKFLOW.md"
+TRUSS_CORE_BINARY="$CLI" scripts/install-truss.sh --directory "$WOV" --override --yes \
+  > "$EV/override-backup.txt" 2>&1
+st=$?
+check "override against a two-segment installed root exits 0" "$st"
+OV_BACKUP="$(find "$WOV/.truss-backup" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | head -n 1)"
+check "the override wrote a timestamped backup directory" \
+  "$([ -n "$OV_BACKUP" ] && [ -d "$OV_BACKUP" ]; echo $?)"
+check "the replaced tree is in the backup at its original relative path" \
+  "$([ -f "$OV_BACKUP/$OV_LABEL/MARKER" ] && [ "$(cat "$OV_BACKUP/$OV_LABEL/docs/WORKFLOW.md" 2>/dev/null)" = "consumer bytes" ]; echo $?)"
+check "the fresh core payload is installed at the same path" \
+  "$([ -f "$WOV/$OV_LABEL/manifest.json" ] && [ ! -e "$WOV/$OV_LABEL/MARKER" ]; echo $?)"
+check "the installer reports the backup location of the removed root" \
+  "$(grep -q "^removed  $OV_LABEL (backup: .truss-backup/" "$EV/override-backup.txt"; echo $?)"
+OV_MOVES="$(grep -cF 'Move-Item -LiteralPath $path -Destination $destination' scripts/install-truss.ps1)"
+OV_PARENTS="$(grep -cF 'Split-Path -Parent $destination' scripts/install-truss.ps1)"
+check "the PowerShell override creates its destination parent before every move (static)" \
+  "$([ "$OV_MOVES" = 2 ] && [ "$OV_PARENTS" = 2 ]; echo $?)"
 echo
 
 # ------------------------------------------------------- counterexamples -----

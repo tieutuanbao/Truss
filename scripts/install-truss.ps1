@@ -701,8 +701,12 @@ if ($conflicts.Count -gt 0) {
             if ($DryRun) {
                 Write-Step "override $protected (backup first)"
             } else {
-                New-Item -ItemType Directory -Force -Path $script:BackupDir | Out-Null
-                Move-Item -LiteralPath $path -Destination (Join-Path $script:BackupDir $protected)
+                # The installed root is `.truss/core`, two path segments. Create the
+                # destination's own parent and not only the backup directory, or the
+                # move has no `.truss/` to land in.
+                $destination = Join-Path $script:BackupDir $protected
+                New-Item -ItemType Directory -Force -Path (Split-Path -Parent $destination) | Out-Null
+                Move-Item -LiteralPath $path -Destination $destination
                 Write-Step "removed  $protected (backup: $($script:BackupDir.Substring($script:TargetDir.Length + 1))/$protected)"
             }
         }
@@ -718,8 +722,9 @@ if ($conflicts.Count -gt 0) {
                 foreach ($protected in $protectedPaths) {
                     $path = Join-Path $script:TargetDir $protected
                     if (Test-Path $path) {
-                        New-Item -ItemType Directory -Force -Path $script:BackupDir | Out-Null
-                        Move-Item -LiteralPath $path -Destination (Join-Path $script:BackupDir $protected)
+                        $destination = Join-Path $script:BackupDir $protected
+                        New-Item -ItemType Directory -Force -Path (Split-Path -Parent $destination) | Out-Null
+                        Move-Item -LiteralPath $path -Destination $destination
                     }
                 }
             }

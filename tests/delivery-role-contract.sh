@@ -102,23 +102,23 @@ ROOT = os.environ.get("CONTRACT_ROOT", os.getcwd())
 PATH = {
     "agents": os.environ.get("CONTRACT_AGENTS", os.path.join(ROOT, "AGENTS.md")),
     "delivery": os.environ.get("CONTRACT_DELIVERY_SKILL",
-                               os.path.join(ROOT, ".agents/skills/delivery/SKILL.md")),
+                               os.path.join(ROOT, "distribution/payload/.agents/skills/delivery/SKILL.md")),
     "setup": os.environ.get("CONTRACT_SETUP_SKILL",
-                            os.path.join(ROOT, ".agents/skills/delivery-setup/SKILL.md")),
+                            os.path.join(ROOT, "distribution/payload/.agents/skills/delivery-setup/SKILL.md")),
     "plan": os.environ.get("CONTRACT_PLAN_TEMPLATE",
-                           os.path.join(ROOT, ".agents/skills/delivery/templates/plan.md")),
+                           os.path.join(ROOT, "distribution/payload/.agents/skills/delivery/templates/plan.md")),
     "decision": os.environ.get("CONTRACT_DECISION_TEMPLATE",
-                               os.path.join(ROOT, ".agents/skills/delivery/templates/decision-record.md")),
+                               os.path.join(ROOT, "distribution/payload/.agents/skills/delivery/templates/decision-record.md")),
     "ba": os.environ.get("CONTRACT_BA_TEMPLATE",
-                         os.path.join(ROOT, ".agents/skills/delivery/templates/business-analysis.md")),
+                         os.path.join(ROOT, "distribution/payload/.agents/skills/delivery/templates/business-analysis.md")),
     "manifest": os.environ.get("CONTRACT_MANIFEST",
                                os.path.join(ROOT, "scripts/delivery-install-files.txt")),
     "authority": os.path.join(ROOT, ".truss-core/docs/decisions/0004-seven-role-delivery.md"),
     "workflow": os.environ.get(
-        "CONTRACT_WORKFLOW", os.path.join(ROOT, ".truss-core/docs/WORKFLOW.md")),
+        "CONTRACT_WORKFLOW", os.path.join(ROOT, "distribution/payload/.truss/core/docs/WORKFLOW.md")),
     "plans_readme": os.environ.get(
         "CONTRACT_PLANS_README",
-        os.path.join(ROOT, ".truss-core/docs/plans/README.md")),
+        os.path.join(ROOT, "distribution/payload/.truss/core/docs/plans/README.md")),
     "assets_plans_readme": os.environ.get(
         "CONTRACT_ASSETS_PLANS_README",
         os.path.join(ROOT, "crates/truss/assets/.truss-core/docs/plans/README.md")),
@@ -358,8 +358,8 @@ def check_migration():
              "delivery-setup migration does not introduce the project-manager row with `current` cells")
 
 
-PRIVATE_RUN_DIR = ".truss/delivery-runs/<run-key>/"
-APPROVAL_RECEIPT = ".truss/authority/approvals/<run-key>.md"
+PRIVATE_RUN_DIR = ".truss/delivery/runs/<run-key>/"
+APPROVAL_RECEIPT = ".truss/delivery/approvals/<run-key>.md"
 SNAPSHOT_FILE = "approved-envelope.md"
 
 # Decision 0006 terms the delivery skill must carry for a consumer-local run.
@@ -494,7 +494,7 @@ PY
 neg "a duplicated project-manager row is rejected" "R1" \
   env CONTRACT_AGENTS="$WORK/ng2-agents.md" python3 "$CONTRACT" roles
 
-python3 - "$REPO/.agents/skills/delivery/SKILL.md" "$WORK/ng3-delivery.md" <<'PY'
+python3 - "$REPO/distribution/payload/.agents/skills/delivery/SKILL.md" "$WORK/ng3-delivery.md" <<'PY'
 import sys
 text = open(sys.argv[1], encoding="utf-8").read()
 open(sys.argv[2], "w", encoding="utf-8").write(
@@ -516,16 +516,16 @@ PY
 neg "a migration row that maps a retired role to a retired role is rejected" "R6" \
   env CONTRACT_SETUP_SKILL="$WORK/ng5-setup.md" python3 "$CONTRACT" migration
 
-python3 - "$REPO/.agents/skills/delivery/SKILL.md" "$WORK/ng6-skill.md" <<'PY'
+python3 - "$REPO/distribution/payload/.agents/skills/delivery/SKILL.md" "$WORK/ng6-skill.md" <<'PY'
 import sys
 text = open(sys.argv[1], encoding="utf-8").read()
 open(sys.argv[2], "w", encoding="utf-8").write(
-    text.replace(".truss/authority/approvals/<run-key>.md", "the approval receipt", 1))
+    text.replace(".truss/delivery/approvals/<run-key>.md", "the approval receipt", 1))
 PY
 neg "a skill that drops the approval receipt path is rejected" "R8" \
   env CONTRACT_DELIVERY_SKILL="$WORK/ng6-skill.md" python3 "$CONTRACT" envelope
 
-python3 - "$REPO/.agents/skills/delivery/SKILL.md" "$WORK/ng7-skill.md" <<'PY'
+python3 - "$REPO/distribution/payload/.agents/skills/delivery/SKILL.md" "$WORK/ng7-skill.md" <<'PY'
 import sys
 text = open(sys.argv[1], encoding="utf-8").read()
 open(sys.argv[2], "w", encoding="utf-8").write(
@@ -534,16 +534,16 @@ PY
 neg "a skill that commits the transient plan unconditionally is rejected" "R9" \
   env CONTRACT_DELIVERY_SKILL="$WORK/ng7-skill.md" python3 "$CONTRACT" envelope
 
-python3 - "$REPO/.agents/skills/delivery/templates/plan.md" "$WORK/ng8-plan.md" <<'PY'
+python3 - "$REPO/distribution/payload/.agents/skills/delivery/templates/plan.md" "$WORK/ng8-plan.md" <<'PY'
 import sys
 text = open(sys.argv[1], encoding="utf-8").read()
 open(sys.argv[2], "w", encoding="utf-8").write(
-    text.replace(".truss/delivery-runs/", "the run directory"))
+    text.replace(".truss/delivery/runs/", "the run directory"))
 PY
 neg "a plan template without the private run path is rejected" "R10" \
   env CONTRACT_PLAN_TEMPLATE="$WORK/ng8-plan.md" python3 "$CONTRACT" envelope
 
-python3 - "$REPO/.agents/skills/delivery/templates/decision-record.md" "$WORK/ng9-decision.md" <<'PY'
+python3 - "$REPO/distribution/payload/.agents/skills/delivery/templates/decision-record.md" "$WORK/ng9-decision.md" <<'PY'
 import sys
 text = open(sys.argv[1], encoding="utf-8").read()
 open(sys.argv[2], "w", encoding="utf-8").write(
@@ -552,7 +552,7 @@ PY
 neg "a decision template that drops the never-committed rule is rejected" "R10" \
   env CONTRACT_DECISION_TEMPLATE="$WORK/ng9-decision.md" python3 "$CONTRACT" envelope
 
-python3 - "$REPO/.truss-core/docs/WORKFLOW.md" "$WORK/ng10-workflow.md" <<'PY'
+python3 - "$REPO/distribution/payload/.truss/core/docs/WORKFLOW.md" "$WORK/ng10-workflow.md" <<'PY'
 import sys
 text = open(sys.argv[1], encoding="utf-8").read()
 open(sys.argv[2], "w", encoding="utf-8").write(text.replace("never committed", "committed with the candidate"))
@@ -560,7 +560,7 @@ PY
 neg "a workflow that drops the never-committed rule is rejected" "R11" \
   env CONTRACT_WORKFLOW="$WORK/ng10-workflow.md" python3 "$CONTRACT" envelope
 
-python3 - "$REPO/.truss-core/docs/plans/README.md" "$WORK/ng11-readme.md" <<'PY'
+python3 - "$REPO/distribution/payload/.truss/core/docs/plans/README.md" "$WORK/ng11-readme.md" <<'PY'
 import sys
 text = open(sys.argv[1], encoding="utf-8").read()
 open(sys.argv[2], "w", encoding="utf-8").write(text.replace("Execution plans", "Plan notes", 1))
@@ -571,7 +571,7 @@ neg "a diverged plans README copy is rejected" "R12" \
 # Newline-only divergence: utf-8 text decoding applies universal-newline
 # translation, so an LF file and a CRLF file compare equal as text. R12 must
 # compare the raw bytes.
-python3 - "$REPO/.truss-core/docs/plans/README.md" "$WORK/ng12-readme-crlf.md" <<'PY'
+python3 - "$REPO/distribution/payload/.truss/core/docs/plans/README.md" "$WORK/ng12-readme-crlf.md" <<'PY'
 import sys
 data = open(sys.argv[1], "rb").read()
 open(sys.argv[2], "wb").write(data.replace(b"\n", b"\r\n"))

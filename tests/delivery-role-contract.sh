@@ -398,6 +398,24 @@ def check_envelope():
             fail("delivery-role-contract R10",
                  "%s does not state the consumer-local never-committed rule of "
                  "decision 0006" % path)
+    workflow = read("workflow")
+    plans_readme = read("plans_readme")
+    assets_readme = read("assets_plans_readme")
+    if workflow is None or plans_readme is None or assets_readme is None:
+        return
+    if PRIVATE_RUN_DIR not in workflow or "never committed" not in workflow:
+        fail("delivery-role-contract R11",
+             "WORKFLOW.md does not state the private run path and the "
+             "never-committed rule of decision 0006")
+    if PRIVATE_RUN_DIR not in plans_readme:
+        fail("delivery-role-contract R11",
+             "the plans README does not distinguish the transient private path "
+             "%r from the durable plan location" % PRIVATE_RUN_DIR)
+    if plans_readme != assets_readme:
+        fail("delivery-role-contract R12",
+             "the two plans README copies differ; embedding reads the "
+             "crates/truss/assets copy, so divergence changes what consumers "
+             "receive without either file looking wrong")
 
 
 def main():
@@ -518,6 +536,22 @@ open(sys.argv[2], "w", encoding="utf-8").write(
 PY
 neg "a decision template that drops the never-committed rule is rejected" "R10" \
   env CONTRACT_DECISION_TEMPLATE="$WORK/ng9-decision.md" python3 "$CONTRACT" envelope
+
+python3 - "$REPO/.truss-core/docs/WORKFLOW.md" "$WORK/ng10-workflow.md" <<'PY'
+import sys
+text = open(sys.argv[1], encoding="utf-8").read()
+open(sys.argv[2], "w", encoding="utf-8").write(text.replace("never committed", "committed with the candidate"))
+PY
+neg "a workflow that drops the never-committed rule is rejected" "R11" \
+  env CONTRACT_WORKFLOW="$WORK/ng10-workflow.md" python3 "$CONTRACT" envelope
+
+python3 - "$REPO/.truss-core/docs/plans/README.md" "$WORK/ng11-readme.md" <<'PY'
+import sys
+text = open(sys.argv[1], encoding="utf-8").read()
+open(sys.argv[2], "w", encoding="utf-8").write(text.replace("Execution plans", "Plan notes", 1))
+PY
+neg "a diverged plans README copy is rejected" "R12" \
+  env CONTRACT_ASSETS_PLANS_README="$WORK/ng11-readme.md" python3 "$CONTRACT" envelope
 
 pos "the repository delivery skill carries the consumer-local envelope contract" \
   python3 "$CONTRACT" envelope

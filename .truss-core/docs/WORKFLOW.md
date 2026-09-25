@@ -157,6 +157,13 @@ plan is a per-run control artifact; anything that must outlive the run moves
 into the durable decision record or an execution plan under
 `.truss-core/docs/plans/active/`.
 
+For an approved consumer-local run, the delivery control artifacts are private
+and are never committed: the approved envelope and the transient plan live under
+`.truss/delivery-runs/<run-key>/`, and the approval receipt lives at
+`.truss/authority/approvals/<run-key>.md`. Nothing durable may be left only
+there; it moves into this repository's decision record or an execution plan
+before the run closes, exactly as for a repository-hosted run.
+
 ### Operate The Application
 
 When a task requires the real application:

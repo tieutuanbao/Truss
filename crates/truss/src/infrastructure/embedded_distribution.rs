@@ -197,6 +197,74 @@ fn add(files: &mut Vec<DistributionFile>, path: &str, content: &[u8]) -> Result<
 mod tests {
     use super::*;
 
+    /// Decode the backslash escapes the generated declaration and the Rust
+    /// byte-string literal share, so both sides compare as the bytes they mean.
+    fn decode_escapes(value: &str) -> String {
+        let mut decoded = String::new();
+        let mut characters = value.chars();
+        while let Some(character) = characters.next() {
+            if character != '\\' {
+                decoded.push(character);
+                continue;
+            }
+            match characters.next() {
+                Some('n') => decoded.push('\n'),
+                Some('t') => decoded.push('\t'),
+                Some('r') => decoded.push('\r'),
+                Some('0') => decoded.push('\0'),
+                Some('\\') => decoded.push('\\'),
+                Some(other) => decoded.push(other),
+                None => decoded.push('\\'),
+            }
+        }
+        decoded
+    }
+
+    /// The declaration in `distribution/generated.txt` must compose to the bytes
+    /// this crate embeds for the generated destination. The payload layout
+    /// contract proves the declaration agrees with the literals below; this test
+    /// proves those literals produce the installed entrypoint, so a change that
+    /// stays literal-consistent while altering the composed bytes is still
+    /// caught.
+    #[test]
+    fn generated_agents_md_matches_declaration() {
+        let declaration = include_str!("../../../../distribution/generated.txt");
+        let record = declaration
+            .lines()
+            .find(|line| !line.is_empty())
+            .expect("generated.txt declares the generated destination");
+        let fields = record.split('\t').collect::<Vec<_>>();
+        assert_eq!(
+            fields.len(),
+            3,
+            "a generated.txt record is destination, generator input, prefix"
+        );
+        let (destination, generator, prefix) = (fields[0], fields[1], fields[2]);
+        assert_eq!(destination, "AGENTS.md");
+
+        let generator_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("..")
+            .join(generator);
+        let generator_bytes = std::fs::read(&generator_path).unwrap_or_else(|error| {
+            panic!(
+                "declared generator input {} is unreadable: {error}",
+                generator_path.display()
+            )
+        });
+
+        let mut composed = decode_escapes(prefix).into_bytes();
+        composed.extend_from_slice(&generator_bytes);
+
+        let distribution = EmbeddedCoreDistribution.current().unwrap();
+        let installed = distribution
+            .files
+            .iter()
+            .find(|file| file.path.as_str() == destination)
+            .expect("the embedded distribution carries the generated destination");
+        assert_eq!(installed.content, composed);
+    }
+
     #[test]
     fn embedded_payload_is_generic_and_complete() {
         let distribution = EmbeddedCoreDistribution.current().unwrap();

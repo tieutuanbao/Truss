@@ -1,0 +1,114 @@
+{
+  "schema_version": 1,
+  "core_version": "0.1.16",
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "upstream_sha256": "82ec80e742f7c3cc0817032982002df3b6d5b09895de3c8534454f901993b56f"
+    },
+    {
+      "path": ".agents/skills/audit-onboarding-proposal/SKILL.md",
+      "upstream_sha256": "5e0bb9252a1e02275f2928944cfec18549724b81647910116eb32e3b2e02bfa5"
+    },
+    {
+      "path": ".agents/skills/audit-onboarding-proposal/agents/openai.yaml",
+      "upstream_sha256": "1f822840d05d627c43e8dcb87a8c54ef28e52c24cba72cf6950c142e360e1a81"
+    },
+    {
+      "path": ".agents/skills/audit-onboarding-proposal/scripts/validate_evidence_capsule.py",
+      "upstream_sha256": "7a4475b165ddeda63577fb806b6b8821571a85283d40655e1d3cc3c03981cc1b"
+    },
+    {
+      "path": ".agents/skills/encode-invariant/SKILL.md",
+      "upstream_sha256": "e2a9fcde5263bd73d9ad6c8afb93033b1b76b4af6224b1945d97bdef51471a0b"
+    },
+    {
+      "path": ".agents/skills/encode-invariant/agents/openai.yaml",
+      "upstream_sha256": "480be69346c2af2d8f6f381692add09a71593dc6746b8b1cd603412e40e75f2a"
+    },
+    {
+      "path": ".agents/skills/improve-truss/SKILL.md",
+      "upstream_sha256": "18cb8a3f0d8b2387064e820db4b843a6479653a07fcb5a3935fdb1aa0d78d332"
+    },
+    {
+      "path": ".agents/skills/improve-truss/agents/openai.yaml",
+      "upstream_sha256": "f0984fedda1abc550ac35032af492f33bae588dc4ea3e60ff3371ba4e6b4d68c"
+    },
+    {
+      "path": ".agents/skills/onboard-repository/SKILL.md",
+      "upstream_sha256": "1c2798fc909ad2ccdb742cef5b62c82efe92b5040c4258993eb3cea4b85dbcb8"
+    },
+    {
+      "path": ".agents/skills/onboard-repository/agents/openai.yaml",
+      "upstream_sha256": "0992cf606b2680397e6aee60db3d39c62aa3d5773acaeefc2f4f1e18103537e9"
+    },
+    {
+      "path": ".agents/skills/onboard-repository/references/evidence-capsule-v1.md",
+      "upstream_sha256": "b9e1f9208842e725289469d0976b3e65670a30ee7f69be6d799cf4ba2a19fadb"
+    },
+    {
+      "path": ".agents/skills/onboard-repository/references/evidence-capsule-v2.md",
+      "upstream_sha256": "bb4a415070c246626b9551436f222d6e042df6fb5ae5e1007f4514139c372292"
+    },
+    {
+      "path": ".agents/skills/onboard-repository/scripts/emit_evidence_bundle.py",
+      "upstream_sha256": "f441b8d3d82492263b5abd6235247e5ae51b192cd5f00ef3042afb409b3cbeae"
+    },
+    {
+      "path": ".agents/skills/onboard-repository/scripts/render_patch.py",
+      "upstream_sha256": "7608071754aa05c955bc9ab1a2df60101d8690d5b8c6a5b0cd60960327164019"
+    },
+    {
+      "path": ".truss/core/docs/WORKFLOW.md",
+      "upstream_sha256": "0cdb246f8b8aa1df0a15562f24b732bda37a611c25c2b6435ac27a99a3cbacb0"
+    },
+    {
+      "path": ".truss/core/docs/communication.md",
+      "upstream_sha256": "2a00874ed146622b42fde7298ff9520bf74938542c51a82aa6e8af7c6f87c426"
+    },
+    {
+      "path": ".truss/core/docs/README.md",
+      "upstream_sha256": "769d3b03ddaf0a74bd4cd5ffc0d37f6d4f6291d27671dc5e2454f8bd3da895a4"
+    },
+    {
+      "path": ".truss/core/docs/patterns/encoding-invariants.md",
+      "upstream_sha256": "f4e0ecfcd1ae735daf01f472b60e6f6052a2c1e2f151928c0df65d1c3d496178"
+    },
+    {
+      "path": ".truss/core/docs/product/README.md",
+      "upstream_sha256": "2625e02681c28c6c9a83421ebb8f50c5d4e4cc36106ca34451979ac00138740c"
+    },
+    {
+      "path": ".truss/core/docs/plans/README.md",
+      "upstream_sha256": "b773acdce575f261d6678521608d1b5796fa36384fb13d5612b50f1766706c86"
+    },
+    {
+      "path": ".truss/core/docs/plans/active/README.md",
+      "upstream_sha256": "0bbcfd74d59039b1d2837098048f5c3f6fb1d8479079948277c8a0533d6c4daa"
+    },
+    {
+      "path": ".truss/core/docs/plans/completed/README.md",
+      "upstream_sha256": "1ba887f4fb54b7aa45e3f4f619d4b2dfa1eb63d52c09fbbd9588598862346dc7"
+    },
+    {
+      "path": ".truss/core/docs/decisions/README.md",
+      "upstream_sha256": "b527c6d537be2f456ef15359c251e15afc7fb27bf174ad484f773f3370155be0"
+    },
+    {
+      "path": ".truss/core/docs/templates/application-runbook.md",
+      "upstream_sha256": "1e87f2189066dd0469555406c9ef63c3939e53adfcb23494d2f13f0b9552a72d"
+    },
+    {
+      "path": ".truss/core/docs/templates/decision.md",
+      "upstream_sha256": "e92ba7a5b7bc10ce6c213af75a191619fc305c3945cdd55d4dc6bac72dcd42c1"
+    },
+    {
+      "path": ".truss/core/docs/templates/exec-plan.md",
+      "upstream_sha256": "a50e40b48939b2390afd491a3abf6cbf8992af62e029bac44349945245c53780"
+    },
+    {
+      "path": ".truss/core/docs/templates/truss-improvement.md",
+      "upstream_sha256": "271a7ebe400ed8e08cf90c3a347fb2ca6cf17cfcc24094c1a6addc0a1db9fd2c"
+    }
+  ]
+}

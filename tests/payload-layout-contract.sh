@@ -28,10 +28,10 @@
 #   L7  the payload mirror carries no .truss-core directory; the installed
 #       destination prefix is .truss/core since decision 0008.
 #
-# L5 no longer compares the mirror against the stale pre-0008 root tree. Decision
-# 0008 renamed the installed prefix and rewrote the shipped prose, so the root
-# tree and crates/truss/assets are stale by design until the duplicate-removal
-# plan deletes them, and they are not authoritative content. The recorded digest
+# L5 no longer compares the mirror against any repository tree. The pre-0008
+# root tree and crates/truss/assets were deleted by the repository migration,
+# which closed the duplicate window; distribution/payload is now the only pay-
+# load source, guarded by the recorded digest
 # file is the drift guard in their place: it was generated from the mirror at the
 # commit that landed the rename and is reviewed as data, so any later content
 # change in the mirror fails L5 instead of being normalised away.

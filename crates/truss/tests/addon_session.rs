@@ -967,6 +967,7 @@ fn largest_shipped_addon_payload_reports_the_session_size() {
         .parent()
         .unwrap()
         .to_path_buf();
+    let payload_root = repo.join("distribution").join("payload");
     let manifest = repo.join("scripts/delivery-install-files.txt");
     let tmp = tempfile::tempdir().unwrap();
     let workspace = tmp.path().join("workspace");
@@ -986,13 +987,13 @@ fn largest_shipped_addon_payload_reports_the_session_size() {
             })
             .unwrap()
     };
-    let old = describe(&repo, OLD_REF);
+    let old = describe(&payload_root, OLD_REF);
     FileSystemAddOnState
         .apply(
             &workspace,
             &AddOnInstallRequest {
                 descriptor: &old,
-                payload_root: &repo,
+                payload_root: &payload_root,
             },
         )
         .unwrap();
@@ -1004,7 +1005,7 @@ fn largest_shipped_addon_payload_reports_the_session_size() {
         write_bytes(
             &next_payload,
             file.path.as_str(),
-            &fs::read(repo.join(file.path.as_str())).unwrap(),
+            &fs::read(payload_root.join(file.path.as_str())).unwrap(),
         );
     }
     let target = old.files[0].path.clone();
@@ -1041,7 +1042,11 @@ fn largest_shipped_addon_payload_reports_the_session_size() {
     let payload_bytes = old
         .files
         .iter()
-        .map(|file| fs::metadata(repo.join(file.path.as_str())).unwrap().len())
+        .map(|file| {
+            fs::metadata(payload_root.join(file.path.as_str()))
+                .unwrap()
+                .len()
+        })
         .sum::<u64>();
 
     write_evidence(

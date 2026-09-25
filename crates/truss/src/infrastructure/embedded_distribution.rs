@@ -9,149 +9,170 @@ pub struct EmbeddedCoreDistribution;
 impl CoreDistributionPort for EmbeddedCoreDistribution {
     fn current(&self) -> Result<CoreDistribution, PortError> {
         let mut files = Vec::new();
-        let agent_block = include_bytes!("../../../../scripts/agent-truss-block.md");
+        let agent_block =
+            include_bytes!("../../../../distribution/entrypoints/agent-truss-block.md");
         let mut agents = b"# Agent Instructions\n\n".to_vec();
         agents.extend_from_slice(agent_block);
         add(&mut files, "AGENTS.md", &agents)?;
         add(
             &mut files,
             ".agents/skills/audit-onboarding-proposal/SKILL.md",
-            include_bytes!("../../../../.agents/skills/audit-onboarding-proposal/SKILL.md"),
+            include_bytes!("../../../../distribution/payload/.agents/skills/audit-onboarding-proposal/SKILL.md"),
         )?;
         add(
             &mut files,
             ".agents/skills/audit-onboarding-proposal/agents/openai.yaml",
             include_bytes!(
-                "../../../../.agents/skills/audit-onboarding-proposal/agents/openai.yaml"
+                "../../../../distribution/payload/.agents/skills/audit-onboarding-proposal/agents/openai.yaml"
             ),
         )?;
         add(
             &mut files,
             ".agents/skills/audit-onboarding-proposal/scripts/validate_evidence_capsule.py",
             include_bytes!(
-                "../../../../.agents/skills/audit-onboarding-proposal/scripts/validate_evidence_capsule.py"
+                "../../../../distribution/payload/.agents/skills/audit-onboarding-proposal/scripts/validate_evidence_capsule.py"
             ),
         )?;
         add(
             &mut files,
             ".agents/skills/encode-invariant/SKILL.md",
-            include_bytes!("../../../../.agents/skills/encode-invariant/SKILL.md"),
+            include_bytes!(
+                "../../../../distribution/payload/.agents/skills/encode-invariant/SKILL.md"
+            ),
         )?;
         add(
             &mut files,
             ".agents/skills/encode-invariant/agents/openai.yaml",
-            include_bytes!("../../../../.agents/skills/encode-invariant/agents/openai.yaml"),
+            include_bytes!("../../../../distribution/payload/.agents/skills/encode-invariant/agents/openai.yaml"),
         )?;
         add(
             &mut files,
             ".agents/skills/improve-truss/SKILL.md",
-            include_bytes!("../../../../.agents/skills/improve-truss/SKILL.md"),
+            include_bytes!(
+                "../../../../distribution/payload/.agents/skills/improve-truss/SKILL.md"
+            ),
         )?;
         add(
             &mut files,
             ".agents/skills/improve-truss/agents/openai.yaml",
-            include_bytes!("../../../../.agents/skills/improve-truss/agents/openai.yaml"),
+            include_bytes!(
+                "../../../../distribution/payload/.agents/skills/improve-truss/agents/openai.yaml"
+            ),
         )?;
         add(
             &mut files,
             ".agents/skills/onboard-repository/SKILL.md",
-            include_bytes!("../../../../.agents/skills/onboard-repository/SKILL.md"),
+            include_bytes!(
+                "../../../../distribution/payload/.agents/skills/onboard-repository/SKILL.md"
+            ),
         )?;
         add(
             &mut files,
             ".agents/skills/onboard-repository/agents/openai.yaml",
-            include_bytes!("../../../../.agents/skills/onboard-repository/agents/openai.yaml"),
+            include_bytes!("../../../../distribution/payload/.agents/skills/onboard-repository/agents/openai.yaml"),
         )?;
         add(
             &mut files,
             ".agents/skills/onboard-repository/references/evidence-capsule-v1.md",
             include_bytes!(
-                "../../../../.agents/skills/onboard-repository/references/evidence-capsule-v1.md"
+                "../../../../distribution/payload/.agents/skills/onboard-repository/references/evidence-capsule-v1.md"
             ),
         )?;
         add(
             &mut files,
             ".agents/skills/onboard-repository/references/evidence-capsule-v2.md",
             include_bytes!(
-                "../../../../.agents/skills/onboard-repository/references/evidence-capsule-v2.md"
+                "../../../../distribution/payload/.agents/skills/onboard-repository/references/evidence-capsule-v2.md"
             ),
         )?;
         add(
             &mut files,
             ".agents/skills/onboard-repository/scripts/emit_evidence_bundle.py",
             include_bytes!(
-                "../../../../.agents/skills/onboard-repository/scripts/emit_evidence_bundle.py"
+                "../../../../distribution/payload/.agents/skills/onboard-repository/scripts/emit_evidence_bundle.py"
             ),
         )?;
         add(
             &mut files,
             ".agents/skills/onboard-repository/scripts/render_patch.py",
-            include_bytes!("../../../../.agents/skills/onboard-repository/scripts/render_patch.py"),
+            include_bytes!("../../../../distribution/payload/.agents/skills/onboard-repository/scripts/render_patch.py"),
         )?;
         add(
             &mut files,
             ".truss-core/docs/WORKFLOW.md",
-            include_bytes!("../../../../.truss-core/docs/WORKFLOW.md"),
+            include_bytes!("../../../../distribution/payload/.truss-core/docs/WORKFLOW.md"),
         )?;
         add(
             &mut files,
             ".truss-core/docs/communication.md",
-            include_bytes!("../../assets/.truss-core/docs/communication.md"),
+            include_bytes!("../../../../distribution/payload/.truss-core/docs/communication.md"),
         )?;
         add(
             &mut files,
             ".truss-core/docs/README.md",
-            include_bytes!("../../../../.truss-core/docs/README.md"),
+            include_bytes!("../../../../distribution/payload/.truss-core/docs/README.md"),
         )?;
         add(
             &mut files,
             ".truss-core/docs/patterns/encoding-invariants.md",
-            include_bytes!("../../../../.truss-core/docs/patterns/encoding-invariants.md"),
+            include_bytes!(
+                "../../../../distribution/payload/.truss-core/docs/patterns/encoding-invariants.md"
+            ),
         )?;
         add(
             &mut files,
             ".truss-core/docs/product/README.md",
-            include_bytes!("../../../../.truss-core/docs/product/README.md"),
+            include_bytes!("../../../../distribution/payload/.truss-core/docs/product/README.md"),
         )?;
         add(
             &mut files,
             ".truss-core/docs/plans/README.md",
-            include_bytes!("../../assets/.truss-core/docs/plans/README.md"),
+            include_bytes!("../../../../distribution/payload/.truss-core/docs/plans/README.md"),
         )?;
         add(
             &mut files,
             ".truss-core/docs/plans/active/README.md",
-            include_bytes!("../../../../.truss-core/docs/plans/active/README.md"),
+            include_bytes!(
+                "../../../../distribution/payload/.truss-core/docs/plans/active/README.md"
+            ),
         )?;
         add(
             &mut files,
             ".truss-core/docs/plans/completed/README.md",
-            include_bytes!("../../assets/.truss-core/docs/plans/completed/README.md"),
+            include_bytes!(
+                "../../../../distribution/payload/.truss-core/docs/plans/completed/README.md"
+            ),
         )?;
         add(
             &mut files,
             ".truss-core/docs/decisions/README.md",
-            include_bytes!("../../assets/.truss-core/docs/decisions/README.md"),
+            include_bytes!("../../../../distribution/payload/.truss-core/docs/decisions/README.md"),
         )?;
         add(
             &mut files,
             ".truss-core/docs/templates/application-runbook.md",
-            include_bytes!("../../../../.truss-core/docs/templates/application-runbook.md"),
+            include_bytes!("../../../../distribution/payload/.truss-core/docs/templates/application-runbook.md"),
         )?;
         add(
             &mut files,
             ".truss-core/docs/templates/decision.md",
-            include_bytes!("../../../../.truss-core/docs/templates/decision.md"),
+            include_bytes!(
+                "../../../../distribution/payload/.truss-core/docs/templates/decision.md"
+            ),
         )?;
         add(
             &mut files,
             ".truss-core/docs/templates/exec-plan.md",
-            include_bytes!("../../../../.truss-core/docs/templates/exec-plan.md"),
+            include_bytes!(
+                "../../../../distribution/payload/.truss-core/docs/templates/exec-plan.md"
+            ),
         )?;
         add(
             &mut files,
             ".truss-core/docs/templates/truss-improvement.md",
-            include_bytes!("../../../../.truss-core/docs/templates/truss-improvement.md"),
+            include_bytes!(
+                "../../../../distribution/payload/.truss-core/docs/templates/truss-improvement.md"
+            ),
         )?;
         Ok(CoreDistribution {
             version: env!("CARGO_PKG_VERSION").to_owned(),

@@ -804,6 +804,10 @@ fn delivery_manifest() -> PathBuf {
     repository_root().join("scripts/delivery-install-files.txt")
 }
 
+fn delivery_payload_root() -> PathBuf {
+    repository_root().join("distribution").join("payload")
+}
+
 fn delivery_paths() -> Vec<String> {
     fs::read_to_string(delivery_manifest())
         .unwrap()
@@ -817,7 +821,7 @@ fn delivery_paths() -> Vec<String> {
 /// Stage the real delivery payload bytes at their real relative paths.
 fn stage_delivery_payload(destination: &Path) {
     for path in delivery_paths() {
-        let bytes = fs::read(repository_root().join(&path)).unwrap();
+        let bytes = fs::read(delivery_payload_root().join(&path)).unwrap();
         let target = destination.join(&path);
         fs::create_dir_all(target.parent().unwrap()).unwrap();
         fs::write(target, bytes).unwrap();

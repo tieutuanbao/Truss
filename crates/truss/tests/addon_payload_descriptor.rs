@@ -84,13 +84,14 @@ fn flipped(hash: &ContentHash) -> ContentHash {
 fn descriptor_from_real_delivery_manifest_carries_manifest_order_and_payload_digests() {
     let crate_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let repository = crate_dir.parent().unwrap().parent().unwrap().to_path_buf();
+    let payload_root = repository.join("distribution").join("payload");
     let manifest = repository.join("scripts/delivery-install-files.txt");
     let foreign = [
         repository.join("scripts/truss-install-files.txt"),
         repository.join("scripts/engineering-wisdom-install-files.txt"),
         repository.join("scripts/plan-install-files.txt"),
     ];
-    let spec = spec(&repository, &manifest, "delivery", &foreign);
+    let spec = spec(&payload_root, &manifest, "delivery", &foreign);
 
     let descriptor = FileSystemAddOnPayload.describe(&spec).unwrap();
     assert_eq!(descriptor.name.as_str(), "delivery");
@@ -113,7 +114,7 @@ fn descriptor_from_real_delivery_manifest_carries_manifest_order_and_payload_dig
     );
 
     for file in &descriptor.files {
-        let bytes = fs::read(repository.join(file.path.as_str())).unwrap();
+        let bytes = fs::read(payload_root.join(file.path.as_str())).unwrap();
         assert_eq!(
             format!("{:x}", Sha256::digest(&bytes)),
             file.sha256.as_str(),

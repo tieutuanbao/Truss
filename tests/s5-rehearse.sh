@@ -565,8 +565,21 @@ TRUSS_CORE_BINARY="$OLD_CLI" bash "$EV/old-install.sh" --directory "$EV/w2c-forc
 st=$?
 check "old installer --force clobbers the consumer edit" \
   "$([ "$st" = 0 ] && [ "$(file_hash "$EV/w2c-force/$PAYLOAD_PROBE")" != "$CONSUMER_C" ]; echo $?)"
+# The consumer's bytes must still exist, and exist as bytes rather than as a file
+# whose name merely matches: the old installer backs a forced overwrite up under
+# `.truss-backup/<timestamp>/<relative path>`, one timestamped directory per run,
+# so exactly one backup copy of the probed path must hash to the consumer's edit.
+BACKUP_PROBE_COPIES="$(find "$EV/w2c-force/.truss-backup" -type f -name 'trusses.md' 2>/dev/null || true)"
+BACKUP_PROBE_TOTAL="$(printf '%s\n' "$BACKUP_PROBE_COPIES" | grep -c . || true)"
+BACKUP_PROBE_MATCHING=0
+while IFS= read -r candidate; do
+  [ -n "$candidate" ] || continue
+  [ "$(file_hash "$candidate")" = "$CONSUMER_C" ] && BACKUP_PROBE_MATCHING=$((BACKUP_PROBE_MATCHING + 1))
+done <<EOF
+$BACKUP_PROBE_COPIES
+EOF
 check "old installer --force keeps the consumer bytes only in its own backup" \
-  "$([ "$(find "$EV/w2c-force/.truss-backup" -name 'trusses.md' 2>/dev/null | wc -l)" -ge 1 ]; echo $?)"
+  "$([ "$BACKUP_PROBE_TOTAL" = 1 ] && [ "$BACKUP_PROBE_MATCHING" = 1 ] && [ "$(file_hash "$EV/w2c-force/$PAYLOAD_PROBE")" != "$CONSUMER_C" ]; echo $?)"
 # The pre-change installer has no provenance format at all: it copies add-on bytes
 # directly and writes no record. That is asserted on the artefact itself.
 check "the pre-change installer carries no add-on record or digest code" \

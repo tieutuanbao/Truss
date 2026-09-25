@@ -220,15 +220,6 @@ Tradeoffs:
 Date: 2026-09-25. Amended by owner decision after the first consumer migration
 (MeBe). Items 2 and 4 are corrected; the rest stands.
 
-The owner's correction, recorded verbatim:
-
-> After installing Truss, there must be no Truss product authority in the
-> consumer. Truss product authority lives only in the Truss source repository.
-> `.truss/core/` is where Truss templates, workflow, constraints, and rules
-> live, and its files are replaced when Truss updates. `.truss/authority/` is
-> created in each project as that project's own authority. The rule
-> `/.truss/authority/` in a consumer's `.gitignore` was wrong and is removed.
-
 Corrected ownership boundaries:
 
 - `.truss/core/**` is the Truss-managed payload: templates, workflow,
@@ -236,20 +227,21 @@ Corrected ownership boundaries:
   never edits it as authority.
 - `.truss/authority/**` in a consumer is the authority of **that project** —
   its decisions, plans, and product documents — written by that project's own
-  humans and agents and **tracked in that project's git**. Truss ships no
-  content into it, creates no file inside it, and never writes it.
+  humans and agents, and **never committed**. Truss ships no content into it,
+  creates no file inside it, and never writes it.
 - `.truss/delivery/**` stays local-only per 0006, written by delivery Control.
 
-Corrected ignore contract:
+Corrected ignore contract — two rules, both relative, neither root-anchored:
 
 ```gitignore
-/.truss/delivery/
+.truss/delivery/
+.truss/authority/
 ```
 
-That single rule is the local-only surface. `.truss/authority/` is **not**
-ignored: a project's authority is its system of record. The earlier
-recommendation to ignore `/.truss/authority/` (item 4 above) is withdrawn, and
-any consumer that received it removes it.
+A consumer running Truss local-only ignores `.truss/` with a single rule.
+Root-anchored spellings of any Truss ignore rule are withdrawn: every Truss
+namespace is written relative to the project root, and a rule anchored with a
+leading slash describes a different location than the one Truss uses.
 
 Truss product authority (its own `TRUSS.md`, `ARCHITECTURE.md`, decisions)
 stays in the Truss source repository and is never part of the installed

@@ -73,10 +73,10 @@ const UNRELATED_BYTES: &[u8] = b"unrelated\n";
 const COMPETING: &[u8] = b"competing writer\n";
 const RESOLVED: &[u8] = b"resolved by human\n";
 
-const ADDON_SESSION: &str = ".truss-core/addon-update";
-const SIBLING_SESSION: &str = ".truss-core/addon-update/other/session.json";
+const ADDON_SESSION: &str = ".truss/core/addon-update";
+const SIBLING_SESSION: &str = ".truss/core/addon-update/other/session.json";
 const SIBLING_BYTES: &[u8] = b"other add-on session\n";
-const CORE_SESSION: &str = ".truss-core/update/session.json";
+const CORE_SESSION: &str = ".truss/core/update/session.json";
 const CORE_SESSION_BYTES: &[u8] = b"core session\n";
 
 fn manifest_text(files: &[&str]) -> String {
@@ -225,7 +225,7 @@ fn seed_core_session(workspace: &Path) {
     write_bytes(workspace, CORE_SESSION, CORE_SESSION_BYTES);
     write_bytes(
         workspace,
-        ".truss-core/update/resolved/carrier.md",
+        ".truss/core/update/resolved/carrier.md",
         b"core resolution\n",
     );
 }
@@ -241,7 +241,7 @@ fn session_bytes(workspace: &Path, directory: &str, path: &str) -> Vec<u8> {
 fn baseline_bytes(workspace: &Path, path: &str) -> Option<Vec<u8>> {
     fs::read(
         workspace
-            .join(".truss-core/base-addons")
+            .join(".truss/core/base-addons")
             .join(ADDON)
             .join(path),
     )
@@ -341,7 +341,7 @@ fn tree_files(root: &Path) -> usize {
 }
 
 /// The three surfaces a refusal must leave byte-identical: the workspace, the
-/// add-on baseline tree, and `.truss-core/addons.json`.
+/// add-on baseline tree, and `.truss/core/addons.json`.
 struct Surfaces {
     workspace: String,
     baseline: String,
@@ -349,11 +349,11 @@ struct Surfaces {
 }
 
 fn surfaces(workspace: &Path) -> Surfaces {
-    let baseline_root = workspace.join(".truss-core/base-addons");
+    let baseline_root = workspace.join(".truss/core/base-addons");
     Surfaces {
         workspace: snapshot_without(workspace, &[ADDON_SESSION]),
         baseline: snapshot_digest(&workspace_snapshot(&baseline_root)),
-        addons: fs::read(workspace.join(".truss-core/addons.json")).unwrap(),
+        addons: fs::read(workspace.join(".truss/core/addons.json")).unwrap(),
     }
 }
 
@@ -363,14 +363,14 @@ fn assert_surfaces_unchanged(before: &Surfaces, workspace: &Path, context: &str)
         before.workspace,
         "{context}: the refusal changed the workspace"
     );
-    let baseline_root = workspace.join(".truss-core/base-addons");
+    let baseline_root = workspace.join(".truss/core/base-addons");
     assert_eq!(
         snapshot_digest(&workspace_snapshot(&baseline_root)),
         before.baseline,
         "{context}: the refusal changed the baseline"
     );
     assert_eq!(
-        fs::read(workspace.join(".truss-core/addons.json")).unwrap(),
+        fs::read(workspace.join(".truss/core/addons.json")).unwrap(),
         before.addons,
         "{context}: the refusal wrote provenance"
     );
@@ -465,7 +465,7 @@ fn staged_session_resumes_without_the_external_payload() {
     // Provenance: the new ref and the payload digests, written after the
     // workspace and the baseline.
     let addons: serde_json::Value =
-        serde_json::from_slice(&fs::read(workspace.join(".truss-core/addons.json")).unwrap())
+        serde_json::from_slice(&fs::read(workspace.join(".truss/core/addons.json")).unwrap())
             .unwrap();
     let demo = &addons["addons"].as_array().unwrap()[0];
     assert_eq!(demo["source_ref"], NEW_REF);
@@ -490,7 +490,7 @@ fn staged_session_resumes_without_the_external_payload() {
             (UNRELATED.to_owned(), digest(UNRELATED_BYTES)),
         ]
     );
-    assert!(!workspace.join(".truss-core/transaction.json").exists());
+    assert!(!workspace.join(".truss/core/transaction.json").exists());
 
     // Only the owned session is cleared; the seeded core session survives.
     assert!(
@@ -596,7 +596,7 @@ fn resume_writes_provenance_last_and_stays_retryable() {
     // blocker file is intact and the blocked path was never created.
     let clean_rolled_back = fs::read(workspace.join(CLEAN)).unwrap() == BASE;
     let addons_equal =
-        fs::read(workspace.join(".truss-core/addons.json")).unwrap() == before.addons;
+        fs::read(workspace.join(".truss/core/addons.json")).unwrap() == before.addons;
     assert!(clean_rolled_back, "the applied clean write must roll back");
     assert!(addons_equal, "addons.json must not be written");
     assert_eq!(
@@ -776,16 +776,16 @@ fn unsupported_schema_fails_closed() {
 }
 
 /// The deleted candidate path and the complete candidate round-trip through a
-/// staging that changes nothing else, and `.truss-core/update/` is untouched.
+/// staging that changes nothing else, and `.truss/core/update/` is untouched.
 #[test]
 fn staging_persists_a_self_contained_session_and_mutates_nothing() {
     let fixture = conflict_fixture();
     let workspace = &fixture.workspace;
     seed_core_session(workspace);
 
-    let addons = workspace.join(".truss-core/addons.json");
-    let baseline_root = workspace.join(".truss-core/base-addons");
-    let core_session = workspace.join(".truss-core/update");
+    let addons = workspace.join(".truss/core/addons.json");
+    let baseline_root = workspace.join(".truss/core/base-addons");
+    let core_session = workspace.join(".truss/core/update");
     let before_workspace = snapshot_without(workspace, &[ADDON_SESSION]);
     let before_addons = fs::read(&addons).unwrap();
     let before_baseline = snapshot_digest(&workspace_snapshot(&baseline_root));
@@ -915,7 +915,7 @@ fn abort_is_scoped_and_idempotent() {
     assert!(session_root(workspace).join("session.json").is_file());
 
     let before = surfaces(workspace);
-    let core_session = workspace.join(".truss-core/update");
+    let core_session = workspace.join(".truss/core/update");
     let before_core = workspace_snapshot(&core_session);
 
     assert!(
@@ -967,6 +967,7 @@ fn largest_shipped_addon_payload_reports_the_session_size() {
         .parent()
         .unwrap()
         .to_path_buf();
+    let payload_root = repo.join("distribution").join("payload");
     let manifest = repo.join("scripts/delivery-install-files.txt");
     let tmp = tempfile::tempdir().unwrap();
     let workspace = tmp.path().join("workspace");
@@ -986,13 +987,13 @@ fn largest_shipped_addon_payload_reports_the_session_size() {
             })
             .unwrap()
     };
-    let old = describe(&repo, OLD_REF);
+    let old = describe(&payload_root, OLD_REF);
     FileSystemAddOnState
         .apply(
             &workspace,
             &AddOnInstallRequest {
                 descriptor: &old,
-                payload_root: &repo,
+                payload_root: &payload_root,
             },
         )
         .unwrap();
@@ -1004,7 +1005,7 @@ fn largest_shipped_addon_payload_reports_the_session_size() {
         write_bytes(
             &next_payload,
             file.path.as_str(),
-            &fs::read(repo.join(file.path.as_str())).unwrap(),
+            &fs::read(payload_root.join(file.path.as_str())).unwrap(),
         );
     }
     let target = old.files[0].path.clone();
@@ -1041,7 +1042,11 @@ fn largest_shipped_addon_payload_reports_the_session_size() {
     let payload_bytes = old
         .files
         .iter()
-        .map(|file| fs::metadata(repo.join(file.path.as_str())).unwrap().len())
+        .map(|file| {
+            fs::metadata(payload_root.join(file.path.as_str()))
+                .unwrap()
+                .len()
+        })
         .sum::<u64>();
 
     write_evidence(

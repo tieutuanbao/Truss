@@ -33,22 +33,23 @@ pub fn write_file(root: &Path, relative: &str, content: &str) {
 }
 
 pub fn seed_core_state(workspace: &Path) {
-    let state_root = workspace.join(".truss-core");
+    let state_root = workspace.join(".truss/core");
     fs::create_dir_all(&state_root).unwrap();
     fs::write(state_root.join(".gitignore"), CORE_STATE_IGNORE).unwrap();
     fs::write(state_root.join("lock"), b"").unwrap();
-    // Decision 0003 clause 13 makes `.truss-core/manifest.json` part of a
+    // Decision 0003 clause 13 makes `.truss/core/manifest.json` part of a
     // valid pre-existing core state, so the fixture must be the real installed
     // shape: the embedded core payload, the four core skill trees, and the
-    // digest-checked `.truss-core/base/` copies. A `.gitignore` + `lock` only
-    // fixture is the incomplete state the add-on path must refuse.
+    // digest-checked `.truss/core/base/` copies. A `.gitignore` + `lock` only
+    // fixture is the incomplete state the add-on path must refuse. Decision
+    // 0008 makes `.truss/core` the installed root for this shape.
     let distribution = EmbeddedCoreDistribution.current().unwrap();
     let mut files = Vec::new();
     for file in &distribution.files {
         write_bytes(workspace, file.path.as_str(), &file.content);
         write_bytes(
             workspace,
-            &format!(".truss-core/base/{}", file.path.as_str()),
+            &format!(".truss/core/base/{}", file.path.as_str()),
             &file.content,
         );
         files.push(json!({
@@ -69,9 +70,9 @@ pub fn seed_core_state(workspace: &Path) {
 }
 
 /// A complete workspace snapshot: every path with its type and, for a file,
-/// its content digest; for a symlink, its target. Path set, type, and content
-/// are compared, so a mutation-free operation must leave this string
-/// byte-identical.
+/// its size and content digest; for a symlink, its target. Path set, type,
+/// size, and content are compared, so a mutation-free operation must leave
+/// this string byte-identical.
 pub fn workspace_snapshot(root: &Path) -> String {
     let mut lines = Vec::new();
     walk_snapshot(root, root, &mut lines);
@@ -101,7 +102,11 @@ fn walk_snapshot(root: &Path, directory: &Path, lines: &mut Vec<String>) {
             walk_snapshot(root, &path, lines);
         } else if metadata.is_file() {
             let bytes = fs::read(&path).unwrap();
-            lines.push(format!("file {relative} {:x}", Sha256::digest(&bytes)));
+            lines.push(format!(
+                "file {relative} {} {:x}",
+                metadata.len(),
+                Sha256::digest(&bytes)
+            ));
         } else {
             lines.push(format!("other {relative}"));
         }

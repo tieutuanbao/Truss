@@ -14,8 +14,8 @@ use super::addon_state::{
 };
 use super::filesystem_state::verify_frozen_locked;
 use super::state_io::{
-    acquire_existing_lock, copy_file, copy_tree, io_error, state_root, validate_core_state,
-    validate_workspace_root,
+    acquire_existing_lock, copy_file, copy_tree, io_error, state_label, state_root,
+    validate_core_state, validate_workspace_root,
 };
 use super::transaction::{self, ProvenanceKind, ProvenanceWriter};
 use crate::application::{
@@ -34,7 +34,7 @@ const SESSION_MARKER_FILE: &str = "session.json";
 ///
 /// It consumes a conflict-free S3b [`crate::domain::UpdatePlan`], stages every
 /// workspace mutation, publishes the payload baseline under
-/// `.truss-core/base-addons/<name>/`, and writes `.truss-core/addons.json`
+/// `<state-root>/base-addons/<name>/`, and writes `<state-root>/addons.json`
 /// last. It reuses the shared journal-and-backup engine, so a failure at any
 /// point restores the workspace, the baseline, and `addons.json` before the
 /// error is returned.
@@ -43,7 +43,7 @@ const SESSION_MARKER_FILE: &str = "session.json";
 /// mutation at all. A valid pre-existing core state is required and is only
 /// ever validated, never created or repaired, and the existing shared lock is
 /// reused rather than created (decision 0003 clause 8). No conflict session is
-/// staged, resumed, or cleared, and `.truss-core/update/` is never touched.
+/// staged, resumed, or cleared, and `<state-root>/update/` is never touched.
 #[derive(Clone, Copy, Default)]
 pub struct FileSystemAddOnApplier;
 
@@ -76,10 +76,10 @@ impl FileSystemAddOnApplier {
     /// Stage one conflicted add-on plan under the owned add-on namespace.
     ///
     /// No managed file, baseline byte, or `addons.json` byte changes: only
-    /// `.truss-core/addon-update/<name>/` is written. The complete frozen
+    /// `<state-root>/addon-update/<name>/` is written. The complete frozen
     /// workspace observation is re-checked under the existing shared lock, so a
     /// plan that went stale since the S3b planning lock is refused instead of
-    /// being persisted. `.truss-core/update/` is never read or written.
+    /// being persisted. `<state-root>/update/` is never read or written.
     pub fn stage(
         &self,
         root: &Path,
@@ -131,8 +131,8 @@ impl FileSystemAddOnApplier {
 
     /// Report whether an add-on conflict session is pending for `name`.
     ///
-    /// Add-on scoped: only the owned `.truss-core/addon-update/<name>/`
-    /// marker is inspected, never the core-only `.truss-core/update/`
+    /// Add-on scoped: only the owned `<state-root>/addon-update/<name>/`
+    /// marker is inspected, never the core-only `<state-root>/update/`
     /// namespace, and the core `resolution_pending` is not involved. A valid
     /// pre-existing core state and the existing shared lock are required
     /// exactly as for every other add-on operation, and nothing is created or
@@ -186,7 +186,8 @@ fn stage_locked(
     transaction::recover(root, state_root)?;
     let existing = FileSystemAddOnState.load(root)?.ok_or_else(|| {
         PortError::new(format!(
-            "no installed add-on record at .truss-core/addons.json; install {} before updating it",
+            "no installed add-on record at {}/addons.json; install {} before updating it",
+            state_label(state_root),
             descriptor.name
         ))
     })?;
@@ -242,7 +243,8 @@ fn resume_locked(
     })?;
     let existing = FileSystemAddOnState.load(root)?.ok_or_else(|| {
         PortError::new(format!(
-            "no installed add-on record at .truss-core/addons.json; install {name} before updating it"
+            "no installed add-on record at {}/addons.json; install {name} before updating it",
+            state_label(state_root)
         ))
     })?;
     let installation = existing.installation(name).ok_or_else(|| {
@@ -313,7 +315,8 @@ fn apply_locked(
     transaction::recover(root, state_root)?;
     let existing = FileSystemAddOnState.load(root)?.ok_or_else(|| {
         PortError::new(format!(
-            "no installed add-on record at .truss-core/addons.json; install {} before updating it",
+            "no installed add-on record at {}/addons.json; install {} before updating it",
+            state_label(state_root),
             request.descriptor.name
         ))
     })?;
@@ -370,8 +373,8 @@ fn build_installation(
     Ok(installation)
 }
 
-/// The add-on state half of a transaction: `.truss-core/addons.json` plus the
-/// `.truss-core/base-addons/<name>/` baseline tree.
+/// The add-on state half of a transaction: `<state-root>/addons.json` plus the
+/// `<state-root>/base-addons/<name>/` baseline tree.
 struct AddOnProvenanceWriter<'a> {
     #[cfg(test)]
     root: &'a Path,

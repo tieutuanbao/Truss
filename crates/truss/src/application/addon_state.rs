@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use super::PortError;
 use crate::domain::{AddOnDescriptor, AddOnName, AddOnState, RelativePath};
@@ -25,9 +25,14 @@ pub struct AddOnRecordReceipt {
 /// The shape mirrors `InstallationStatePort`: one reader and one writer over a
 /// versioned state file, with the workspace files written before the
 /// provenance, never after. Installed add-on provenance lives in its own file,
-/// `.truss-core/addons.json`, with its own schema version, and its baseline
-/// copies live under `.truss-core/base-addons/<add-on>/`.
+/// `<state-root>/addons.json`, with its own schema version, and its baseline
+/// copies live under `<state-root>/base-addons/<add-on>/`.
 pub trait AddOnStatePort {
+    /// The state root this operation must operate on, or a refusal when the
+    /// repository holds both the new and the legacy tree. Add-on operations
+    /// resolve it before they stage, adopt, or write provenance.
+    fn resolve_state_root(&self, root: &Path) -> Result<PathBuf, PortError>;
+
     /// Load the installed add-on record, or `None` when no record exists.
     /// An unreadable, schema-mismatched, or digest-mismatched record is an
     /// error rather than an absent record.
@@ -35,8 +40,8 @@ pub trait AddOnStatePort {
 
     /// Every path owned by a distribution other than `own_name`, paired with
     /// the owning distribution's name: the core installation's
-    /// `.truss-core/manifest.json` entries and the recorded paths of every
-    /// other add-on in `.truss-core/addons.json`.
+    /// `<state-root>/manifest.json` entries and the recorded paths of every
+    /// other add-on in `<state-root>/addons.json`.
     ///
     /// This is the ownership set an incoming add-on descriptor must not
     /// collide with, and it is deliberately required rather than defaulted: a

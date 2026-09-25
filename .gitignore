@@ -13,15 +13,13 @@ target/
 dist/
 
 # Downloaded Truss binaries for installed project instances.
-.truss-core/bin/truss
-.truss-core/bin/truss.exe
-.truss-core/bin/truss-v0-migrate
+.truss/core/bin/truss-v0-migrate
 truss.db.bk
 
 # Owner-private working content (not part of the shipped payload)
-.truss-core/docs/plans/active/*
-!.truss-core/docs/plans/active/README.md
-.truss-core/docs/plans/completed/*
-!.truss-core/docs/plans/completed/README.md
-.truss-core/docs/decisions/*
-!.truss-core/docs/decisions/README.md
+.truss/delivery/
+.truss/authority/
+
+# Truss core maintenance binary
+.truss/core/bin/truss
+.truss/core/bin/truss.exe

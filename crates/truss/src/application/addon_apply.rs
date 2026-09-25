@@ -38,9 +38,9 @@ pub struct AddOnStageRequest<'a> {
 /// Applies, stages, resumes, and aborts one add-on update.
 ///
 /// Every method is add-on scoped. In particular `session_pending` asks only
-/// whether the owned `.truss-core/addon-update/<name>/` session exists; it must
+/// whether the owned `<state-root>/addon-update/<name>/` session exists; it must
 /// never overload the core [`InstallationStatePort::resolution_pending`],
-/// which reads the core-only `.truss-core/update/` namespace.
+/// which reads the core-only `<state-root>/update/` namespace.
 ///
 /// [`InstallationStatePort::resolution_pending`]: super::InstallationStatePort::resolution_pending
 pub trait AddOnExecutionPort {
@@ -64,7 +64,7 @@ pub trait AddOnExecutionPort {
     /// Remove only the owned session for `name`; a repeat call is `false`.
     fn abort(&self, root: &Path, name: &AddOnName) -> Result<bool, PortError>;
 
-    /// Report whether `.truss-core/addon-update/<name>/session.json` exists.
+    /// Report whether `<state-root>/addon-update/<name>/session.json` exists.
     /// The add-on session is inspected only; the core session namespace is
     /// never read, and a schema-1 session is pending rather than an error.
     fn session_pending(&self, root: &Path, name: &AddOnName) -> Result<bool, PortError>;

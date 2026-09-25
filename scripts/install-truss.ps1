@@ -6,7 +6,7 @@ Bootstrap the Rust `truss` CLI and install the Truss core into a target.
 Installs the repository-centered core plus the Rust maintenance CLI. Optional
 add-ons requested with -WithEngineeringWisdom, -WithDelivery, or -WithPlanning
 are acquired here and installed or updated by the Truss CLI, which owns the
-plan, the baseline, and the provenance under .truss-core/:
+plan, the baseline, and the provenance under .truss/core/:
   truss addon status   --name <name>
   truss addon install  --name <name> --manifest <manifest> --source <dir> --source-ref <ref>
   truss addon update   --name <name> --manifest <manifest> --source <dir> --source-ref <ref>
@@ -14,9 +14,9 @@ plan, the baseline, and the provenance under .truss-core/:
   truss addon abort    --name <name>
 --source-ref is an immutable release tag or exact commit SHA, never a branch
 name, and each managed file is recorded with its SHA-256 in
-.truss-core/addons.json. -DryRun previews the plan without writing.
+.truss/core/addons.json. -DryRun previews the plan without writing.
 Overlapping local and upstream edits are never overwritten: update stops and
-stages the conflict under .truss-core/addon-update/<name>/resolved/, and
+stages the conflict under .truss/core/addon-update/<name>/resolved/, and
 continue applies the operator-edited copies while abort removes only the
 session. AGENTS.md is never an add-on payload file. -Merge and -Force do not
 apply to add-on files, and this installer never copies an add-on file
@@ -68,7 +68,12 @@ function Resolve-TargetPath([string]$PathValue) {
 function Get-SourceMode {
     if ($PSScriptRoot) {
         $candidate = Split-Path -Parent $PSScriptRoot
-        if ((Test-Path (Join-Path $candidate "AGENTS.md")) -and (Test-Path (Join-Path $candidate ".truss-core/docs/TRUSS.md"))) {
+        # A Truss source checkout is recognised by its distribution tree; an
+        # installed consumer has `.truss/core/` but no `distribution/`, and
+        # product authority lives in the source repository's own
+        # `.truss/authority/`, never inside the installed payload.
+        $sourceSentinel = Test-Path (Join-Path $candidate "distribution/layout-version")
+        if ((Test-Path (Join-Path $candidate "AGENTS.md")) -and $sourceSentinel) {
             return @{ Mode = "local"; Root = $candidate }
         }
     }
@@ -111,6 +116,15 @@ function Read-PayloadManifest([string]$Manifest) {
         Fail "Could not download $url"
     }
 }
+
+# The payload bytes live in the distribution mirror at
+# `distribution/payload/<destination>`, while a manifest line names the
+# destination the CLI installs. This is the one place that mapping is written
+# down.
+$script:PayloadSourcePrefix = "distribution/payload"
+# The payload layout this bootstrap stages. Decision 0008 moved the installed
+# tree to `.truss/core`; a payload declaring anything else is refused.
+$script:RequiredLayout = "3"
 
 function Get-PayloadFiles([string]$Manifest) {
     foreach ($line in (Read-PayloadManifest $Manifest)) {
@@ -191,7 +205,12 @@ function Get-TrussReleaseTag {
 }
 
 function Merge-CoreGitignore([string]$Target) {
-    $rules = @("# Truss core maintenance binary", ".truss-core/bin/truss", ".truss-core/bin/truss.exe")
+    # One missing/skip rule shared with the Bash twin: three required lines, skip
+    # only when all three are present, append only the missing ones. Keying the
+    # skip on the two rules alone duplicated the marker whenever a rule was missing
+    # beside an existing marker.
+    $marker = "# Truss core maintenance binary"
+    $rules = @($marker, "$script:TargetStateLabel/bin/truss", "$script:TargetStateLabel/bin/truss.exe")
     $existing = if (Test-Path $Target) { Get-Content -LiteralPath $Target } else { @() }
     $missing = @($rules | Where-Object { $existing -notcontains $_ })
     if ($missing.Count -eq 0) {
@@ -219,9 +238,9 @@ function Install-TrussCore {
     if ($platform -ne "windows-x64") { Fail "Unsupported Windows Truss core platform: $platform" }
     $stageRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("truss-core-" + [guid]::NewGuid().ToString("N"))
     $staged = Join-Path $stageRoot "truss.exe"
-    $command = if (Test-Path (Join-Path $script:TargetDir ".truss-core/manifest.json")) { "update" } else { "install" }
+    $command = if (Test-Path (Join-Path $script:TargetStateDir "manifest.json")) { "update" } else { "install" }
     $pendingVersion = $null
-    $sessionPath = Join-Path $script:TargetDir ".truss-core/update/session.json"
+    $sessionPath = Join-Path $script:TargetStateDir "update/session.json"
     if ($command -eq "update" -and (Test-Path $sessionPath)) {
         $pendingVersion = (Get-Content -LiteralPath $sessionPath -Raw | ConvertFrom-Json).to_version
         if ([string]::IsNullOrWhiteSpace($pendingVersion)) { Fail "could not read pending Truss update version" }
@@ -276,15 +295,15 @@ function Install-TrussCore {
         $target = $null
         $targetTemp = $null
         if (!$DryRun) {
-            $target = Join-Path $script:TargetDir ".truss-core/bin/truss.exe"
-            Assert-NotReparsePoint (Join-Path $script:TargetDir ".truss-core") ".truss-core"
-            Assert-NotReparsePoint (Join-Path $script:TargetDir ".truss-core/bin") ".truss-core/bin directory"
+            $target = Join-Path $script:TargetStateDir "bin/truss.exe"
+            Assert-NotReparsePoint $script:TargetStateDir $script:TargetStateLabel
+            Assert-NotReparsePoint (Join-Path $script:TargetStateDir "bin") "$script:TargetStateLabel/bin directory"
             Assert-NotReparsePoint $target "repository Truss executable"
             New-Item -ItemType Directory -Force -Path (Split-Path -Parent $target) | Out-Null
             $targetTemp = Join-Path (Split-Path -Parent $target) (".truss." + [guid]::NewGuid().ToString("N") + ".tmp")
             Copy-Item -LiteralPath $staged -Destination $targetTemp
             if (Test-Path $target) {
-                $backup = Join-Path $script:BackupDir ".truss-core/bin/truss.exe"
+                $backup = Join-Path $script:BackupDir "$script:TargetStateLabel/bin/truss.exe"
                 New-Item -ItemType Directory -Force -Path (Split-Path -Parent $backup) | Out-Null
                 Copy-Item -LiteralPath $target -Destination $backup -Force
             }
@@ -292,9 +311,9 @@ function Install-TrussCore {
         & $runner @arguments
         $commandStatus = $LASTEXITCODE
         if ($commandStatus -eq 2 -and !$DryRun) {
-            $retained = Join-Path $script:TargetDir ".truss-core/update-candidate/truss.exe"
-            Assert-NotReparsePoint (Join-Path $script:TargetDir ".truss-core") ".truss-core"
-            Assert-NotReparsePoint (Join-Path $script:TargetDir ".truss-core/update-candidate") "retained candidate directory"
+            $retained = Join-Path $script:TargetStateDir "update-candidate/truss.exe"
+            Assert-NotReparsePoint $script:TargetStateDir $script:TargetStateLabel
+            Assert-NotReparsePoint (Join-Path $script:TargetStateDir "update-candidate") "retained candidate directory"
             Assert-NotReparsePoint $retained "retained update candidate"
             New-Item -ItemType Directory -Force -Path (Split-Path -Parent $retained) | Out-Null
             Copy-Item -LiteralPath $staged -Destination $retained -Force
@@ -305,13 +324,13 @@ function Install-TrussCore {
             } else {
                 Move-Item -LiteralPath $targetTemp -Destination $target
             }
-            Remove-Item -LiteralPath (Join-Path $script:TargetDir ".truss-core/update-candidate") -Recurse -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath (Join-Path $script:TargetStateDir "update-candidate") -Recurse -Force -ErrorAction SilentlyContinue
             Merge-CoreGitignore (Join-Path $script:TargetDir ".gitignore")
-            Write-Step "installed .truss-core/bin/truss.exe ($platform)"
+            Write-Step "installed $script:TargetStateLabel/bin/truss.exe ($platform)"
         } elseif ($targetTemp) {
             Remove-Item -LiteralPath $targetTemp -Force -ErrorAction SilentlyContinue
         }
-        if ($commandStatus -eq 2) { Fail "Truss core update needs resolution; edit .truss-core/update/resolved/, then rerun this installer or truss update --continue" }
+        if ($commandStatus -eq 2) { Fail "Truss core update needs resolution; edit $script:TargetStateLabel/update/resolved/, then rerun this installer or truss update --continue" }
         if ($commandStatus -ne 0) { Fail "truss $command failed with exit code $commandStatus" }
     } finally {
         Remove-Item -LiteralPath $stageRoot -Recurse -Force -ErrorAction SilentlyContinue
@@ -325,8 +344,9 @@ function Install-TrussCore {
 # non-comment lines are exactly the payload path set staged for the CLI. The
 # CLI is invoked once per requested add-on and owns planning, preservation,
 # update, adoption, and conflict staging against the recorded baseline, so
-# every add-on install writes `.truss-core/addons.json` and the
-# `.truss-core/base-addons/<name>/` copies of the payload bytes. No add-on path
+# every add-on install writes `<state>/addons.json` and the
+# `<state>/base-addons/<name>/` copies of the payload bytes, where `<state>` is
+# the target's resolved root. No add-on path
 # is written by a direct copy path in this installer.
 # ---------------------------------------------------------------------------
 
@@ -351,7 +371,7 @@ function Assert-GitAvailable {
 # An add-on is installed the first time and updated once it is recorded. The
 # record is read from the CLI-owned state file, never from the workspace.
 function Test-AddOnRecorded([string]$Name) {
-    $record = Join-Path $script:TargetDir ".truss-core/addons.json"
+    $record = Join-Path $script:TargetStateDir "addons.json"
     if (!(Test-Path $record)) { return $false }
     return [bool](Select-String -LiteralPath $record -SimpleMatch -Quiet -Pattern ('"name": "' + $Name + '"'))
 }
@@ -416,7 +436,7 @@ function Resolve-AddOnSourceCoreVersion {
         $script:AddOnSourceCoreVersion = $script:AddOnSourceRef.Substring(7)
         return
     }
-    $runner = Join-Path $script:TargetDir ".truss-core/bin/truss.exe"
+    $runner = Join-Path $script:TargetStateDir "bin/truss.exe"
     if (Test-Path $runner) {
         $reported = ((& $runner --version) -split "\s+")[-1]
         if ($LASTEXITCODE -eq 0 -and ![string]::IsNullOrWhiteSpace($reported)) {
@@ -438,21 +458,38 @@ function Resolve-AddOnSourceCoreVersion {
 
 function Assert-LocalAddOnPayloadCommitted([string]$Name, [string]$Manifest) {
     $root = $script:Source.Root
-    $paths = @(Get-PayloadFiles $Manifest)
-    if ($paths.Count -eq 0) {
+    $destinations = @(Get-PayloadFiles $Manifest)
+    if ($destinations.Count -eq 0) {
         Fail "the $Name add-on payload manifest $Manifest lists no files"
     }
     Assert-GitAvailable
-    $untracked = @(& git -C $root ls-files --others --exclude-standard -- $paths)
-    if ($LASTEXITCODE -ne 0) {
-        Fail "could not inspect the local Truss source checkout at $root with git"
+    $head = (& git -C $root rev-parse --verify HEAD 2>$null)
+    if ($LASTEXITCODE -ne 0 -or !$head) {
+        Fail "the local Truss source at $root is not a git checkout, so the payload bytes cannot be proven to belong to a recorded ref"
     }
-    if (($untracked | Where-Object { $_ -match "\S" }).Count -gt 0) {
-        Fail "the $Name add-on payload is not committed in $root; an immutable --source-ref must describe the bytes that are installed, so this installer stops instead of recording one"
+    # Each manifest line names a destination; the checked path is the mirror
+    # source. Resolving it in the recorded commit with `git cat-file` sees an
+    # untracked or ignored file as missing, which the previous pair of
+    # `ls-files --others --exclude-standard` and `diff --quiet HEAD` did not:
+    # the first skips ignored files and the second cannot see untracked ones.
+    $absent = @()
+    foreach ($destination in $destinations) {
+        $source = "$script:PayloadSourcePrefix/$destination"
+        & git -C $root cat-file -e "$head`:$source" 2>$null
+        if ($LASTEXITCODE -ne 0) {
+            $absent += "$source(not-in-$head)"
+            continue
+        }
+        $committed = (& git -C $root rev-parse "$head`:$source" 2>$null)
+        $worktree = (& git -C $root hash-object -- (Join-Path $root $source) 2>$null)
+        if (!$worktree) {
+            $absent += "$source(unreadable)"
+        } elseif ($committed -ne $worktree) {
+            $absent += "$source(differs-from-$head)"
+        }
     }
-    & git -C $root diff --quiet HEAD -- $paths
-    if ($LASTEXITCODE -ne 0) {
-        Fail "the $Name add-on payload has uncommitted changes in $root; commit or discard them first, because an immutable --source-ref must describe the bytes that are installed and no dirty provenance format is invented here"
+    if ($absent.Count -gt 0) {
+        Fail "the $Name add-on payload is not committed in $root: $($absent -join ' '); an immutable --source-ref must describe the bytes that are installed, so this installer stops instead of recording one. Run git status in $root, commit the payload under $script:PayloadSourcePrefix/, and retry"
     }
 }
 
@@ -463,7 +500,7 @@ function Stage-AddOnPayload([string]$Name, [string]$Manifest) {
     $script:AddOnStagedManifest = $null
     if ($script:Source.Mode -eq "local") {
         Assert-LocalAddOnPayloadCommitted $Name $Manifest
-        $script:AddOnStagedPayload = $script:Source.Root
+        $script:AddOnStagedPayload = Join-Path $script:Source.Root $script:PayloadSourcePrefix
         $script:AddOnStagedManifest = Join-Path $script:Source.Root $Manifest
         return
     }
@@ -477,7 +514,7 @@ function Stage-AddOnPayload([string]$Name, [string]$Manifest) {
     foreach ($relative in (Get-PayloadFiles $Manifest)) {
         $target = Join-Path $script:AddOnStagedPayload $relative
         New-Item -ItemType Directory -Force -Path (Split-Path -Parent $target) | Out-Null
-        $url = "$script:SourceBaseUrl/$($relative -replace '\\','/')"
+        $url = "$script:SourceBaseUrl/$script:PayloadSourcePrefix/$($relative -replace '\\','/')"
         if ($url.StartsWith("file://")) {
             Copy-Item -LiteralPath ([uri]$url).LocalPath -Destination $target -Force
         } else {
@@ -490,6 +527,25 @@ function Remove-AddOnStageRoot {
     if ($script:AddOnStageRoot) {
         Remove-Item -LiteralPath $script:AddOnStageRoot -Recurse -Force -ErrorAction SilentlyContinue
         $script:AddOnStageRoot = $null
+    }
+}
+
+# Refuse an unsupported payload layout before anything is written. A bootstrap
+# and a payload must agree on the layout: a pre-0008 tag carries the old one, and
+# a raw base URL has no way to negotiate. -SourceGit <tag> stays valid for an old
+# tag because that ref ships its own bootstrap.
+function Assert-SupportedLayout {
+    $value = ""
+    try {
+        $value = ((Read-SourceText "distribution/layout-version") -split "\r?\n" | Select-Object -First 1)
+    } catch {
+        $value = ""
+    }
+    if (!$value) {
+        Fail "the Truss source declares no distribution/layout-version; this bootstrap requires layout $script:RequiredLayout and refuses to guess"
+    }
+    if ($value.Trim() -ne $script:RequiredLayout) {
+        Fail "the Truss source declares layout $($value.Trim()); this bootstrap requires layout $script:RequiredLayout. For a pre-0008 tag use -SourceGit <tag>, which ships its own bootstrap"
     }
 }
 
@@ -518,7 +574,7 @@ function Invoke-AddOnPreflight {
 # add-on: there is no installer-side skip or overwrite path left.
 function Install-AddOn([string]$Name, [string]$Manifest) {
     $operation = "install"
-    $runner = Join-Path $script:TargetDir ".truss-core/bin/truss.exe"
+    $runner = Join-Path $script:TargetStateDir "bin/truss.exe"
     $dryPreview = $false
 
     Stage-AddOnPayload $Name $Manifest
@@ -526,7 +582,7 @@ function Install-AddOn([string]$Name, [string]$Manifest) {
     Resolve-AddOnSourceCoreVersion
     if (Test-AddOnRecorded $Name) { $operation = "update" }
 
-    $coreManifest = Join-Path $script:TargetDir ".truss-core/manifest.json"
+    $coreManifest = Join-Path $script:TargetStateDir "manifest.json"
     if ($DryRun -and !(Test-Path $coreManifest)) {
         # A dry run installs no core state for the CLI to validate. Nothing is
         # copied either way; the invocation a real run would make is reported.
@@ -554,7 +610,7 @@ function Install-AddOn([string]$Name, [string]$Manifest) {
         return
     }
     if ($status -eq 2) {
-        Fail "the $Name add-on update stopped on a conflict and staged a resolution; edit the files under .truss-core/addon-update/$Name/resolved/, then run: $runner addon continue --name $Name --directory $script:TargetDir"
+        Fail "the $Name add-on update stopped on a conflict and staged a resolution; edit the files under $script:TargetStateLabel/addon-update/$Name/resolved/, then run: $runner addon continue --name $Name --directory $script:TargetDir"
     }
     if ($status -ne 0) {
         Fail "the Truss CLI failed to $operation the $Name add-on with exit code $status"
@@ -591,8 +647,39 @@ $script:PayloadManifest = "scripts/truss-install-files.txt"
 $script:EngineeringWisdomPayloadManifest = "scripts/engineering-wisdom-install-files.txt"
 $script:DeliveryPayloadManifest = "scripts/delivery-install-files.txt"
 $script:PlanningPayloadManifest = "scripts/plan-install-files.txt"
+
+# Refuse an unsupported payload layout before this run touches anything: not
+# before the target directory is created, and not before an override has moved
+# protected paths into a backup. The marker is read through the source reader, so
+# this must sit after the source mode and source base URL are resolved, and before
+# every mutation below.
+Assert-SupportedLayout
+
 $script:TargetDir = Resolve-TargetPath $Directory
 $script:BackupDir = Join-Path $script:TargetDir (".truss-backup/" + (Get-Date -Format "yyyyMMddHHmmss"))
+
+# The installed tree's root inside the target. A new installation writes
+# `.truss/core`; an installation that predates decision 0008 keeps
+# `.truss-core`. Resolution is by presence, exactly as the CLI resolves it, so
+# the bootstrap and the CLI never address different trees in one run. A target
+# holding both is refused rather than guessed.
+function Resolve-TargetState {
+    $new = Join-Path $script:TargetDir ".truss/core"
+    $legacy = Join-Path $script:TargetDir ".truss-core"
+    $newInstalled = (Test-Path (Join-Path $new "manifest.json")) -or (Test-Path (Join-Path $new "base"))
+    $legacyInstalled = (Test-Path (Join-Path $legacy "manifest.json")) -or (Test-Path (Join-Path $legacy "base"))
+    if ($newInstalled -and $legacyInstalled) {
+        Fail "both .truss/core and .truss-core in $script:TargetDir hold a Truss installation; decide which tree this repository keeps before running the installer"
+    }
+    if ($legacyInstalled) {
+        $script:TargetStateLabel = ".truss-core"
+    } else {
+        $script:TargetStateLabel = ".truss/core"
+    }
+    $script:TargetStateDir = Join-Path $script:TargetDir $script:TargetStateLabel
+}
+
+Resolve-TargetState
 $script:ConflictAction = "install"
 
 if ($Merge -and $Override) {
@@ -603,7 +690,7 @@ if (!$DryRun -and !(Test-Path $script:TargetDir)) {
     New-Item -ItemType Directory -Force -Path $script:TargetDir | Out-Null
 }
 
-$protectedPaths = @("AGENTS.md", "docs")
+$protectedPaths = @("AGENTS.md", $script:TargetStateLabel)
 $conflicts = $protectedPaths | Where-Object { Test-Path (Join-Path $script:TargetDir $_) }
 if ($conflicts.Count -gt 0) {
     if ($Merge) {
@@ -617,8 +704,12 @@ if ($conflicts.Count -gt 0) {
             if ($DryRun) {
                 Write-Step "override $protected (backup first)"
             } else {
-                New-Item -ItemType Directory -Force -Path $script:BackupDir | Out-Null
-                Move-Item -LiteralPath $path -Destination (Join-Path $script:BackupDir $protected)
+                # The installed root is `.truss/core`, two path segments. Create the
+                # destination's own parent and not only the backup directory, or the
+                # move has no `.truss/` to land in.
+                $destination = Join-Path $script:BackupDir $protected
+                New-Item -ItemType Directory -Force -Path (Split-Path -Parent $destination) | Out-Null
+                Move-Item -LiteralPath $path -Destination $destination
                 Write-Step "removed  $protected (backup: $($script:BackupDir.Substring($script:TargetDir.Length + 1))/$protected)"
             }
         }
@@ -634,8 +725,9 @@ if ($conflicts.Count -gt 0) {
                 foreach ($protected in $protectedPaths) {
                     $path = Join-Path $script:TargetDir $protected
                     if (Test-Path $path) {
-                        New-Item -ItemType Directory -Force -Path $script:BackupDir | Out-Null
-                        Move-Item -LiteralPath $path -Destination (Join-Path $script:BackupDir $protected)
+                        $destination = Join-Path $script:BackupDir $protected
+                        New-Item -ItemType Directory -Force -Path (Split-Path -Parent $destination) | Out-Null
+                        Move-Item -LiteralPath $path -Destination $destination
                     }
                 }
             }
@@ -668,6 +760,7 @@ if ($WithPlanning) {
     Write-Step "Planning add-on: excluded"
 }
 Write-Step "Target project: $script:TargetDir"
+Write-Step "Installed tree: $script:TargetStateLabel"
 
 Invoke-AddOnPreflight
 

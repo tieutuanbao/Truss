@@ -58,7 +58,7 @@ scripts/install-truss.sh \
   --yes
 ```
 
-For an existing repository that already has `AGENTS.md` or `.truss-core/docs/`, preview
+For an existing repository that already has `AGENTS.md` or `.truss/core/docs/`, preview
 first and choose an explicit conflict policy:
 
 ```bash
@@ -120,8 +120,8 @@ in the target repository. Run these steps from the installed project root.
 ### 1. Verify the installation
 
 ```bash
-.truss-core/bin/truss doctor
-.truss-core/bin/truss status
+.truss/core/bin/truss doctor
+.truss/core/bin/truss status
 ```
 
 `doctor` checks provenance, managed paths, merge support, and transaction
@@ -135,7 +135,7 @@ Open your preferred coding agent in the project root and begin with this
 read-only request:
 
 ```text
-Read AGENTS.md and .truss-core/docs/WORKFLOW.md. Then inspect only the repository material
+Read AGENTS.md and .truss/core/docs/WORKFLOW.md. Then inspect only the repository material
 needed to explain:
 
 1. where product intent and architecture are documented;
@@ -165,7 +165,7 @@ The styles range from technical terminology with minimal background
 (`expert`), through terms explained on first use (`intermediate`), to plain
 language and explicit steps (`layperson`). You choose; the agent records
 your choice in
-[`.truss-core/docs/communication.md`](.truss-core/docs/communication.md).
+[`.truss/core/docs/communication.md`](.truss/core/docs/communication.md).
 
 Requests such as "explain this more simply" override the default for the
 conversation without changing the saved setting. The guidance also asks
@@ -207,12 +207,12 @@ commands and policies. Establish these facts early:
 
 | Project truth | Recommended owner |
 | --- | --- |
-| Product purpose, setup, and common commands | Project `README.md` and `.truss-core/docs/product/` |
+| Product purpose, setup, and common commands | Project `README.md` and `.truss/core/docs/product/` |
 | Current component boundaries and data flow | Architecture documentation |
-| Accepted lasting technical choices | `.truss-core/docs/decisions/` |
+| Accepted lasting technical choices | `.truss/core/docs/decisions/` |
 | Build, lint, test, and release commands | Existing task runner, CI, and developer docs |
-| How to run and verify the real application | A consumer-owned runbook, optionally based on `.truss-core/docs/templates/application-runbook.md` |
-| Work that must survive sessions | One file under `.truss-core/docs/plans/active/` |
+| How to run and verify the real application | A consumer-owned runbook, optionally based on `.truss/core/docs/templates/application-runbook.md` |
+| Work that must survive sessions | One file under `.truss/core/docs/plans/active/` |
 
 Do not fill unknown fields with generic commands. Ask the responsible human for
 missing product policy, credentials, external ownership, or destructive
@@ -248,7 +248,7 @@ be copied and adapted.
 | Ask or diagnose | `Explain why <behavior> occurs. Inspect only; do not change files.` | Read-only inspection and an evidence-backed answer |
 | Review code | `Review <scope>. Report findings first with paths and proof. Do not edit.` | Read-only findings ranked by impact |
 | Make a bounded change | `Change <specific behavior>. Preserve unrelated work, run focused and required checks, and report evidence.` | Small coherent edit with repository-owned validation |
-| Continue multi-session work | `Create or resume one execution plan in .truss-core/docs/plans/active/ for <outcome>, then work from it.` | Durable progress, decisions, recovery, and validation in one plan |
+| Continue multi-session work | `Create or resume one execution plan in .truss/core/docs/plans/active/ for <outcome>, then work from it.` | Durable progress, decisions, recovery, and validation in one plan |
 | Enforce an accepted rule | `$encode-invariant enforce <documented rule> from <authority path>. Include positive and negative proof.` | Small repository-native guard without inventing policy |
 | Get engineering advice | `$engineering-wisdom review <scope>. Keep advice separate from repository policy and name trade-offs.` | Contextual review based on observed code and explicit heuristics |
 | Deliver with independent acceptance | `$delivery implement <outcome> under <scope and acceptance criteria>.` | Approved design, separate implementation, exact-HEAD tester-debugger acceptance, and release preparation |
@@ -256,7 +256,7 @@ be copied and adapted.
 
 ### When should work get a durable plan?
 
-Use one file under `.truss-core/docs/plans/active/` when the work:
+Use one file under `.truss/core/docs/plans/active/` when the work:
 
 - spans sessions;
 - coordinates multiple contributors;
@@ -264,8 +264,8 @@ Use one file under `.truss-core/docs/plans/active/` when the work:
 - needs explicit recovery; or
 - cannot safely resume from the Git diff alone.
 
-Use `.truss-core/docs/templates/exec-plan.md`. Keep progress and task-local decisions in
-that one file. Move it to `.truss-core/docs/plans/completed/` only after the outcome and its
+Use `.truss/core/docs/templates/exec-plan.md`. Keep progress and task-local decisions in
+that one file. Move it to `.truss/core/docs/plans/completed/` only after the outcome and its
 validation are complete.
 
 Small, clear changes do not need a durable plan. The agent should inspect the
@@ -282,14 +282,14 @@ Suppose a user reports that an API accepts an invalid order state.
 
 ```text
 Fix the API so it rejects the invalid order state documented in
-.truss-core/docs/product/orders.md. Keep the change within the order validation boundary.
+.truss/core/docs/product/orders.md. Keep the change within the order validation boundary.
 Add or update focused proof, run the repository-required checks, and report the
 final behavior and any validation limits.
 ```
 
 The agent should:
 
-1. read `AGENTS.md`, `.truss-core/docs/WORKFLOW.md`, and the named product authority;
+1. read `AGENTS.md`, `.truss/core/docs/WORKFLOW.md`, and the named product authority;
 2. locate the validator and its existing tests;
 3. confirm the requested behavior is unambiguous;
 4. make the smallest implementation and test change;
@@ -303,7 +303,7 @@ implementer should not accept its own work:
 
 ```text
 $delivery change the order API to reject the invalid state documented in
-.truss-core/docs/product/orders.md. The public error contract must remain compatible, the
+.truss/core/docs/product/orders.md. The public error contract must remain compatible, the
 focused test must distinguish the old and new behavior, and an independent
 tester-debugger session must accept the exact final commit.
 ```
@@ -334,15 +334,15 @@ delegates every write to the Truss CLI, which owns the plan, the baseline, and
 the record. The same lifecycle is available directly:
 
 ```bash
-.truss-core/bin/truss addon status   --name delivery --directory /path/to/project
-.truss-core/bin/truss addon install  --name delivery --directory /path/to/project \
+.truss/core/bin/truss addon status   --name delivery --directory /path/to/project
+.truss/core/bin/truss addon install  --name delivery --directory /path/to/project \
   --manifest scripts/delivery-install-files.txt \
   --source <staged-payload-dir> --source-ref truss-v0.1.13
-.truss-core/bin/truss addon update   --name delivery --directory /path/to/project \
+.truss/core/bin/truss addon update   --name delivery --directory /path/to/project \
   --manifest scripts/delivery-install-files.txt \
   --source <staged-payload-dir> --source-ref truss-v0.1.14
-.truss-core/bin/truss addon continue --name delivery --directory /path/to/project
-.truss-core/bin/truss addon abort    --name delivery --directory /path/to/project
+.truss/core/bin/truss addon continue --name delivery --directory /path/to/project
+.truss/core/bin/truss addon abort    --name delivery --directory /path/to/project
 ```
 
 - `status` reports the recorded `source_ref`, the core version the payload was
@@ -359,12 +359,12 @@ the record. The same lifecycle is available directly:
 
 Overlapping local and upstream edits are never overwritten. `addon update`
 stops with exit `2` and stages the frozen plan under
-`.truss-core/addon-update/<name>/resolved/<path>`. Edit those copies, then apply
+`.truss/core/addon-update/<name>/resolved/<path>`. Edit those copies, then apply
 the frozen decision with `addon continue`; `addon abort` removes only the owned
 session and leaves managed files unchanged.
 
-The record lives in `.truss-core/addons.json` and the payload baseline in
-`.truss-core/base-addons/<name>/`; both are owned by the CLI. `AGENTS.md` is a
+The record lives in `.truss/core/addons.json` and the payload baseline in
+`.truss/core/base-addons/<name>/`; both are owned by the CLI. `AGENTS.md` is a
 core payload file, never an add-on payload file: the CLI refuses an add-on that
 declares a path the core manifest or another recorded add-on already owns.
 
@@ -393,28 +393,46 @@ project/
 │       ├── audit-onboarding-proposal/
 │       ├── encode-invariant/
 │       └── improve-truss/
-└── .truss-core/
-    ├── docs/
-    │   ├── WORKFLOW.md
-    │   ├── README.md
-    │   ├── decisions/
-    │   ├── patterns/
-    │   ├── plans/
-    │   │   ├── active/
-    │   │   └── completed/
-    │   ├── product/
-    │   └── templates/
-    ├── bin/
-    │   └── truss
-    ├── manifest.json
-    └── base/
+└── .truss/
+    ├── core/                 # installed payload and CLI-owned state
+    │   ├── docs/
+    │   │   ├── WORKFLOW.md
+    │   │   ├── README.md
+    │   │   ├── decisions/
+    │   │   ├── patterns/
+    │   │   ├── plans/
+    │   │   │   ├── active/
+    │   │   │   └── completed/
+    │   │   ├── product/
+    │   │   └── templates/
+    │   ├── bin/
+    │   │   └── truss
+    │   ├── manifest.json
+    │   └── base/
+    ├── delivery/             # local-only: per-run working memory
+    │   ├── runs/<run-key>/
+    │   └── approvals/<run-key>.md
+    └── authority/            # this project's own authority (local-only)
+        ├── architecture/
+        └── decisions/
 ```
 
 Your source code, tests, CI, and any existing `docs/` or `scripts/` folders
 stay exactly where they are. Everything Truss installs lives under
-`.truss-core/`, the root `AGENTS.md` entry point, and `.agents/skills/` —
+`.truss/core/`, the root `AGENTS.md` entry point, and `.agents/skills/` —
 the standard location agent tools scan for skill discovery. To keep Truss
 local-only, ignore those paths in `.gitignore` or `.git/info/exclude`.
+
+`.truss/` holds three namespaces with three owners. `core/` is the installed
+payload and the installation state the CLI owns; the CLI never reads or writes
+the other two. `delivery/` holds one delivery run's working memory — its plan,
+its approved envelope, its dispatch artifacts, and its approval receipt — and is
+written by the delivery skill, never committed. `authority/` holds that
+project's own durable authority — architecture notes, decision records, plans,
+and product documents — and is never committed either. A consumer that keeps
+Truss in version control commits `.truss/core/` and ignores `.truss/delivery/`
+and `.truss/authority/`; a consumer running Truss local-only ignores `.truss/`
+with a single rule.
 
 Optional profiles add their own skills under `.agents/skills/`. Exact payloads
 are declared by the manifests in [`scripts/`](#scripts-reference).
@@ -427,16 +445,16 @@ Use this sequence when checking or updating an installed Truss core:
 
 ```bash
 # 1. Inspect local modifications to managed files.
-.truss-core/bin/truss status
+.truss/core/bin/truss status
 
 # 2. Validate installation and transaction health.
-.truss-core/bin/truss doctor
+.truss/core/bin/truss doctor
 
 # 3. Preview the incoming update.
-.truss-core/bin/truss update --dry-run
+.truss/core/bin/truss update --dry-run
 
 # 4. Apply the verified update.
-.truss-core/bin/truss update
+.truss/core/bin/truss update
 ```
 
 Updates verify release checksums, preserve consumer edits, and use three-way
@@ -444,16 +462,16 @@ merging for managed text files. If local and incoming edits overlap, Truss
 stages an explicit resolution session. Edit only the conflict copies under:
 
 ```text
-.truss-core/update/resolved/
+.truss/core/update/resolved/
 ```
 
 Then continue the same update:
 
 ```bash
-.truss-core/bin/truss update --continue
+.truss/core/bin/truss update --continue
 ```
 
-Do not delete `.truss-core/`: it stores the baseline and provenance needed for
+Do not delete `.truss/core/`: it stores the baseline and provenance needed for
 safe updates.
 
 <a id="delivery-with-orca"></a>
@@ -488,12 +506,12 @@ the GNOME screen reader and is not the execution-plane command.
 
 | Document | Purpose |
 | --- | --- |
-| [Product model](.truss-core/docs/TRUSS.md) | Responsibilities, boundaries, profiles, and evidence model |
-| [Architecture](.truss-core/docs/ARCHITECTURE.md) | Rust layers, installation state, transactions, and trust boundaries |
-| [Repository workflow](.truss-core/docs/WORKFLOW.md) | Work shapes, task flows, validation, and completion standards |
-| [Documentation map](.truss-core/docs/README.md) | Entry point to product, decisions, plans, patterns, and templates |
-| [Installation contract](.truss-core/docs/product/installation-profiles.md) | Exact profile, conflict, update, and release-source behavior |
-| [Encoding invariants](.truss-core/docs/patterns/encoding-invariants.md) | Turning accepted rules into mechanical validation |
+| [Product model](.truss/authority/TRUSS.md) | Responsibilities, boundaries, profiles, and evidence model. Truss source authority, local to this repository; never installed into a consumer. |
+| [Architecture](.truss/authority/ARCHITECTURE.md) | Rust layers, installation state, transactions, and trust boundaries. Truss source authority, local to this repository; never installed into a consumer. |
+| [Repository workflow](.truss/core/docs/WORKFLOW.md) | Work shapes, task flows, validation, and completion standards |
+| [Documentation map](.truss/core/docs/README.md) | Entry point to product, decisions, plans, patterns, and templates |
+| [Installation contract](.truss/authority/product/installation-profiles.md) | Exact profile, conflict, update, and release-source behavior. Truss source authority, local to this repository; never installed into a consumer. |
+| [Encoding invariants](.truss/core/docs/patterns/encoding-invariants.md) | Turning accepted rules into mechanical validation |
 
 ## 🧪 Development
 
@@ -560,8 +578,8 @@ for manifest in scripts/engineering-wisdom-install-files.txt \
 done
 
 # 4. Same provenance: identical addons.json.
-cmp /tmp/truss-fresh/.truss-core/addons.json \
-    /tmp/truss-released/.truss-core/addons.json
+cmp /tmp/truss-fresh/.truss/core/addons.json \
+    /tmp/truss-released/.truss/core/addons.json
 ```
 
 Both installs must record `source_ref=truss-vX.Y.Z`. The released-source half

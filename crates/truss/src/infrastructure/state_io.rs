@@ -10,17 +10,73 @@ use sha2::{Digest, Sha256};
 use crate::application::PortError;
 use crate::domain::{ContentHash, DomainError, RelativePath};
 
-// Shared filesystem primitives for every `.truss-core/` writer.
+// Shared filesystem primitives for every installed-tree writer.
 //
 // The core distribution state and the add-on record use one lock, one atomic
 // write style, and one state root, so there is a single writer per repository
 // rather than one style per distribution.
 
-pub(crate) fn state_root(root: &Path) -> PathBuf {
-    root.join(".truss-core")
+/// The installed tree's root directory name for a new installation.
+pub(crate) const NEW_STATE_DIR: &str = ".truss/core";
+
+/// The installed tree's root directory name before decision 0008.
+pub(crate) const LEGACY_STATE_DIR: &str = ".truss-core";
+
+/// The legacy root path, for a read of an installation that predates 0008.
+pub(crate) fn legacy_state_root(root: &Path) -> PathBuf {
+    root.join(LEGACY_STATE_DIR)
 }
 
-/// Rules the core-owned shared `.truss-core/.gitignore` must carry.
+fn root_is_installed(path: &Path) -> bool {
+    path.join("manifest.json").exists() || path.join("base").exists()
+}
+
+/// The root a command should operate on, resolving presence rather than
+/// configuration so a read and a write in one command agree.
+///
+/// A repository holding both trees is a refusal, not a precedence: two trees
+/// mean two locks, two baselines, and a stale one of each.
+pub(crate) fn resolve_state_root(root: &Path) -> Result<PathBuf, PortError> {
+    let new = root.join(NEW_STATE_DIR);
+    let legacy = legacy_state_root(root);
+    if root_is_installed(&new) && root_is_installed(&legacy) {
+        return Err(PortError::new(format!(
+            "both {} and {} hold a Truss installation; decide which tree this repository \
+             keeps before running Truss (plan 4B adds `truss migrate`)",
+            NEW_STATE_DIR, LEGACY_STATE_DIR
+        )));
+    }
+    if root_is_installed(&legacy) {
+        return Ok(legacy);
+    }
+    Ok(new)
+}
+
+/// The resolved root without the conflict error, for call sites that only need
+/// a path. Precedence matches `resolve_state_root`: a legacy installation wins
+/// while it is the only installed tree.
+pub(crate) fn state_root(root: &Path) -> PathBuf {
+    let new = root.join(NEW_STATE_DIR);
+    if root_is_installed(&new) || !root_is_installed(&legacy_state_root(root)) {
+        return new;
+    }
+    legacy_state_root(root)
+}
+
+/// The directory name to name in a diagnostic about `state_root`.
+///
+/// A message must name the tree the operation actually touched: a `.truss/core`
+/// installation that reports `.truss-core` sends an operator to a path that does
+/// not exist.
+pub(crate) fn state_label(state_root: &Path) -> &str {
+    if state_root.ends_with(LEGACY_STATE_DIR) {
+        LEGACY_STATE_DIR
+    } else {
+        NEW_STATE_DIR
+    }
+}
+
+/// Rules the core-owned shared state-root `.gitignore` must carry.
 ///
 /// Core install and core update are the only writers of this file. Add-on
 /// operations validate the rules are present and refuse when one is missing;
@@ -37,13 +93,14 @@ pub(crate) const STATE_IGNORE_RULES: [&str; 6] = [
 pub(crate) fn ensure_state_ignore(state_root: &Path) -> Result<(), PortError> {
     let path = state_root.join(".gitignore");
     let rules = STATE_IGNORE_RULES;
+    let ignore_label = format!("{}/.gitignore", state_label(state_root));
     if path.exists() {
-        reject_symlink(&path, ".truss-core/.gitignore")?;
+        reject_symlink(&path, &ignore_label)?;
         let metadata = fs::metadata(&path).map_err(io_error)?;
         if !metadata.is_file() {
-            return Err(PortError::new(
-                ".truss-core/.gitignore is not a regular file",
-            ));
+            return Err(PortError::new(format!(
+                "{ignore_label} is not a regular file"
+            )));
         }
         let mut content = fs::read_to_string(&path).map_err(io_error)?;
         let mut changed = false;
@@ -72,45 +129,46 @@ pub(crate) fn ensure_state_ignore(state_root: &Path) -> Result<(), PortError> {
 
 /// Validate the pre-existing core state that an add-on operation requires.
 ///
-/// Core install and core update exclusively create and repair `.truss-core/`,
+/// Core install and core update exclusively create and repair the state root,
 /// its `.gitignore`, and its `lock`. This check is read-only on purpose: a
 /// missing, unsafe, or incomplete artifact is a refusal, and nothing here ever
 /// creates or repairs one. It runs before any payload or workspace
 /// observation.
 pub(crate) fn validate_core_state(state_root: &Path) -> Result<(), PortError> {
+    let label = state_label(state_root);
     let metadata = fs::symlink_metadata(state_root).map_err(|error| {
         PortError::new(format!(
-            "add-on state operations require an existing core state at .truss-core: {error}"
+            "add-on state operations require an existing core state at {label}: {error}"
         ))
     })?;
     if metadata.file_type().is_symlink() {
         return Err(PortError::new(format!(
-            "refusing symlink for managed path .truss-core: {}",
+            "refusing symlink for managed path {label}: {}",
             state_root.display()
         )));
     }
     if !metadata.is_dir() {
-        return Err(PortError::new(
-            "core state .truss-core is not a directory".to_owned(),
-        ));
+        return Err(PortError::new(format!(
+            "core state {label} is not a directory"
+        )));
     }
     let ignore = state_root.join(".gitignore");
-    require_regular_file(&ignore, ".truss-core/.gitignore")?;
+    require_regular_file(&ignore, &format!("{label}/.gitignore"))?;
     let content = fs::read_to_string(&ignore).map_err(io_error)?;
     for rule in STATE_IGNORE_RULES {
         if !content.lines().any(|line| line.trim() == rule) {
             return Err(PortError::new(format!(
-                "core state .truss-core/.gitignore is missing the rule {rule}"
+                "core state {label}/.gitignore is missing the rule {rule}"
             )));
         }
     }
     let lock = state_root.join("lock");
-    require_regular_file(&lock, ".truss-core/lock")?;
+    require_regular_file(&lock, &format!("{label}/lock"))?;
     // Decision 0003 clause 13: the core installation state that owns the
     // foreign paths set must be present. A state without the manifest is
     // invalid, so the foreign set can never be silently empty.
     let manifest = state_root.join("manifest.json");
-    require_regular_file(&manifest, ".truss-core/manifest.json")?;
+    require_regular_file(&manifest, &format!("{label}/manifest.json"))?;
     Ok(())
 }
 
@@ -240,7 +298,7 @@ pub(crate) fn acquire_lock(state_root: &Path) -> Result<File, PortError> {
     Ok(lock)
 }
 
-/// Open and exclusively lock the existing shared `.truss-core/lock`.
+/// Open and exclusively lock the existing shared state-root `lock`.
 ///
 /// Unlike `acquire_lock`, this never creates the lock file: add-on state
 /// operations require the core to have created it, and a missing lock is a
@@ -253,7 +311,8 @@ pub(crate) fn acquire_existing_lock(state_root: &Path) -> Result<File, PortError
         .open(&path)
         .map_err(|error| {
             PortError::new(format!(
-                ".truss-core/lock is required for add-on state operations: {error}"
+                "{}/lock is required for add-on state operations: {error}",
+                state_label(state_root)
             ))
         })?;
     FileExt::lock_exclusive(&lock).map_err(io_error)?;
@@ -321,4 +380,83 @@ pub(crate) fn domain_error(error: DomainError) -> PortError {
 
 pub(crate) fn io_error(error: std::io::Error) -> PortError {
     PortError::new(error.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+
+    use super::{resolve_state_root, state_label, state_root, validate_core_state};
+
+    #[test]
+    fn diagnostic_labels_follow_the_resolved_root() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+
+        // A new-root installation names `.truss/core`, and its failure message
+        // must not send an operator to the legacy path.
+        let new = root.join(".truss/core");
+        fs::create_dir_all(&new).unwrap();
+        assert_eq!(state_label(&new), ".truss/core");
+        let new_error = validate_core_state(&new).unwrap_err().to_string();
+        assert!(
+            new_error.contains(".truss/core"),
+            "new-root diagnostic names .truss/core: {new_error}"
+        );
+        assert!(
+            !new_error.contains(".truss-core"),
+            "new-root diagnostic must not name the legacy root: {new_error}"
+        );
+
+        // A legacy installation still names `.truss-core`.
+        let legacy = root.join(".truss-core");
+        fs::create_dir_all(&legacy).unwrap();
+        assert_eq!(state_label(&legacy), ".truss-core");
+        let legacy_error = validate_core_state(&legacy).unwrap_err().to_string();
+        assert!(
+            legacy_error.contains(".truss-core"),
+            "legacy diagnostic names .truss-core: {legacy_error}"
+        );
+    }
+
+    #[test]
+    fn state_root_prefers_the_new_root_and_refuses_a_conflicting_pair() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+
+        // A fresh repository resolves to the new root.
+        assert_eq!(state_root(root), root.join(".truss").join("core"));
+        assert_eq!(
+            resolve_state_root(root).unwrap(),
+            root.join(".truss").join("core")
+        );
+
+        // A legacy installation resolves to the legacy root.
+        fs::create_dir_all(root.join(".truss-core")).unwrap();
+        fs::write(root.join(".truss-core/manifest.json"), b"{}").unwrap();
+        assert_eq!(state_root(root), root.join(".truss-core"));
+        assert_eq!(resolve_state_root(root).unwrap(), root.join(".truss-core"));
+
+        // A new-root installation resolves to the new root.
+        fs::create_dir_all(root.join(".truss/core")).unwrap();
+        fs::write(root.join(".truss/core/manifest.json"), b"{}").unwrap();
+        fs::remove_dir_all(root.join(".truss-core")).unwrap();
+        assert_eq!(
+            resolve_state_root(root).unwrap(),
+            root.join(".truss").join("core")
+        );
+
+        // Both trees present is a refusal naming both paths.
+        fs::create_dir_all(root.join(".truss-core")).unwrap();
+        fs::write(root.join(".truss-core/manifest.json"), b"{}").unwrap();
+        let error = resolve_state_root(root).unwrap_err().to_string();
+        assert!(
+            error.contains(".truss/core"),
+            "error names the new root: {error}"
+        );
+        assert!(
+            error.contains(".truss-core"),
+            "error names the legacy root: {error}"
+        );
+    }
 }

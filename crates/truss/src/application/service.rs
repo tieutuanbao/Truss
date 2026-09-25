@@ -32,6 +32,7 @@ where
     }
 
     pub fn install(&self, root: &Path, dry_run: bool) -> Result<InstallReport, ApplicationError> {
+        self.state.resolve_state_root(root)?;
         let distribution = self.load_distribution()?;
         let recovered = if dry_run {
             false
@@ -81,6 +82,7 @@ where
     }
 
     pub fn update(&self, root: &Path, dry_run: bool) -> Result<UpdateReport, ApplicationError> {
+        self.state.resolve_state_root(root)?;
         let distribution = self.load_distribution()?;
         let recovered = if dry_run {
             false
@@ -138,6 +140,7 @@ where
         root: &Path,
         dry_run: bool,
     ) -> Result<UpdateReport, ApplicationError> {
+        self.state.resolve_state_root(root)?;
         let distribution = self.load_distribution()?;
         let recovered = if dry_run {
             false
@@ -232,6 +235,7 @@ where
     }
 
     pub fn abort_update(&self, root: &Path) -> Result<bool, ApplicationError> {
+        self.state.resolve_state_root(root)?;
         self.state.clear_resolution(root).map_err(Into::into)
     }
 
@@ -506,7 +510,8 @@ pub enum ApplicationError {
 mod tests {
     use std::cell::RefCell;
     use std::collections::BTreeMap;
-    use std::path::Path;
+    use std::path::{Path, PathBuf};
+    use std::rc::Rc;
 
     use super::*;
     use crate::application::{CoreDistributionPort, InstallationStatePort, ThreeWayMergePort};
@@ -521,14 +526,30 @@ mod tests {
         }
     }
 
+    /// A root the fixture reports as holding both trees, so the refusal path is
+    /// reachable without a filesystem.
+    fn conflicting_root() -> &'static Path {
+        Path::new("conflicting-root")
+    }
+
     #[derive(Default)]
     struct StateFixture {
         installation: RefCell<Option<InstallationState>>,
         files: RefCell<BTreeMap<RelativePath, Vec<u8>>>,
         resolution: RefCell<Option<UpdateResolutionSession>>,
+        apply_calls: Rc<RefCell<u32>>,
     }
 
     impl InstallationStatePort for StateFixture {
+        fn resolve_state_root(&self, root: &Path) -> Result<PathBuf, PortError> {
+            if root == conflicting_root() {
+                return Err(PortError::new(
+                    "both .truss/core and .truss-core hold a Truss installation",
+                ));
+            }
+            Ok(root.to_path_buf())
+        }
+
         fn recover_interrupted(&self, _root: &Path) -> Result<bool, PortError> {
             Ok(false)
         }
@@ -558,6 +579,7 @@ mod tests {
             state: &InstallationState,
             mutations: &[WorkspaceMutation],
         ) -> Result<ApplyReceipt, PortError> {
+            *self.apply_calls.borrow_mut() += 1;
             let mut files = self.files.borrow_mut();
             for mutation in mutations {
                 match mutation {
@@ -638,6 +660,40 @@ mod tests {
                 hash: ContentHash::parse("a".repeat(64)).unwrap(),
             }],
         }
+    }
+
+    /// This proves the refusal precedes the mutating port call. The claim that
+    /// the tree is left byte-identical belongs to
+    /// `install_refuses_a_repository_holding_both_roots_on_a_real_tree` in
+    /// `tests/update_lifecycle.rs`, which snapshots a real repository.
+    #[test]
+    fn install_refuses_a_repository_holding_both_roots_before_the_mutating_port_call() {
+        let apply_calls = Rc::new(RefCell::new(0u32));
+        let state = StateFixture {
+            apply_calls: Rc::clone(&apply_calls),
+            ..Default::default()
+        };
+        let app = CoreApplication::new(
+            DistributionFixture(distribution("1.0.0", b"upstream")),
+            state,
+            MergeFixture,
+        );
+
+        let error = app
+            .install(conflicting_root(), false)
+            .unwrap_err()
+            .to_string();
+
+        assert!(error.contains(".truss/core"), "names the new root: {error}");
+        assert!(
+            error.contains(".truss-core"),
+            "names the legacy root: {error}"
+        );
+        assert_eq!(
+            *apply_calls.borrow(),
+            0,
+            "a refused install must not reach the mutating apply"
+        );
     }
 
     #[test]

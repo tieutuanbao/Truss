@@ -144,7 +144,7 @@ fn mutation(plan: &UpdatePlan, path: &str) -> Vec<WorkspaceMutation> {
 
 fn baseline_bytes(workspace: &Path, path: &str) -> Option<Vec<u8>> {
     let target = workspace
-        .join(".truss-core/base-addons")
+        .join(".truss/core/base-addons")
         .join(ADDON)
         .join(path);
     fs::read(target).ok()
@@ -248,7 +248,7 @@ fn conflict_free_plan_applies_completely() {
     // Provenance: the new ref, the new core version, and per-file payload
     // digests (never the workspace file digests).
     let record: serde_json::Value =
-        serde_json::from_slice(&fs::read(workspace.join(".truss-core/addons.json")).unwrap())
+        serde_json::from_slice(&fs::read(workspace.join(".truss/core/addons.json")).unwrap())
             .unwrap();
     assert_eq!(record["schema_version"], 1);
     let addons = record["addons"].as_array().unwrap();
@@ -353,8 +353,8 @@ fn any_conflict_refuses_without_mutation() {
     assert_eq!(kind(&plan, CLEAN_PATH), vec![FileChangeKind::Update]);
     assert_eq!(mutation(&plan, CLEAN_PATH).len(), 1);
 
-    let addons = workspace.join(".truss-core/addons.json");
-    let baseline_root = workspace.join(".truss-core/base-addons");
+    let addons = workspace.join(".truss/core/addons.json");
+    let baseline_root = workspace.join(".truss/core/base-addons");
     let before_workspace = workspace_snapshot(&workspace);
     let before_addons = fs::read(&addons).unwrap();
     let before_baseline = snapshot_digest(&workspace_snapshot(&baseline_root));
@@ -487,8 +487,8 @@ fn planned_observation_drift_is_refused_without_clobber() {
             "{label}: the planner must have observed different bytes than the competing writer"
         );
 
-        let addons = fixture.workspace.join(".truss-core/addons.json");
-        let baseline_root = fixture.workspace.join(".truss-core/base-addons");
+        let addons = fixture.workspace.join(".truss/core/addons.json");
+        let baseline_root = fixture.workspace.join(".truss/core/base-addons");
         let baseline_before = snapshot_digest(&workspace_snapshot(&baseline_root));
 
         // The barrier: change one managed path after planning and before apply.

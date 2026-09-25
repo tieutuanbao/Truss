@@ -1,0 +1,122 @@
+{
+  "schema_version": 1,
+  "addons": [
+    {
+      "name": "delivery",
+      "source_ref": "b59e81019636cd57cc51cc47da7875d776e0ea60",
+      "source_core_version": "0.1.16",
+      "files": [
+        {
+          "path": ".agents/skills/delivery/SKILL.md",
+          "upstream_sha256": "b9535b5d74a5e308c2d8b788f4995a8c1596a6ff0ff8b8555367aa1cdd1b4763"
+        },
+        {
+          "path": ".agents/skills/delivery/agents/openai.yaml",
+          "upstream_sha256": "db79bbde3bea5404f2079e5381c81d5d3400bcf16fcdf128c6503f512a58790d"
+        },
+        {
+          "path": ".agents/skills/delivery/references/maintenance-log.md",
+          "upstream_sha256": "d164839f59056cf45d95f146bda8bd5f1d6e334f333b60c6e07ecfb7ea54fa73"
+        },
+        {
+          "path": ".agents/skills/delivery/references/trusses.md",
+          "upstream_sha256": "bb3ecafc5e2d63e20902f8b48ecf37c334bb5089ccc71065c23abe8d5f3a97d2"
+        },
+        {
+          "path": ".agents/skills/delivery/references/trusses/antigravity.md",
+          "upstream_sha256": "988f37683e7d68f912eaf2292b31e7f2b0c61bdeafe75bb0e45507b317e3ade5"
+        },
+        {
+          "path": ".agents/skills/delivery/references/trusses/claude.md",
+          "upstream_sha256": "70676ec597ab07f8fc1df0d935cbcd5b0d191dcdde56bbf0b38fb46298356797"
+        },
+        {
+          "path": ".agents/skills/delivery/references/trusses/codex.md",
+          "upstream_sha256": "89f615eacd87d4d23fcfc03e69b993485470f46fe5e43f7ed4516a3659792229"
+        },
+        {
+          "path": ".agents/skills/delivery/references/trusses/copilot.md",
+          "upstream_sha256": "2a47b8d6f444def648a46cc6d8ed289d17cb6021ee04b9a15f6e7dd076fc4d56"
+        },
+        {
+          "path": ".agents/skills/delivery/references/trusses/cursor.md",
+          "upstream_sha256": "e8d538984c1bf33f9bb1506df90f28b16ecb4f87770e7014d90340e272a916e7"
+        },
+        {
+          "path": ".agents/skills/delivery/references/trusses/grok.md",
+          "upstream_sha256": "b5d612e8eb0c7ad2c058c896dca4a3ec59235c94ec38e29ff8cc4dfcd1c294e8"
+        },
+        {
+          "path": ".agents/skills/delivery/references/trusses/kiro.md",
+          "upstream_sha256": "c20d457a01db5601935d460b4dd1a2929529d151f0855adb338a5170a4c122b3"
+        },
+        {
+          "path": ".agents/skills/delivery/references/trusses/pi.md",
+          "upstream_sha256": "d298aac63211f414853a60214963ea0db999d67f00ccb24ba4cddbbabe13b86c"
+        },
+        {
+          "path": ".agents/skills/delivery/references/trusses/zcode.md",
+          "upstream_sha256": "79a6d180b7041950379c5d97bd5abbafc0eaeda94ac567ac512a702cad70e233"
+        },
+        {
+          "path": ".agents/skills/delivery/templates/business-analysis.md",
+          "upstream_sha256": "a102719119abaa5248a62757bdf696731e2296d61c2b464d4ffc68a12bb9c9cf"
+        },
+        {
+          "path": ".agents/skills/delivery/templates/decision-record.md",
+          "upstream_sha256": "d770d33df28594c280b529b32c3f3260198adf329915f95f51ad5460d512a9e0"
+        },
+        {
+          "path": ".agents/skills/delivery/templates/plan.md",
+          "upstream_sha256": "76a8be0d57b185a46e65cb78b82c80517860a2894136558a426e7e2c97fb2d17"
+        },
+        {
+          "path": ".agents/skills/delivery-setup/SKILL.md",
+          "upstream_sha256": "11a0ea873a4757622768550307af054e78041200d3191639f4184cde7d53db43"
+        },
+        {
+          "path": ".agents/skills/delivery-setup/agents/openai.yaml",
+          "upstream_sha256": "39403bc0572650386db561c99172de5e440361510333da0cb61ed352a1ec49a3"
+        }
+      ]
+    },
+    {
+      "name": "engineering-wisdom",
+      "source_ref": "b59e81019636cd57cc51cc47da7875d776e0ea60",
+      "source_core_version": "0.1.16",
+      "files": [
+        {
+          "path": ".agents/skills/engineering-wisdom/SKILL.md",
+          "upstream_sha256": "8e0eadf92a654d48fd68720c31a55636e6423f9c29910bab1b92e6b55405cc49"
+        },
+        {
+          "path": ".agents/skills/engineering-wisdom/agents/openai.yaml",
+          "upstream_sha256": "53af5b2bc808731b555a067a4238faf342769b375bfff08c489202773ce164aa"
+        },
+        {
+          "path": ".agents/skills/engineering-wisdom/references/heuristics.md",
+          "upstream_sha256": "316802d6fede2123ff28358107ea212394f2fd1aed22d68d69938a18fe62a86a"
+        },
+        {
+          "path": ".agents/skills/engineering-wisdom/references/sources.md",
+          "upstream_sha256": "54ac2e92aaa171809877640808f706b3d4d7016cff192e47b504a44c8f536612"
+        }
+      ]
+    },
+    {
+      "name": "planning",
+      "source_ref": "b59e81019636cd57cc51cc47da7875d776e0ea60",
+      "source_core_version": "0.1.16",
+      "files": [
+        {
+          "path": ".agents/skills/plan-product/SKILL.md",
+          "upstream_sha256": "0e0be8760aeb4033f68b0034e792889ce95e978120d6ef24c81d9a40300cae6b"
+        },
+        {
+          "path": ".agents/skills/plan-product/agents/openai.yaml",
+          "upstream_sha256": "c655dad9c71c1be6a8b3d3767d1116e3897d84e4ab703882ee6f2ecdf73593a5"
+        }
+      ]
+    }
+  ]
+}

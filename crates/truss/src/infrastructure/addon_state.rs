@@ -8,9 +8,10 @@ use serde::{Deserialize, Serialize};
 
 use super::state_io::{
     acquire_existing_lock, copy_bytes, copy_bytes_atomic, domain_error, ensure_workspace_root,
-    hash_bytes, io_error, read_json, reject_symlink, remove_dir_if_exists, state_root,
-    transaction_id, validate_core_state, validate_path, validate_state_path,
-    validate_workspace_root, write_json_atomic,
+    hash_bytes, io_error, read_json, reject_symlink, remove_dir_if_exists,
+    resolve_state_root as resolve_root, state_label, state_root, transaction_id,
+    validate_core_state, validate_path, validate_state_path, validate_workspace_root,
+    write_json_atomic,
 };
 use super::FileSystemInstallationState;
 use crate::application::{
@@ -30,12 +31,16 @@ pub(crate) const CORE_OWNER: &str = "truss-core";
 ///
 /// State lives in `.truss-core/addons.json` with its own schema version, and
 /// each baseline copy lives under `.truss-core/base-addons/<add-on>/`. The
-/// writer shares the core lock, the atomic write style, and the `.truss-core`
+/// writer shares the core lock, the atomic write style, and the state-root
 /// root so there is one writer per repository, not one per distribution.
 #[derive(Clone, Copy, Default)]
 pub struct FileSystemAddOnState;
 
 impl AddOnStatePort for FileSystemAddOnState {
+    fn resolve_state_root(&self, root: &Path) -> Result<PathBuf, PortError> {
+        resolve_root(root)
+    }
+
     fn load(&self, root: &Path) -> Result<Option<AddOnState>, PortError> {
         if !root.exists() {
             return Ok(None);
@@ -45,7 +50,7 @@ impl AddOnStatePort for FileSystemAddOnState {
         if !state_root.exists() {
             return Ok(None);
         }
-        reject_symlink(&state_root, ".truss-core")?;
+        reject_symlink(&state_root, state_label(&state_root))?;
         load_state(&state_root)
     }
 
@@ -315,7 +320,10 @@ fn load_state(state_root: &Path) -> Result<Option<AddOnState>, PortError> {
     if !record_path.exists() {
         return Ok(None);
     }
-    reject_symlink(&record_path, ".truss-core/addons.json")?;
+    reject_symlink(
+        &record_path,
+        &format!("{}/addons.json", state_label(state_root)),
+    )?;
     let dto: AddOnsDto = read_json(&record_path)?;
     if dto.schema_version != AddOnState::SCHEMA_VERSION {
         return Err(PortError::new(format!(

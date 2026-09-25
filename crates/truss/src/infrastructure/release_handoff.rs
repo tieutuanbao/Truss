@@ -8,6 +8,54 @@ use sha2::{Digest, Sha256};
 
 use crate::application::{CandidateExit, CandidateRequest, PortError, UpdateCandidatePort};
 
+use super::state_io::{legacy_state_root, NEW_STATE_DIR};
+
+/// The installed tree's root components, relative to the repository root.
+///
+/// Decision 0008 moved the installed tree to `.truss/core`, and the helpers
+/// below compare paths by component so a symlinked component can be refused by
+/// name. An existing installation that predates 0008 still has its executable
+/// at `.truss-core/bin`, so the name is resolved the same way a state read is:
+/// whichever tree is installed wins.
+fn state_root_components(root: &Path) -> Vec<&'static str> {
+    let new = NEW_STATE_DIR.split('/').collect::<Vec<_>>();
+    let legacy = legacy_state_root(root);
+    let new_root = root.join(NEW_STATE_DIR);
+    if new_root.join("manifest.json").exists() || new_root.join("base").exists() {
+        return new;
+    }
+    if legacy.join("manifest.json").exists() || legacy.join("base").exists() {
+        return vec![".truss-core"];
+    }
+    new
+}
+
+fn state_path(root: &Path, tail: &[&str]) -> PathBuf {
+    let mut path = root.to_path_buf();
+    for component in state_root_components(root) {
+        path.push(component);
+    }
+    for component in tail {
+        path.push(component);
+    }
+    path
+}
+
+fn state_components(root: &Path, tail: &[&str]) -> Vec<String> {
+    let mut components = state_root_components(root)
+        .into_iter()
+        .map(str::to_owned)
+        .collect::<Vec<_>>();
+    components.extend(tail.iter().map(|value| (*value).to_owned()));
+    components
+}
+
+fn state_label(root: &Path, tail: &[&str]) -> String {
+    let mut parts = state_root_components(root);
+    parts.extend_from_slice(tail);
+    parts.join("/")
+}
+
 const RELEASE_REPO_ENV: &str = "TRUSS_RELEASE_REPO";
 
 fn configured_release_repo() -> Result<String, PortError> {
@@ -75,7 +123,7 @@ impl UpdateCandidatePort for LatestReleaseCandidates {
         })?;
         let staged = require_regular_repository_file(
             root,
-            &[".truss-core", "update-candidate", candidate_filename()],
+            &state_components(root, &["update-candidate", candidate_filename()]),
             "staged update candidate",
         )?;
         let temp = tempfile::tempdir().map_err(io_error)?;
@@ -135,25 +183,25 @@ impl UpdateCandidatePort for LatestReleaseCandidates {
         let target_root = persisted_root(root);
         reject_existing_repository_symlinks(
             root,
-            &[".truss-core", "update-candidate"],
-            ".truss-core/update-candidate",
+            &state_components(root, &["update-candidate"]),
+            &state_label(root, &["update-candidate"]),
         )?;
         fs::create_dir_all(&target_root).map_err(io_error)?;
         require_repository_directories(
             root,
-            &[".truss-core", "update-candidate"],
-            ".truss-core/update-candidate",
+            &state_components(root, &["update-candidate"]),
+            &state_label(root, &["update-candidate"]),
         )?;
         let target = persisted_candidate(root);
         reject_existing_repository_symlinks(
             root,
-            &[".truss-core", "update-candidate", candidate_filename()],
+            &state_components(root, &["update-candidate", candidate_filename()]),
             "staged update candidate",
         )?;
         if target.exists() {
             require_regular_repository_file(
                 root,
-                &[".truss-core", "update-candidate", candidate_filename()],
+                &state_components(root, &["update-candidate", candidate_filename()]),
                 "staged update candidate",
             )?;
         }
@@ -167,8 +215,8 @@ impl UpdateCandidatePort for LatestReleaseCandidates {
             Ok(_) => {
                 require_repository_directories(
                     root,
-                    &[".truss-core", "update-candidate"],
-                    ".truss-core/update-candidate",
+                    &state_components(root, &["update-candidate"]),
+                    &state_label(root, &["update-candidate"]),
                 )?;
                 fs::remove_dir_all(target_root).map_err(io_error)?;
             }
@@ -184,7 +232,7 @@ impl UpdateCandidatePort for LatestReleaseCandidates {
         }
         let expected_path = require_regular_repository_file(
             root,
-            &[".truss-core", "bin", candidate_filename()],
+            &state_components(root, &["bin", candidate_filename()]),
             "installed repository executable",
         )?;
         let expected = expected_path.canonicalize().map_err(io_error)?;
@@ -370,7 +418,7 @@ fn candidate_filename() -> &'static str {
 }
 
 fn persisted_root(root: &Path) -> PathBuf {
-    root.join(".truss-core/update-candidate")
+    state_path(root, &["update-candidate"])
 }
 
 fn persisted_candidate(root: &Path) -> PathBuf {
@@ -379,7 +427,7 @@ fn persisted_candidate(root: &Path) -> PathBuf {
 
 fn reject_existing_repository_symlinks(
     root: &Path,
-    components: &[&str],
+    components: &[String],
     label: &str,
 ) -> Result<(), PortError> {
     let mut current = root.to_path_buf();
@@ -399,7 +447,7 @@ fn reject_existing_repository_symlinks(
 
 fn require_repository_directories(
     root: &Path,
-    components: &[&str],
+    components: &[String],
     label: &str,
 ) -> Result<PathBuf, PortError> {
     let mut current = root.to_path_buf();
@@ -417,7 +465,7 @@ fn require_repository_directories(
 
 fn require_regular_repository_file(
     root: &Path,
-    components: &[&str],
+    components: &[String],
     label: &str,
 ) -> Result<PathBuf, PortError> {
     let (file, directories) = components
@@ -490,12 +538,16 @@ mod tests {
 
         let root = tempfile::tempdir().unwrap();
         let outside = tempfile::NamedTempFile::new().unwrap();
-        fs::create_dir_all(root.path().join(".truss-core/bin")).unwrap();
-        symlink(outside.path(), root.path().join(".truss-core/bin/truss")).unwrap();
+        fs::create_dir_all(root.path().join(".truss/core/bin")).unwrap();
+        symlink(outside.path(), root.path().join(".truss/core/bin/truss")).unwrap();
 
         let error = require_regular_repository_file(
             root.path(),
-            &[".truss-core", "bin", "truss"],
+            &[
+                ".truss/core".to_owned(),
+                "bin".to_owned(),
+                "truss".to_owned(),
+            ],
             "installed repository executable",
         )
         .unwrap_err();
@@ -513,10 +565,10 @@ mod tests {
         fs::write(&candidate_path, b"verified candidate").unwrap();
         let outside = tempfile::NamedTempFile::new().unwrap();
         fs::write(outside.path(), b"outside binary").unwrap();
-        fs::create_dir_all(root.path().join(".truss-core/update-candidate")).unwrap();
+        fs::create_dir_all(root.path().join(".truss/core/update-candidate")).unwrap();
         symlink(
             outside.path(),
-            root.path().join(".truss-core/update-candidate/truss"),
+            root.path().join(".truss/core/update-candidate/truss"),
         )
         .unwrap();
         let candidate = VerifiedCandidate {

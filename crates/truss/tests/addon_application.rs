@@ -53,6 +53,12 @@ fn absent_root() -> &'static Path {
     Path::new("s4b2-absent-workspace-root")
 }
 
+/// A root the fake reports as holding both trees, so the refusal path is
+/// reachable without a filesystem.
+fn conflicting_root() -> &'static Path {
+    Path::new("conflicting-root")
+}
+
 fn add_on() -> AddOnName {
     AddOnName::parse(ADDON).unwrap()
 }
@@ -160,6 +166,20 @@ struct FakeState {
 }
 
 impl AddOnStatePort for FakeState {
+    /// Report the root resolution without recording a log entry: the log is the
+    /// instrument for *which* port method an operation reached and in what
+    /// order, and every row's expected vector names the operations that decide
+    /// its contract. Root resolution is a precondition of each of them, so
+    /// recording it would rewrite every row without proving anything new.
+    fn resolve_state_root(&self, root: &Path) -> Result<PathBuf, PortError> {
+        if root == conflicting_root() {
+            return Err(PortError::new(
+                "both .truss/core and .truss-core hold a Truss installation",
+            ));
+        }
+        Ok(root.to_path_buf())
+    }
+
     fn load(&self, _root: &Path) -> Result<Option<AddOnState>, PortError> {
         record(&self.log, "state.load");
         Ok(self.installation.clone().map(|installation| AddOnState {
@@ -180,7 +200,7 @@ impl AddOnStatePort for FakeState {
     }
 
     /// The recorded ownership set the real adapter reads from
-    /// `.truss-core/manifest.json` and `.truss-core/addons.json`.
+    /// `.truss/core/manifest.json` and `.truss/core/addons.json`.
     ///
     /// The fake records the call so the S4b2 rows prove the ownership guard is
     /// consulted *before* the planner and *before* `apply`, and it reports one
@@ -210,6 +230,10 @@ impl FakeState {
 /// session. The facade is generic over `AddOnStatePort` alone, and every call
 /// would be recorded, so a wrong-namespace facade is rejected by the log.
 impl InstallationStatePort for FakeState {
+    fn resolve_state_root(&self, _root: &Path) -> Result<PathBuf, PortError> {
+        Err(self.refuse_core_call("resolve_state_root"))
+    }
+
     fn recover_interrupted(&self, _root: &Path) -> Result<bool, PortError> {
         Err(self.refuse_core_call("recover_interrupted"))
     }
@@ -428,6 +452,46 @@ fn spec<'a>(root: &'a Path, manifest: &'a Path) -> AddOnPayloadSpec<'a> {
         source_core_version: "0.1.14",
         foreign_manifests: &[],
     }
+}
+
+/// Every mutating entry point resolves the root before it reaches any other
+/// port: a repository holding both trees is refused, and the refusal is the
+/// first thing that happens rather than something between two mutations.
+#[test]
+fn every_mutating_entry_point_refuses_a_conflicting_root_first() {
+    let harness = fake_harness(clean_plan());
+    let root = conflicting_root();
+    let payload = spec(root, root);
+
+    let refusals = [
+        harness
+            .application
+            .install(root, &payload, false)
+            .map(|_| ()),
+        harness
+            .application
+            .update(root, &payload, false)
+            .map(|_| ()),
+        harness
+            .application
+            .continue_update(root, &add_on())
+            .map(|_| ()),
+        harness.application.abort(root, &add_on()).map(|_| ()),
+    ];
+
+    for refusal in refusals {
+        let error = refusal.unwrap_err().to_string();
+        assert!(error.contains(".truss/core"), "names the new root: {error}");
+        assert!(
+            error.contains(".truss-core"),
+            "names the legacy root: {error}"
+        );
+    }
+    assert!(
+        harness.calls().is_empty(),
+        "a refused operation reaches no other port: {:?}",
+        harness.calls()
+    );
 }
 
 /// Acceptance row 1: `install` reaches only the payload port for a dry run and
@@ -815,7 +879,7 @@ fn real_adapters_satisfy_the_ports_end_to_end() {
 
     // A core session in the core-only namespace must not look like an add-on
     // session, and the record must still be reported.
-    let state_root = workspace.join(".truss-core");
+    let state_root = workspace.join(".truss/core");
     fs::create_dir_all(state_root.join("update")).unwrap();
     fs::write(
         state_root.join("update/session.json"),
@@ -898,7 +962,7 @@ fn real_adapters_satisfy_the_ports_end_to_end() {
     assert!(restaged.resolution_staged);
     write_bytes(
         &workspace,
-        &format!(".truss-core/addon-update/{ADDON}/resolved/{SUBJECT}"),
+        &format!(".truss/core/addon-update/{ADDON}/resolved/{SUBJECT}"),
         b"resolved\n",
     );
     let continued = application.continue_update(&workspace, &add_on()).unwrap();

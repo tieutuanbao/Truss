@@ -32,7 +32,7 @@ Options:
                          Existing CLAUDE.md files get the block appended
                          after a backup; a stale block is refreshed in place.
       --override         On protected-path conflict, back up and replace
-                         AGENTS.md and .truss-core/docs/.
+                         AGENTS.md and the installed tree's docs/.
       --force            Overwrite existing files after backing them up.
       --dry-run          Show what would change without writing files.
       --source-git URL   Clone the Truss checkout from a git URL (depth 1),
@@ -44,7 +44,7 @@ Options:
 Safety:
   The installer installs the repository-centered core plus the Rust
   maintenance CLI. It performs no compatibility CLI or SQLite/control-plane
-  download and no database write. If AGENTS.md or .truss-core/docs/ already exist,
+  download and no database write. If AGENTS.md or the installed docs/ already exist,
   interactive installs ask
   whether to merge missing files, override after backup, or stop. Merge is the
   safe update path for repositories that already have Truss: existing files
@@ -58,7 +58,7 @@ Safety:
 
 Add-ons:
   Every add-on is one distribution with its own immutable provenance. The
-  Truss CLI owns its plan, baseline, and record under .truss-core/:
+  Truss CLI owns its plan, baseline, and record under .truss/core/:
     truss addon status   --name <name>
     truss addon install  --name <name> --manifest <manifest> --source <dir> --source-ref <ref>
     truss addon update   --name <name> --manifest <manifest> --source <dir> --source-ref <ref>
@@ -66,9 +66,9 @@ Add-ons:
     truss addon abort    --name <name>
   --source-ref is an immutable release tag or exact commit SHA, never a branch
   name, and each managed file is recorded with its SHA-256 in
-  .truss-core/addons.json. --dry-run previews the plan without writing.
+  .truss/core/addons.json. --dry-run previews the plan without writing.
   Overlapping local and upstream edits are never overwritten: update stops and
-  stages the conflict under .truss-core/addon-update/<name>/resolved/, and
+  stages the conflict under .truss/core/addon-update/<name>/resolved/, and
   continue applies the operator-edited copies while abort removes only the
   session. AGENTS.md is never an add-on payload file. A remote raw source base
   URL (TRUSS_SOURCE_BASE_URL) must be pinned to the release tag or the add-on
@@ -426,22 +426,28 @@ read_truss_release_tag() {
 merge_core_gitignore() {
   local target="$1"
   local marker="# Truss core maintenance binary"
-  local unix_rule=".truss-core/bin/truss"
-  local windows_rule=".truss-core/bin/truss.exe"
-  if [ -f "$target" ] && grep -Fxq "$unix_rule" "$target" && grep -Fxq "$windows_rule" "$target"; then
-    log "skip     .gitignore (Truss core binary rules already present)"
+  local unix_rule="$TARGET_STATE_LABEL/bin/truss"
+  local windows_rule="$TARGET_STATE_LABEL/bin/truss.exe"
+  # One missing/skip rule shared with the PowerShell twin: three required lines,
+  # skip only when all three are present, append only the missing ones. Keying the
+  # skip on the two rules alone duplicated the marker on every run that found a
+  # rule missing beside an existing marker.
+  local rules=("$marker" "$unix_rule" "$windows_rule")
+  local missing_rules=()
+  local rule
+  for rule in "${rules[@]}"; do
+    [ -f "$target" ] && grep -Fxq "$rule" "$target" || missing_rules+=("$rule")
+  done
+  if [ "${#missing_rules[@]}" -eq 0 ]; then
+    log "skip     .gitignore ($TARGET_STATE_LABEL binary rules already present)"
     return
   fi
   if [ "$DRY_RUN" -eq 1 ]; then
     log "update   .gitignore (append Truss core binary rules)"
     return
   fi
-  local missing_rules=()
-  [ -f "$target" ] && grep -Fxq "$unix_rule" "$target" || missing_rules+=("$unix_rule")
-  [ -f "$target" ] && grep -Fxq "$windows_rule" "$target" || missing_rules+=("$windows_rule")
   {
     [ -s "$target" ] && printf '\n'
-    printf '%s\n' "$marker"
     printf '%s\n' "${missing_rules[@]}"
   } >> "$target"
   log "updated  .gitignore (appended Truss core binary rules)"
@@ -502,10 +508,10 @@ stage_truss_core_cli() {
 
 install_truss_core() {
   local command="install"
-  [ -f "$TARGET_DIR/.truss-core/manifest.json" ] && command="update"
+  [ -f "$TARGET_STATE_DIR/manifest.json" ] && command="update"
   CORE_PENDING_VERSION=""
-  if [ "$command" = "update" ] && [ -f "$TARGET_DIR/.truss-core/update/session.json" ]; then
-    CORE_PENDING_VERSION="$(sed -n 's/.*"to_version":[[:space:]]*"\([^"]*\)".*/\1/p' "$TARGET_DIR/.truss-core/update/session.json" | head -n 1)"
+  if [ "$command" = "update" ] && [ -f "$TARGET_STATE_DIR/update/session.json" ]; then
+    CORE_PENDING_VERSION="$(sed -n 's/.*"to_version":[[:space:]]*"\([^"]*\)".*/\1/p' "$TARGET_STATE_DIR/update/session.json" | head -n 1)"
     [ -n "$CORE_PENDING_VERSION" ] || fail "could not read pending Truss update version"
   fi
   stage_truss_core_cli
@@ -516,17 +522,17 @@ install_truss_core() {
   local runner="$CORE_STAGED_BINARY"
   local binary_target="" binary_temp=""
   if [ "$DRY_RUN" -eq 0 ]; then
-    binary_target="$TARGET_DIR/.truss-core/bin/truss"
-    binary_temp="$TARGET_DIR/.truss-core/bin/.truss.$$.tmp"
-    [ ! -L "$TARGET_DIR/.truss-core" ] || fail "refusing symlink for .truss-core"
-    [ ! -L "$TARGET_DIR/.truss-core/bin" ] || fail "refusing symlink for .truss-core/bin directory"
+    binary_target="$TARGET_STATE_DIR/bin/truss"
+    binary_temp="$TARGET_STATE_DIR/bin/.truss.$$.tmp"
+    [ ! -L "$TARGET_STATE_DIR" ] || fail "refusing symlink for $TARGET_STATE_LABEL"
+    [ ! -L "$TARGET_STATE_DIR/bin" ] || fail "refusing symlink for $TARGET_STATE_LABEL/bin directory"
     [ ! -L "$binary_target" ] || fail "refusing symlink for repository Truss executable"
     mkdir -p "$(dirname "$binary_target")"
     cp "$CORE_STAGED_BINARY" "$binary_temp"
     chmod 755 "$binary_temp"
     if [ -e "$binary_target" ]; then
-      mkdir -p "$BACKUP_DIR/.truss-core/bin"
-      cp -p "$binary_target" "$BACKUP_DIR/.truss-core/bin/truss"
+      mkdir -p "$BACKUP_DIR/$TARGET_STATE_LABEL/bin"
+      cp -p "$binary_target" "$BACKUP_DIR/$TARGET_STATE_LABEL/bin/truss"
     fi
   fi
   set +e
@@ -534,9 +540,9 @@ install_truss_core() {
   local command_status=$?
   set -e
   if [ "$command_status" -eq 2 ] && [ "$DRY_RUN" -eq 0 ]; then
-    local retained="$TARGET_DIR/.truss-core/update-candidate/truss"
-    [ ! -L "$TARGET_DIR/.truss-core" ] || fail "refusing symlink for .truss-core"
-    [ ! -L "$TARGET_DIR/.truss-core/update-candidate" ] || fail "refusing symlink for retained candidate directory"
+    local retained="$TARGET_STATE_DIR/update-candidate/truss"
+    [ ! -L "$TARGET_STATE_DIR" ] || fail "refusing symlink for $TARGET_STATE_LABEL"
+    [ ! -L "$TARGET_STATE_DIR/update-candidate" ] || fail "refusing symlink for retained candidate directory"
     [ ! -L "$retained" ] || fail "refusing symlink for retained update candidate"
     mkdir -p "$(dirname "$retained")"
     cp "$CORE_STAGED_BINARY" "$retained"
@@ -544,16 +550,16 @@ install_truss_core() {
   fi
   if [ "$command_status" -eq 0 ] && [ "$DRY_RUN" -eq 0 ]; then
     mv -f "$binary_temp" "$binary_target"
-    rm -rf "$TARGET_DIR/.truss-core/update-candidate"
+    rm -rf "$TARGET_STATE_DIR/update-candidate"
     merge_core_gitignore "$TARGET_DIR/.gitignore"
-    log "installed .truss-core/bin/truss ($CORE_PLATFORM)"
+    log "installed $TARGET_STATE_LABEL/bin/truss ($CORE_PLATFORM)"
   elif [ -n "$binary_temp" ]; then
     rm -f "$binary_temp"
   fi
   rm -rf "$CORE_STAGE_ROOT"
   CORE_STAGE_ROOT=""
   if [ "$command_status" -eq 2 ]; then
-    fail "Truss core update needs resolution; edit .truss-core/update/resolved/, then rerun this installer or truss update --continue"
+    fail "Truss core update needs resolution; edit $TARGET_STATE_LABEL/update/resolved/, then rerun this installer or truss update --continue"
   fi
   [ "$command_status" -eq 0 ] || fail "truss $command failed with exit code $command_status"
 }
@@ -562,7 +568,7 @@ check_protected_target_paths() {
   local conflicts=()
 
   [ -e "$TARGET_DIR/AGENTS.md" ] && conflicts+=("AGENTS.md")
-  [ -e "$TARGET_DIR/.truss-core" ] && conflicts+=(".truss-core/")
+  [ -e "$TARGET_STATE_DIR" ] && conflicts+=("$TARGET_STATE_LABEL/")
   [ "${#conflicts[@]}" -gt 0 ] || return 0
 
   local joined=""
@@ -599,7 +605,7 @@ check_protected_target_paths() {
     printf 'Warning: target already contains protected Truss paths: %s\n' "$joined"
     printf 'Choose how to continue:\n'
     printf '  1. Merge    Copy missing Truss files and skip existing files\n'
-    printf '  2. Override Back up and replace AGENTS.md and .truss-core/docs/\n'
+    printf '  2. Override Back up and replace AGENTS.md and %s/docs/\n' "$TARGET_STATE_LABEL"
     printf '  3. Stop     Exit without writing files (recommended)\n'
   } > /dev/tty
   prompt_tty 'Choice [1/2/3, default 3]: '
@@ -627,7 +633,7 @@ check_protected_target_paths() {
 override_protected_target_paths() {
   local protected
 
-  for protected in AGENTS.md .truss-core; do
+  for protected in AGENTS.md "$TARGET_STATE_LABEL"; do
     [ -e "$TARGET_DIR/$protected" ] || continue
 
     if [ "$DRY_RUN" -eq 1 ]; then
@@ -635,8 +641,12 @@ override_protected_target_paths() {
       continue
     fi
 
-    mkdir -p "$BACKUP_DIR"
-    mv "$TARGET_DIR/$protected" "$BACKUP_DIR/$protected"
+    # The installed root is `.truss/core`, two path segments. Create the
+    # destination's own parent and not only the backup directory, or the move
+    # has no `.truss/` to land in.
+    local backup_path="$BACKUP_DIR/$protected"
+    mkdir -p "$(dirname "$backup_path")"
+    mv "$TARGET_DIR/$protected" "$backup_path"
     log "removed  $protected (backup: ${BACKUP_DIR#$TARGET_DIR/}/$protected)"
   done
 
@@ -649,8 +659,9 @@ override_protected_target_paths() {
 # non-comment lines are exactly the payload path set staged for the CLI. The
 # CLI is invoked once per requested add-on and owns planning, preservation,
 # update, adoption, and conflict staging against the recorded baseline, so
-# every add-on install writes `.truss-core/addons.json` and the
-# `.truss-core/base-addons/<name>/` copies of the payload bytes. No add-on path
+# every add-on install writes `<state>/addons.json` and the
+# `<state>/base-addons/<name>/` copies of the payload bytes, where `<state>` is
+# the target's resolved root. No add-on path
 # is written by a direct copy path in this installer.
 # ---------------------------------------------------------------------------
 
@@ -678,7 +689,7 @@ require_immutable_source_ref() {
 # record is read from the CLI-owned state file, never from the workspace.
 addon_name_is_recorded() {
   local name="$1"
-  local record="$TARGET_DIR/.truss-core/addons.json"
+  local record="$TARGET_STATE_DIR/addons.json"
 
   [ -f "$record" ] || return 1
   grep -Fq "\"name\": \"$name\"" "$record"
@@ -757,7 +768,7 @@ resolve_addon_source_core_version() {
       ;;
   esac
 
-  local runner="$TARGET_DIR/.truss-core/bin/truss"
+  local runner="$TARGET_STATE_DIR/bin/truss"
   if [ -x "$runner" ]; then
     local reported=""
     if reported="$("$runner" --version 2>/dev/null | awk '{ print $NF; exit }')" && [ -n "$reported" ]; then
@@ -776,8 +787,12 @@ resolve_addon_source_core_version() {
   ADDON_SOURCE_CORE_VERSION="$version"
 }
 
-# The manifest stays the membership owner: its lines are read here, and every
-# path it lists is staged for the CLI.
+# The payload bytes live in the distribution mirror at
+# `distribution/payload/<destination>`, while a manifest line names the
+# destination the CLI installs. This prefix is the one place that mapping is
+# written down.
+PAYLOAD_SOURCE_PREFIX="distribution/payload"
+
 stage_addon_payload() {
   local name="$1"
   local manifest="$2"
@@ -786,11 +801,12 @@ stage_addon_payload() {
   ADDON_STAGED_MANIFEST=""
 
   if [ "$SOURCE_MODE" = "local" ]; then
-    # The checkout is the payload: no copy is made. The bytes must equal the
-    # recorded commit's bytes, or the recorded ref would describe something
-    # else, so a checkout whose add-on payload is not committed is refused.
+    # The checkout's distribution mirror is the payload: no copy is made. The
+    # bytes must equal the recorded commit's bytes, or the recorded ref would
+    # describe something else, so a checkout whose add-on payload is not
+    # committed is refused.
     assert_local_addon_payload_is_committed "$name" "$manifest"
-    ADDON_STAGED_PAYLOAD="$SOURCE_ROOT"
+    ADDON_STAGED_PAYLOAD="$SOURCE_ROOT/$PAYLOAD_SOURCE_PREFIX"
     ADDON_STAGED_MANIFEST="$SOURCE_ROOT/$manifest"
     return 0
   fi
@@ -810,10 +826,20 @@ stage_addon_payload() {
         ;;
     esac
     mkdir -p "$ADDON_STAGED_PAYLOAD/$(dirname "$relative")"
-    download_file "$SOURCE_BASE_URL/$relative" "$ADDON_STAGED_PAYLOAD/$relative"
+    download_file "$SOURCE_BASE_URL/$PAYLOAD_SOURCE_PREFIX/$relative" \
+      "$ADDON_STAGED_PAYLOAD/$relative"
   done < "$ADDON_STAGED_MANIFEST"
 }
 
+# Prove the bytes a local run will install belong to the recorded ref.
+#
+# Each manifest line names a destination, so the checked path is the mirror
+# source `distribution/payload/<destination>`. The check resolves that path in
+# the recorded commit itself with `git cat-file`, which sees an untracked or
+# ignored file as missing. That is deliberate: `git ls-files --others
+# --exclude-standard` skips ignored files and `git diff --quiet HEAD` cannot see
+# untracked ones, so the pair this replaced would silently stop verifying a path
+# that had been ignored.
 assert_local_addon_payload_is_committed() {
   local name="$1"
   local manifest="$2"
@@ -827,23 +853,51 @@ assert_local_addon_payload_is_committed() {
         continue
         ;;
     esac
-    paths+=("$relative")
+    paths+=("$PAYLOAD_SOURCE_PREFIX/$relative")
   done < <(read_payload_manifest "$manifest")
 
   [ "${#paths[@]}" -gt 0 ] ||
     fail "the $name add-on payload manifest $manifest lists no files"
 
-  local untracked=""
-  if ! untracked="$(git -C "$SOURCE_ROOT" ls-files --others --exclude-standard -- "${paths[@]}")"; then
-    untracked=""
-    fail "could not inspect the local Truss checkout at $SOURCE_ROOT with git"
-  fi
-  [ -z "$untracked" ] ||
-    fail "the $name add-on payload is not committed in $SOURCE_ROOT: ${untracked//$'\n'/ }; an immutable --source-ref must describe the bytes that are installed, so this installer stops instead of recording one"
+  command -v git >/dev/null 2>&1 ||
+    fail "git is required to prove the local Truss payload belongs to the recorded ref"
 
-  if ! git -C "$SOURCE_ROOT" diff --quiet HEAD -- "${paths[@]}"; then
-    fail "the $name add-on payload has uncommitted changes in $SOURCE_ROOT; commit or discard them first, because an immutable --source-ref must describe the bytes that are installed and no dirty provenance format is invented here"
-  fi
+  local head=""
+  head="$(git -C "$SOURCE_ROOT" rev-parse --verify HEAD 2>/dev/null)" || head=""
+  [ -n "$head" ] ||
+    fail "the local Truss source at $SOURCE_ROOT is not a git checkout, so the payload bytes cannot be proven to belong to a recorded ref"
+
+  local path="" absent=""
+  for path in "${paths[@]}"; do
+    if ! git -C "$SOURCE_ROOT" cat-file -e "$head:$path" 2>/dev/null; then
+      absent="$absent $path"
+      continue
+    fi
+    local committed="" worktree=""
+    committed="$(git -C "$SOURCE_ROOT" rev-parse "$head:$path" 2>/dev/null)" || committed=""
+    worktree="$(git -C "$SOURCE_ROOT" hash-object -- "$SOURCE_ROOT/$path" 2>/dev/null)" || worktree=""
+    if [ -z "$worktree" ]; then
+      absent="$absent $path(unreadable)"
+    elif [ "$committed" != "$worktree" ]; then
+      absent="$absent $path(differs-from-$head)"
+    fi
+  done
+
+  [ -z "$absent" ] ||
+    fail "the $name add-on payload is not committed in $SOURCE_ROOT:$absent; an immutable --source-ref must describe the bytes that are installed, so this installer stops instead of recording one. Run `git status` in $SOURCE_ROOT, commit the payload under $PAYLOAD_SOURCE_PREFIX/, and retry"
+}
+
+# Refuse an unsupported payload layout before anything is written. A bootstrap
+# and a payload must agree on the layout: a pre-0008 tag carries the old one, and
+# a raw base URL has no way to negotiate. `--source-git <tag>` stays valid for an
+# old tag because that ref ships its own bootstrap.
+require_supported_layout() {
+  local value=""
+  value="$(read_source_text "distribution/layout-version" 2>/dev/null | head -n 1)" || true
+  [ -n "$value" ] ||
+    fail "the Truss source at $SOURCE_ROOT declares no distribution/layout-version; this bootstrap requires layout $REQUIRED_LAYOUT and refuses to guess"
+  [ "$value" = "$REQUIRED_LAYOUT" ] ||
+    fail "the Truss source declares layout $value; this bootstrap requires layout $REQUIRED_LAYOUT. For a pre-0008 tag use --source-git <tag>, which ships its own bootstrap"
 }
 
 # Resolve the immutable ref, and prove that a local checkout really carries the
@@ -877,7 +931,7 @@ install_addon() {
   local name="$1"
   local manifest="$2"
   local operation="install"
-  local runner="$TARGET_DIR/.truss-core/bin/truss"
+  local runner="$TARGET_STATE_DIR/bin/truss"
   local dry_preview=0
   local status=0
 
@@ -888,7 +942,7 @@ install_addon() {
     operation="update"
   fi
 
-  if [ "$DRY_RUN" -eq 1 ] && [ ! -f "$TARGET_DIR/.truss-core/manifest.json" ]; then
+  if [ "$DRY_RUN" -eq 1 ] && [ ! -f "$TARGET_STATE_DIR/manifest.json" ]; then
     # A dry run installs no core state for the CLI to validate. Nothing is
     # copied either way; the invocation that a real run would make is reported.
     dry_preview=1
@@ -926,7 +980,7 @@ install_addon() {
     return 0
   fi
   if [ "$status" -eq 2 ]; then
-    fail "the $name add-on update stopped on a conflict and staged a resolution; edit the files under .truss-core/addon-update/$name/resolved/, then run: $runner addon continue --name $name --directory $TARGET_DIR"
+    fail "the $name add-on update stopped on a conflict and staged a resolution; edit the files under $TARGET_STATE_LABEL/addon-update/$name/resolved/, then run: $runner addon continue --name $name --directory $TARGET_DIR"
   fi
   if [ "$status" -ne 0 ]; then
     fail "the Truss CLI failed to $operation the $name add-on with exit code $status"
@@ -1060,8 +1114,16 @@ PAYLOAD_MANIFEST="scripts/truss-install-files.txt"
 ENGINEERING_WISDOM_PAYLOAD_MANIFEST="scripts/engineering-wisdom-install-files.txt"
 DELIVERY_PAYLOAD_MANIFEST="scripts/delivery-install-files.txt"
 PLANNING_PAYLOAD_MANIFEST="scripts/plan-install-files.txt"
+# The payload layout this bootstrap stages. Decision 0008 moved the installed
+# tree to `.truss/core`; a payload declaring anything else is refused.
+REQUIRED_LAYOUT="3"
 
-if [ -n "$SCRIPT_DIR" ] && [ -f "$SCRIPT_DIR/../AGENTS.md" ] && [ -f "$SCRIPT_DIR/../.truss-core/docs/TRUSS.md" ]; then
+# A Truss source checkout is recognised by its distribution tree, which only a
+# source repository carries. An installed consumer has `.truss/core/` but no
+# `distribution/`, and product authority such as TRUSS.md lives in the source
+# repository's own `.truss/authority/`, never inside the installed payload.
+if [ -n "$SCRIPT_DIR" ] && [ -f "$SCRIPT_DIR/../AGENTS.md" ] && \
+   [ -f "$SCRIPT_DIR/../distribution/layout-version" ]; then
   SOURCE_ROOT="$(cd "$SCRIPT_DIR/.." && pwd -P)"
   SOURCE_MODE="local"
 fi
@@ -1098,8 +1160,40 @@ if [ "$YES" -eq 0 ] && can_prompt; then
   fi
 fi
 
+# Refuse an unsupported payload layout before this run touches anything: not
+# before the target directory is created, and not before an override has moved
+# protected paths into a backup. The marker is read through the source reader, so
+# this must sit after the source mode, source root, and source base URL are
+# resolved, and before every mutation below.
+require_supported_layout
+
 TARGET_DIR="$(make_absolute_parent "$(expand_path "$TARGET_INPUT")")"
 BACKUP_DIR="$TARGET_DIR/.truss-backup/$(date +%Y%m%d%H%M%S)"
+
+# The installed tree's root inside the target. A new installation writes
+# `.truss/core`; an installation that predates decision 0008 keeps
+# `.truss-core`. Resolution is by presence, exactly as the CLI resolves it, so
+# the bootstrap and the CLI never address different trees in one run. A target
+# holding both is refused rather than guessed: two trees mean two locks and two
+# baselines, and the CLI refuses the same pair.
+resolve_target_state() {
+  local new="$TARGET_DIR/.truss/core"
+  local legacy="$TARGET_DIR/.truss-core"
+  local new_installed=0 legacy_installed=0
+  [ -f "$new/manifest.json" ] || [ -d "$new/base" ] && new_installed=1
+  [ -f "$legacy/manifest.json" ] || [ -d "$legacy/base" ] && legacy_installed=1
+  if [ "$new_installed" -eq 1 ] && [ "$legacy_installed" -eq 1 ]; then
+    fail "both .truss/core and .truss-core in $TARGET_DIR hold a Truss installation; decide which tree this repository keeps before running the installer"
+  fi
+  if [ "$legacy_installed" -eq 1 ]; then
+    TARGET_STATE_LABEL=".truss-core"
+  else
+    TARGET_STATE_LABEL=".truss/core"
+  fi
+  TARGET_STATE_DIR="$TARGET_DIR/$TARGET_STATE_LABEL"
+}
+
+resolve_target_state
 CREATED=0
 UPDATED=0
 SKIPPED=0
@@ -1151,6 +1245,7 @@ else
   log "Planning add-on: excluded"
 fi
 log "Target project: $TARGET_DIR"
+log "Installed tree: $TARGET_STATE_LABEL"
 
 preflight_addons
 

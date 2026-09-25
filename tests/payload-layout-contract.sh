@@ -10,7 +10,7 @@
 # is never modified.
 #
 # Rules:
-#   L1  distribution/layout-version declares layout 2.
+#   L1  distribution/layout-version declares layout 3.
 #   L2  every destination resolves to exactly one source; a destination has
 #       exactly one manifest line and at most one generated declaration; a
 #       declaration never introduces a destination no manifest lists.
@@ -21,6 +21,8 @@
 #       copies equal their pre-refactor counterpart.
 #   L6  the generated declaration agrees with the literals the CLI composes
 #       AGENTS.md from.
+#   L7  the payload mirror carries no .truss-core directory; the installed
+#       destination prefix is .truss/core since decision 0008.
 #
 # Requirements: bash, python3, find. No new dependency.
 set -uo pipefail
@@ -94,11 +96,36 @@ GENERATOR_SOURCE = os.path.join(
 # Destinations whose canonical bytes live in crates/truss/assets/, not at the
 # repository root. Removed when the duplicate window closes.
 ASSET_SOURCED = {
-    ".truss-core/docs/communication.md",
-    ".truss-core/docs/plans/README.md",
-    ".truss-core/docs/plans/completed/README.md",
-    ".truss-core/docs/decisions/README.md",
+    ".truss/core/docs/communication.md",
+    ".truss/core/docs/plans/README.md",
+    ".truss/core/docs/plans/completed/README.md",
+    ".truss/core/docs/decisions/README.md",
 }
+
+# The installed destination prefix decision 0008 introduced, and the prefix it
+# replaced. The rename is a prefix change only, so one rule relates the two:
+# `.truss/core/<rest>` corresponds to `.truss-core/<rest>`. Neither the
+# repository root tree nor crates/truss/assets is renamed by this plan; they are
+# the comparison side until the duplicate-removal plan deletes them.
+NEW_PREFIX = ".truss/core/"
+LEGACY_PREFIX = ".truss-core/"
+LEGACY_DIRECTORY = ".truss-core"
+
+
+def legacy_counterpart(dest):
+    """The pre-refactor path holding the bytes for a destination.
+
+    Only the installed root was renamed, so a destination that never carried the
+    .truss/core prefix is still its own pre-refactor counterpart at the repository
+    root. Returning None for those was the bug: it reported the whole .agents tree
+    as undefined.
+    """
+    if not dest.startswith(NEW_PREFIX):
+        return os.path.join(ROOT, dest)
+    relative = LEGACY_PREFIX + dest[len(NEW_PREFIX):]
+    if dest in ASSET_SOURCED:
+        return os.path.join(ROOT, "crates", "truss", "assets", relative)
+    return os.path.join(ROOT, relative)
 
 # The two entrypoint blocks the duplicate window must keep byte-identical.
 ENTRYPOINT_BLOCKS = ("agent-truss-block.md", "claude-truss-block.md")
@@ -197,9 +224,9 @@ def check_marker():
         return
     with open(MARKER, encoding="utf-8") as handle:
         lines = [line.strip() for line in handle if line.strip()]
-    if lines != ["2"]:
+    if lines != ["3"]:
         fail("payload-layout-contract L1",
-             "distribution/layout-version declares %r; layout 2 is required and an "
+             "distribution/layout-version declares %r; layout 3 is required and an "
              "unknown or missing declaration must fail before any mutation" % (lines,))
 
 
@@ -322,10 +349,7 @@ def check_duplicate_window(entries):
         mirrored = os.path.join(PAYLOAD, dest)
         if not os.path.isfile(mirrored):
             continue
-        if dest in ASSET_SOURCED:
-            legacy = os.path.join(ROOT, "crates", "truss", "assets", dest)
-        else:
-            legacy = os.path.join(ROOT, dest)
+        legacy = legacy_counterpart(dest)
         if not os.path.isfile(legacy):
             fail("payload-layout-contract L5",
                  "%s has no pre-refactor counterpart at %s, so the duplicate "
@@ -359,10 +383,21 @@ def check_duplicate_window(entries):
                      "the duplicate window" % (name, name))
 
 
+def check_legacy_directory():
+    """The mirror carries no legacy directory name."""
+    if os.path.isdir(os.path.join(PAYLOAD, LEGACY_DIRECTORY)):
+        fail("payload-layout-contract L7",
+             "distribution/payload/%s exists; the installed destination prefix is "
+             "%s since decision 0008, and a legacy directory in the mirror means a "
+             "source was not renamed with its destination"
+             % (LEGACY_DIRECTORY, NEW_PREFIX.rstrip("/")) )
+
+
 def main():
     declarations = generated()
     entries = manifest_entries()
     check_marker()
+    check_legacy_directory()
     check_mapping(declarations, entries)
     check_generators(declarations)
     check_generated_binding(declarations)
@@ -390,17 +425,37 @@ pos "the repository distribution tree satisfies the layout contract" run
 # the duplicate-window rule on missing files.
 fixture() { # name
   local name="$1"
-  local manifest dest
+  local manifest dest rest legacy
   rm -rf "$WORK/$name"
   mkdir -p "$WORK/$name"
   cp -a "$ROOT/distribution" "$WORK/$name/distribution"
   cp -a "$ROOT/scripts" "$WORK/$name/scripts"
   cp -a "$ROOT/crates" "$WORK/$name/crates"
+  # L5 compares the mirror against the pre-0008 tree, so a fixture root has to carry
+  # that tree as well, or every fixture reports a missing counterpart.
+  [ -d "$ROOT/.truss-core" ] && cp -a "$ROOT/.truss-core" "$WORK/$name/.truss-core"
+  # The comparison side of the duplicate window is the pre-0008 tree, related to a
+  # renamed destination by one rule: .truss/core/<rest> <- .truss-core/<rest>. The
+  # four asset-sourced destinations come from crates/truss/assets instead, which the
+  # copy above already provides.
   for manifest in "$ROOT"/scripts/*-install-files.txt; do
     while IFS= read -r dest || [ -n "$dest" ]; do
       case "$dest" in ""|\#*) continue ;; esac
+      rest="${dest#.truss/core/}"
+      case "$dest" in
+        .truss/core/docs/communication.md|.truss/core/docs/plans/README.md|.truss/core/docs/plans/completed/README.md|.truss/core/docs/decisions/README.md)
+          legacy="crates/truss/assets/.truss-core/docs/${rest#docs/}"
+          ;;
+        .truss/core/*)
+          legacy=".truss-core/${rest}"
+          ;;
+        *)
+          legacy="$dest"
+          ;;
+      esac
+      [ -e "$ROOT/$legacy" ] || continue
       mkdir -p "$WORK/$name/$(dirname "$dest")"
-      cp -p "$ROOT/$dest" "$WORK/$name/$dest"
+      cp -p "$ROOT/$legacy" "$WORK/$name/$dest"
     done < "$manifest"
   done
   printf '%s\n' "$WORK/$name"
@@ -410,11 +465,11 @@ fixture() { # name
 rm -f "$(fixture l1)/distribution/layout-version"
 neg "a missing layout marker is rejected" "L1" run_root "$WORK/l1"
 
-printf '3\n' > "$(fixture l1b)/distribution/layout-version"
+printf '9\n' > "$(fixture l1b)/distribution/layout-version"
 neg "an unknown layout marker is rejected" "L1" run_root "$WORK/l1b"
 
 # --- L2: resolution, cardinality, and reverse membership --------------------
-rm -f "$(fixture l2)/distribution/payload/.truss-core/docs/WORKFLOW.md"
+rm -f "$(fixture l2)/distribution/payload/.truss/core/docs/WORKFLOW.md"
 neg "a destination with no source is rejected" "L2" run_root "$WORK/l2"
 
 # A generated destination that also exists as a payload file resolves twice. The
@@ -437,7 +492,7 @@ tail -n 1 "$ROOT/scripts/plan-install-files.txt" \
 neg "a destination listed twice in the manifests is rejected" "L2" run_root "$WORK/l2m"
 
 # --- L3: payload membership -------------------------------------------------
-printf 'orphan\n' > "$(fixture l3)/distribution/payload/.truss-core/docs/orphan.md"
+printf 'orphan\n' > "$(fixture l3)/distribution/payload/.truss/core/docs/orphan.md"
 neg "a payload file matching no destination is rejected" "L3" run_root "$WORK/l3"
 
 # --- L4: generator containment ---------------------------------------------
@@ -460,7 +515,7 @@ printf 'AGENTS.md\tdistribution/entrypoints/leaving.md\t# Agent Instructions\\n\
 neg "a generator input escaping by symlink is rejected" "L4" run_root "$WORK/l4s"
 
 # --- L5: the duplicate window ----------------------------------------------
-printf 'diverged\n' >> "$(fixture l5)/distribution/payload/.truss-core/docs/README.md"
+printf 'diverged\n' >> "$(fixture l5)/distribution/payload/.truss/core/docs/README.md"
 neg "a payload copy diverging from its pre-refactor counterpart is rejected" "L5" run_root "$WORK/l5"
 
 rm -f "$(fixture l5e)/distribution/entrypoints/claude-truss-block.md"
@@ -482,6 +537,11 @@ text = open(path, encoding="utf-8").read()
 open(path, "w", encoding="utf-8").write(text.replace("agent-truss-block.md", "claude-truss-block.md"))
 PY
 neg "a declared generator the CLI does not use is rejected" "L6" run_root "$WORK/l6g"
+
+# --- L7: no legacy directory in the mirror ---------------------------------
+mkdir -p "$(fixture l7)/distribution/payload/.truss-core/docs"
+printf 'legacy\n' > "$WORK/l7/distribution/payload/.truss-core/docs/WORKFLOW.md"
+neg "a legacy directory left in the payload mirror is rejected" "L7" run_root "$WORK/l7"
 
 echo
 echo "== payload-layout-contract summary: $OK ok, $BAD failed =="

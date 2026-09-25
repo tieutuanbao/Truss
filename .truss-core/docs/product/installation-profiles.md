@@ -10,11 +10,22 @@ working-memory structure, an invariant-encoding pattern and skill, and
 explicit-only onboarding and improvement skills.
 
 The platform bootstrap installs a checksum-verified `truss` binary under
-`.truss-core/bin/` and delegates installation or update to that candidate.
+`.truss/core/bin/` and delegates installation or update to that candidate.
+
+`.truss/` carries three namespaces with three owners. The CLI owns and writes
+only `core/`, which holds the installed payload plus the installation state
+(`manifest.json`, `addons.json`, the lock, the transaction record, `base/`,
+`base-addons/`, and the update namespaces). `delivery/` holds one delivery run's
+working memory — its plan, its approved envelope, its dispatch artifacts, and its
+approval receipt — and is written by the delivery skill, never committed, and
+never touched by the CLI. `authority/` holds durable product authority such as
+architecture notes and decision records. A repository holding a legacy
+`.truss-core/` installation is read at that root; a repository holding both roots
+is refused rather than resolved by precedence.
 
 Core installation:
 
-- records exact upstream bytes under `.truss-core/`;
+- records exact upstream bytes under `.truss/core/`;
 - preserves consumer files through merge or human-directed conflict handling;
 - backs up replaced files;
 - does not install an application stack or product policy;
@@ -150,8 +161,8 @@ for manifest in scripts/engineering-wisdom-install-files.txt \
 done
 
 # 4. Same provenance: identical addons.json.
-cmp /tmp/truss-fresh/.truss-core/addons.json \
-    /tmp/truss-released/.truss-core/addons.json
+cmp /tmp/truss-fresh/.truss/core/addons.json \
+    /tmp/truss-released/.truss/core/addons.json
 ```
 
 Both installs must record `source_ref=truss-vX.Y.Z`. The released-source half

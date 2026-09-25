@@ -432,7 +432,7 @@ project's own durable authority — architecture notes, decision records, plans,
 and product documents — tracked in that project's git. A consumer
 that keeps Truss in version control commits `.truss/core/` and ignores
 `.truss/delivery/`; a consumer running Truss local-only
-ignores `/.truss/` with a single rule.
+ignores `.truss/` with a single rule.
 
 Optional profiles add their own skills under `.agents/skills/`. Exact payloads
 are declared by the manifests in [`scripts/`](#scripts-reference).

@@ -17,12 +17,23 @@
 #   L3  no payload file escapes the manifest membership.
 #   L4  a generator input exists and resolves strictly beneath
 #       distribution/entrypoints/.
-#   L5  during the duplicate window every payload copy and both entrypoint
-#       copies equal their pre-refactor counterpart.
+#   L5  the payload mirror's bytes are the recorded bytes: every payload file's
+#       sha256 equals its entry in tests/payload-layout-digests.txt, the mirror's
+#       file set equals the manifest destination set minus the generated one,
+#       and both entrypoint copies exist and are byte-identical to their
+#       scripts/ counterparts.
 #   L6  the generated declaration agrees with the literals the CLI composes
 #       AGENTS.md from.
 #   L7  the payload mirror carries no .truss-core directory; the installed
 #       destination prefix is .truss/core since decision 0008.
+#
+# L5 no longer compares the mirror against the stale pre-0008 root tree. Decision
+# 0008 renamed the installed prefix and rewrote the shipped prose, so the root
+# tree and crates/truss/assets are stale by design until the duplicate-removal
+# plan deletes them, and they are not authoritative content. The recorded digest
+# file is the drift guard in their place: it was generated from the mirror at the
+# commit that landed the rename and is reviewed as data, so any later content
+# change in the mirror fails L5 instead of being normalised away.
 #
 # Requirements: bash, python3, find. No new dependency.
 set -uo pipefail
@@ -80,6 +91,7 @@ neg() {
 
 CHECKER="$WORK/layout.py"
 cat > "$CHECKER" <<'PY'
+import hashlib
 import os
 import re
 import sys
@@ -93,54 +105,53 @@ GENERATOR_SOURCE = os.path.join(
     ROOT, "crates", "truss", "src", "infrastructure", "embedded_distribution.rs"
 )
 
-# Destinations whose canonical bytes live in crates/truss/assets/, not at the
-# repository root. Removed when the duplicate window closes.
-ASSET_SOURCED = {
-    ".truss/core/docs/communication.md",
-    ".truss/core/docs/plans/README.md",
-    ".truss/core/docs/plans/completed/README.md",
-    ".truss/core/docs/decisions/README.md",
-}
-
-# The installed destination prefix decision 0008 introduced, and the prefix it
-# replaced. The rename is a prefix change only, so one rule relates the two:
-# `.truss/core/<rest>` corresponds to `.truss-core/<rest>`. Neither the
-# repository root tree nor crates/truss/assets is renamed by this plan; they are
-# the comparison side until the duplicate-removal plan deletes them.
+# The installed destination prefix decision 0008 introduced, and the legacy
+# directory name it replaced. L7 uses the legacy name to prove the mirror carries
+# no directory under it.
 NEW_PREFIX = ".truss/core/"
-LEGACY_PREFIX = ".truss-core/"
 LEGACY_DIRECTORY = ".truss-core"
 
-
-# The renames this plan applies to the shipped text. L5 compares the mirror
-# against the pre-refactor counterpart after normalising the counterpart through
-# the same renames, so the rule still catches real drift while permitting the
-# content change the plan exists to make.
-CONTENT_RENAMES = ((".truss-core", ".truss/core"),
-                   (".truss/delivery-runs/", ".truss/delivery/runs/"),
-                   (".truss/authority/approvals/", ".truss/delivery/approvals/"))
+# The recorded byte expectations for the mirror, generated from it at the commit
+# that landed the rename and reviewed as data. A later edit to a payload file must
+# fail L5 until the expectation is updated deliberately.
+DIGESTS = os.path.join(ROOT, "tests", "payload-layout-digests.txt")
 
 
-def normalise_counterpart(data):
-    for old, new in CONTENT_RENAMES:
-        data = data.replace(old.encode(), new.encode())
-    return data
+def sha256_of(path):
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for chunk in iter(lambda: handle.read(65536), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
-def legacy_counterpart(dest):
-    """The pre-refactor path holding the bytes for a destination.
-
-    Only the installed root was renamed, so a destination that never carried the
-    .truss/core prefix is still its own pre-refactor counterpart at the repository
-    root. Returning None for those was the bug: it reported the whole .agents tree
-    as undefined.
-    """
-    if not dest.startswith(NEW_PREFIX):
-        return os.path.join(ROOT, dest)
-    relative = LEGACY_PREFIX + dest[len(NEW_PREFIX):]
-    if dest in ASSET_SOURCED:
-        return os.path.join(ROOT, "crates", "truss", "assets", relative)
-    return os.path.join(ROOT, relative)
+def recorded_digests():
+    """The recorded expectations as {repo-relative path: sha256}, in file order."""
+    if not os.path.isfile(DIGESTS):
+        fail("payload-layout-contract L5",
+             "tests/payload-layout-digests.txt is missing; the mirror's bytes are "
+             "unverified without the recorded expectations")
+        return {}
+    recorded = {}
+    with open(DIGESTS, encoding="utf-8") as handle:
+        for number, line in enumerate(handle, 1):
+            line = line.rstrip("\n")
+            if not line.strip():
+                continue
+            fields = line.split("  ", 1)
+            if len(fields) != 2 or len(fields[0]) != 64:
+                fail("payload-layout-contract L5",
+                     "tests/payload-layout-digests.txt:%d is not "
+                     "'<sha256>  <repo-relative path>'" % number)
+                continue
+            digest, path = fields
+            if path in recorded:
+                fail("payload-layout-contract L5",
+                     "tests/payload-layout-digests.txt:%d records %s twice"
+                     % (number, path))
+                continue
+            recorded[path] = digest
+    return recorded
 
 # The two entrypoint blocks the duplicate window must keep byte-identical.
 ENTRYPOINT_BLOCKS = ("agent-truss-block.md", "claude-truss-block.md")
@@ -359,45 +370,53 @@ def check_generated_binding(declarations):
                  % (dest, decode_escapes(prefix), source_prefix))
 
 
-def check_duplicate_window(entries):
+def check_payload_digests(entries, recorded):
+    """Every mirror file and entrypoint block matches its recorded digest.
+
+    Replaces the pre-0008 counterpart comparison: after decision 0008 those trees
+    are stale by design and no longer authoritative content, so the recorded
+    digests are the drift guard until the duplicate-removal plan deletes the
+    counterparts. The entrypoint blocks are generator inputs rather than manifest
+    destinations, so they are covered here by their own recorded digests instead of
+    by a comparison against the rewritten scripts/ copies.
+    """
+    expected = {}
     for _, _, dest in entries:
-        mirrored = os.path.join(PAYLOAD, dest)
-        if not os.path.isfile(mirrored):
-            continue
-        legacy = legacy_counterpart(dest)
-        if not os.path.isfile(legacy):
-            fail("payload-layout-contract L5",
-                 "%s has no pre-refactor counterpart at %s, so the duplicate "
-                 "window cannot be proven identical"
-                 % (dest, os.path.relpath(legacy, ROOT)))
-            continue
-        with open(mirrored, "rb") as left, open(legacy, "rb") as right:
-            if left.read() != normalise_counterpart(right.read()):
-                fail("payload-layout-contract L5",
-                     "distribution/payload/%s differs from its pre-refactor "
-                     "counterpart %s beyond the plan's renames; during the "
-                     "duplicate window no other divergence is permitted"
-                     % (dest, os.path.relpath(legacy, ROOT)))
+        path = os.path.join(PAYLOAD, dest)
+        if os.path.isfile(path):
+            expected["distribution/payload/" + dest] = path
     for name in ENTRYPOINT_BLOCKS:
-        moved = os.path.join(ENTRY, name)
-        legacy = os.path.join(ROOT, "scripts", name)
-        if not os.path.isfile(moved):
+        path = os.path.join(ENTRY, name)
+        if os.path.isfile(path):
+            expected["distribution/entrypoints/" + name] = path
+
+    for path in sorted(recorded):
+        if path not in expected:
+            fail("payload-layout-contract L5",
+                 "tests/payload-layout-digests.txt records %s, which the distribution "
+                 "tree does not hold; the recorded expectations and the tree must "
+                 "describe the same file set" % path)
+    for path in sorted(expected):
+        if path not in recorded:
+            fail("payload-layout-contract L5",
+                 "%s carries no recorded digest; a shipped file must have a reviewed "
+                 "expectation" % path)
+            continue
+        actual = sha256_of(expected[path])
+        if actual != recorded[path]:
+            fail("payload-layout-contract L5",
+                 "%s has digest %s while tests/payload-layout-digests.txt records %s; "
+                 "the shipped bytes moved since the rename landed"
+                 % (path, actual, recorded[path]))
+
+
+def check_entrypoints_present():
+    """Both entrypoint blocks exist, because a missing generator input is silent."""
+    for name in ENTRYPOINT_BLOCKS:
+        if not os.path.isfile(os.path.join(ENTRY, name)):
             fail("payload-layout-contract L5",
                  "distribution/entrypoints/%s is missing; every entrypoint block must "
-                 "exist there during the duplicate window" % name)
-            continue
-        if not os.path.isfile(legacy):
-            fail("payload-layout-contract L5",
-                 "scripts/%s has no distribution counterpart to compare; every "
-                 "entrypoint block must still exist there during the duplicate "
-                 "window" % name)
-            continue
-        with open(moved, "rb") as left, open(legacy, "rb") as right:
-            if left.read() != normalise_counterpart(right.read()):
-                fail("payload-layout-contract L5",
-                     "distribution/entrypoints/%s differs from scripts/%s beyond "
-                     "the plan's renames; during the duplicate window no other "
-                     "divergence is permitted" % (name, name))
+                 "exist there" % name)
 
 
 def check_legacy_directory():
@@ -413,12 +432,14 @@ def check_legacy_directory():
 def main():
     declarations = generated()
     entries = manifest_entries()
+    recorded = recorded_digests()
     check_marker()
     check_legacy_directory()
     check_mapping(declarations, entries)
     check_generators(declarations)
     check_generated_binding(declarations)
-    check_duplicate_window(entries)
+    check_payload_digests(entries, recorded)
+    check_entrypoints_present()
     return 1 if PROBLEMS else 0
 
 
@@ -436,45 +457,19 @@ pos "the repository distribution tree satisfies the layout contract" run
 
 # Negative fixtures: copy the tree into an isolated root and mutate one thing.
 # A fixture root carries the distribution tree, the scripts the checker reads for
-# its manifests, crates/truss/assets for the asset-sourced counterparts, the Rust
-# source the generated-binding rule reads, and the pre-refactor destination
-# copies, so that a mutation makes exactly one rule fire instead of also tripping
-# the duplicate-window rule on missing files.
+# its manifests and for the two entrypoint counterparts, the Rust source the
+# generated-binding rule reads, and the recorded digest file L5 verifies against,
+# so that a mutation makes exactly one rule fire instead of also tripping another
+# rule on missing files.
 fixture() { # name
   local name="$1"
-  local manifest dest rest legacy
   rm -rf "$WORK/$name"
   mkdir -p "$WORK/$name"
   cp -a "$ROOT/distribution" "$WORK/$name/distribution"
   cp -a "$ROOT/scripts" "$WORK/$name/scripts"
   cp -a "$ROOT/crates" "$WORK/$name/crates"
-  # L5 compares the mirror against the pre-0008 tree, so a fixture root has to carry
-  # that tree as well, or every fixture reports a missing counterpart.
-  [ -d "$ROOT/.truss-core" ] && cp -a "$ROOT/.truss-core" "$WORK/$name/.truss-core"
-  # The comparison side of the duplicate window is the pre-0008 tree, related to a
-  # renamed destination by one rule: .truss/core/<rest> <- .truss-core/<rest>. The
-  # four asset-sourced destinations come from crates/truss/assets instead, which the
-  # copy above already provides.
-  for manifest in "$ROOT"/scripts/*-install-files.txt; do
-    while IFS= read -r dest || [ -n "$dest" ]; do
-      case "$dest" in ""|\#*) continue ;; esac
-      rest="${dest#.truss/core/}"
-      case "$dest" in
-        .truss/core/docs/communication.md|.truss/core/docs/plans/README.md|.truss/core/docs/plans/completed/README.md|.truss/core/docs/decisions/README.md)
-          legacy="crates/truss/assets/.truss-core/docs/${rest#docs/}"
-          ;;
-        .truss/core/*)
-          legacy=".truss-core/${rest}"
-          ;;
-        *)
-          legacy="$dest"
-          ;;
-      esac
-      [ -e "$ROOT/$legacy" ] || continue
-      mkdir -p "$WORK/$name/$(dirname "$dest")"
-      cp -p "$ROOT/$legacy" "$WORK/$name/$dest"
-    done < "$manifest"
-  done
+  mkdir -p "$WORK/$name/tests"
+  cp -p "$ROOT/tests/payload-layout-digests.txt" "$WORK/$name/tests/payload-layout-digests.txt"
   printf '%s\n' "$WORK/$name"
 }
 
@@ -531,12 +526,42 @@ printf 'AGENTS.md\tdistribution/entrypoints/leaving.md\t# Agent Instructions\\n\
   > "$WORK/l4s/distribution/generated.txt"
 neg "a generator input escaping by symlink is rejected" "L4" run_root "$WORK/l4s"
 
-# --- L5: the duplicate window ----------------------------------------------
+# --- L5: the mirror's bytes against the recorded expectations --------------
+# A payload file edited in place moves its digest away from the recorded one.
 printf 'diverged\n' >> "$(fixture l5)/distribution/payload/.truss/core/docs/README.md"
-neg "a payload copy diverging from its pre-refactor counterpart is rejected" "L5" run_root "$WORK/l5"
+neg "a payload file whose digest moved is rejected" "L5" run_root "$WORK/l5"
+
+# A rename-shaped edit: replace one occurrence of the legacy prefix in a file that
+# should no longer contain it. The digest catches it because the recorded
+# expectation was taken after the rename, which is exactly what the normalising
+# comparison could not see.
+python3 - "$(fixture l5r)/distribution/payload/.truss/core/docs/WORKFLOW.md" <<'PY'
+import sys
+path = sys.argv[1]
+text = open(path, encoding="utf-8").read()
+open(path, "w", encoding="utf-8").write(text.replace(".truss/core/docs/", ".truss-core/docs/", 1))
+PY
+neg "a rename-shaped edit in a payload file is rejected" "L5" run_root "$WORK/l5r"
+
+# A payload file with no recorded expectation, and a recorded expectation with no
+# payload file: the two sides must describe the same set. The first fixture drops a
+# line from the expectations file rather than adding a stray file, so L5 fires
+# alone instead of L3 also reporting an unlisted payload file.
+grep -v 'docs/README.md$' "$ROOT/tests/payload-layout-digests.txt" \
+  > "$(fixture l5u)/tests/payload-layout-digests.txt"
+neg "a payload file with no recorded digest is rejected" "L5" run_root "$WORK/l5u"
+
+printf '%s  %s\n' "0000000000000000000000000000000000000000000000000000000000000000" \
+  ".truss/core/docs/absent.md" >> "$(fixture l5m)/tests/payload-layout-digests.txt"
+neg "a recorded digest with no payload file is rejected" "L5" run_root "$WORK/l5m"
 
 rm -f "$(fixture l5e)/distribution/entrypoints/claude-truss-block.md"
 neg "a missing entrypoint copy is rejected" "L5" run_root "$WORK/l5e"
+
+# The entrypoint blocks are generator inputs, not manifest destinations, so their
+# bytes are guarded by their own recorded digests. A mutated block must fail.
+printf '\n<!-- drifted -->\n' >> "$(fixture l5d)/distribution/entrypoints/agent-truss-block.md"
+neg "an entrypoint block whose digest moved is rejected" "L5" run_root "$WORK/l5d"
 
 # --- L6: the generated declaration binds the CLI literals ------------------
 python3 - "$(fixture l6p)/distribution/generated.txt" <<'PY'

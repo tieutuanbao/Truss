@@ -131,15 +131,21 @@ exact pre-implementation commit, and business analysis, the approved decision
 record, the approved execution envelope, and the transient plan are private
 artifacts that must not be staged: they live under
 `.truss/delivery-runs/<run-key>/`, with the approved envelope as an immutable
-`approved-envelope.md` snapshot separate from mutable `plan.md` progress. Gate 1
+`approved-envelope.md` snapshot separate from mutable `plan.md` progress.
+Mutable progress never changes the approved digest, and a change to scope or
+envelope produces a new snapshot, a new receipt, and a new approval. Gate 1
 approval binds the candidate root, the baseline commit, the snapshot path, and
 its SHA-256, recorded in the local-only receipt
-`.truss/authority/approvals/<run-key>.md`. An independent accepting session
-obtains the snapshot and the receipt through an authorized private handoff,
-recomputes the digest, and binds its verdict to the final candidate HEAD and the
-approved envelope identity; a missing, unreadable, mismatched, or unapproved
-snapshot or receipt blocks acceptance. Delivery never deletes these artifacts on
-its own.
+`.truss/authority/approvals/<run-key>.md`, which carries the run-key, the
+candidate root, the baseline commit, the approved-envelope path and its
+SHA-256, the owner's approval note, and the approval date. The receipt is never
+committed, and a one-line echo of the digest goes to the Orca run record as a
+secondary copy only — the local receipt stays authoritative. An independent
+accepting session obtains the snapshot and the receipt through an authorized
+private handoff, recomputes the digest, and binds its verdict to the final
+candidate HEAD and the approved envelope identity; a missing, unreadable,
+mismatched, or unapproved snapshot or receipt blocks acceptance. Delivery never
+deletes these artifacts on its own.
 
 Before dispatching any work in a consumer-local run, Control verifies that the
 candidate excludes `.truss/`, `.truss-core/`, the installed skill directories,
@@ -342,11 +348,15 @@ Write the prompt to an untracked file **inside the worktree**. Never inline
 it in a shell argument: prompts carry backticks, quotes and newlines, and a
 shell argument mangles them. A path outside the workspace can trigger a
 second permission surface some trusses still prompt for even when tool
-approval is skipped. Do not stage that file. After the worker returns,
-delete it: Control owns that dispatch artifact, not `git clean`. The handoff
-is likewise a file in the worktree; its path travels as `payload.reportPath`
-and the message body stays short. `--spec` and `--body` are shell arguments,
-which this skill already forbids for prompts.
+approval is skipped. Do not stage that file. In a repository-hosted run, delete
+it after the worker returns: Control owns that dispatch artifact, not `git
+clean`. In a consumer-local run the dispatch prompt and the handoff report live
+under `.truss/delivery-runs/<run-key>/` beside the approved envelope and the
+plan, and Control retains them until the owner deletes them explicitly: delivery
+deletes no run artifact on its own. The handoff is likewise a file in the
+worktree; its path travels as `payload.reportPath` and the message body stays
+short. `--spec` and `--body` are shell arguments, which this skill already
+forbids for prompts.
 
 The dispatch prompt carries the task, its scope and the evidence required.
 It does not define the role dispositions or the conditions for reaching

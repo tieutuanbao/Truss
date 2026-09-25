@@ -18,8 +18,11 @@ No status duplicated anywhere else.
 
 Decision record: `<path>`
 
-**Baseline:** the SHA of the commit carrying the decision record and this plan.
-Leave empty until that commit exists rather than guessing it.
+**Baseline:** for a repository-hosted run, the SHA of the commit carrying the
+decision record and this plan; leave it empty until that commit exists rather
+than guessing it. For an approved consumer-local run, the exact
+pre-implementation commit of the candidate, whose approval identity lives in the
+local receipt `.truss/authority/approvals/<run-key>.md` instead of in a commit.
 
 ## Goal
 

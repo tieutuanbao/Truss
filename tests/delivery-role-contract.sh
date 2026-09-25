@@ -143,6 +143,16 @@ def read(key):
         return None
 
 
+def read_bytes(key):
+    path = PATH[key]
+    try:
+        with open(path, "rb") as handle:
+            return handle.read()
+    except OSError as error:
+        fail("delivery-role-contract R1",
+             "cannot read %s (%s); the seven-role contract requires this file" % (path, error))
+        return None
+
 def section(text, heading):
     """Lines of the section whose heading exactly equals `heading`."""
     lines = text.splitlines()
@@ -411,11 +421,16 @@ def check_envelope():
         fail("delivery-role-contract R11",
              "the plans README does not distinguish the transient private path "
              "%r from the durable plan location" % PRIVATE_RUN_DIR)
-    if plans_readme != assets_readme:
+    plans_bytes = read_bytes("plans_readme")
+    assets_bytes = read_bytes("assets_plans_readme")
+    if plans_bytes is None or assets_bytes is None:
+        return
+    if plans_bytes != assets_bytes:
         fail("delivery-role-contract R12",
-             "the two plans README copies differ; embedding reads the "
-             "crates/truss/assets copy, so divergence changes what consumers "
-             "receive without either file looking wrong")
+             "the two plans README copies differ byte for byte; embedding reads the "
+             "crates/truss/assets copy, so a divergence that survives decoding - "
+             "including a newline-only difference - changes what consumers receive "
+             "without either file looking wrong")
 
 
 def main():
@@ -552,6 +567,17 @@ open(sys.argv[2], "w", encoding="utf-8").write(text.replace("Execution plans", "
 PY
 neg "a diverged plans README copy is rejected" "R12" \
   env CONTRACT_ASSETS_PLANS_README="$WORK/ng11-readme.md" python3 "$CONTRACT" envelope
+
+# Newline-only divergence: utf-8 text decoding applies universal-newline
+# translation, so an LF file and a CRLF file compare equal as text. R12 must
+# compare the raw bytes.
+python3 - "$REPO/.truss-core/docs/plans/README.md" "$WORK/ng12-readme-crlf.md" <<'PY'
+import sys
+data = open(sys.argv[1], "rb").read()
+open(sys.argv[2], "wb").write(data.replace(b"\n", b"\r\n"))
+PY
+neg "a plans README copy that differs only by newline bytes is rejected" "R12" \
+  env CONTRACT_ASSETS_PLANS_README="$WORK/ng12-readme-crlf.md" python3 "$CONTRACT" envelope
 
 pos "the repository delivery skill carries the consumer-local envelope contract" \
   python3 "$CONTRACT" envelope

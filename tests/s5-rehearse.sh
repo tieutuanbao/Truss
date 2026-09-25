@@ -66,6 +66,13 @@ cleanup() {
   if [ "$PAYLOAD_TOUCHED" = 1 ]; then
     cp "$EV/trusses.md.bak" "$PAYLOAD_SOURCE_PROBE"
   fi
+  # The pre-change baseline worktree is registered in this repository's Git
+  # metadata, so it must be removed as a worktree and not only as a directory,
+  # or a stale registration survives into the next run.
+  if [ -n "${OLD_CLI_WORKTREE:-}" ] && [ -d "$OLD_CLI_WORKTREE" ]; then
+    git worktree remove --force "$OLD_CLI_WORKTREE" >/dev/null 2>&1 || true
+    git worktree prune >/dev/null 2>&1 || true
+  fi
   mkdir -p "$EVIDENCE/rehearse-raw"
   cp "$EV"/*.txt "$EVIDENCE/rehearse-raw/" 2>/dev/null
   if [ "${S5_KEEP_FIXTURES:-0}" = 1 ]; then
@@ -206,6 +213,28 @@ if [ ! -x "$CLI" ]; then
 fi
 [ -x "$CLI" ] || fail_setup "the Truss CLI is not available at $CLI"
 
+# The pre-change CLI, built from the same baseline commit whose installer the
+# counterexample lanes below drive. The pre-change installer hardcodes
+# `.truss-core/bin/truss` for the binary it stages and delegates only its core
+# step to that CLI, so a faithful "pre-change installer on the identical state"
+# pairing needs the binary from the same revision: paired with the post-0008 CLI
+# it creates two trees and records no provenance, which is a different finding and
+# is asserted separately. Built offline from the locked local commit, so the
+# rehearsal stays deterministic and network-free. The worktree lives under the
+# fixture directory and is deregistered by the cleanup trap, so no worktree of
+# this fixture outlives the run and nothing is written under target/.
+OLD_BASELINE="d9357b9"
+OLD_CLI_WORKTREE="$EV/old-baseline"
+OLD_CLI="$OLD_CLI_WORKTREE/target/debug/truss"
+if [ ! -x "$OLD_CLI" ]; then
+  echo "building the pre-change Truss CLI for the counterexample lanes: $OLD_BASELINE"
+  git worktree add --detach --force "$OLD_CLI_WORKTREE" "$OLD_BASELINE" >/dev/null 2>&1 ||
+    fail_setup "could not create a worktree for the pre-change baseline $OLD_BASELINE"
+  (cd "$OLD_CLI_WORKTREE" && CARGO_TARGET_DIR="$OLD_CLI_WORKTREE/target" cargo build --quiet --locked --offline -p truss) ||
+    fail_setup "could not build the pre-change Truss CLI from $OLD_BASELINE"
+fi
+[ -x "$OLD_CLI" ] || fail_setup "the pre-change Truss CLI is not available at $OLD_CLI"
+
 copy_payload() { # dst
   local dst="$1"
   mkdir -p "$dst/scripts" "$dst/distribution/payload"
@@ -267,11 +296,21 @@ copy_legacy_payload() { # dst
     mkdir -p "$dst/$(dirname "$p")"
     cp -p "$REPO/distribution/payload/$p" "$dst/$p"
   done < scripts/delivery-install-files.txt
-  # A second payload revision, so the old installer meets a changed upstream path.
-  cp -a "$dst" "$EV/rawlegacy-b"
-  printf '\n<!-- upstream change in the next release -->\n' >> "$EV/rawlegacy-b/$PAYLOAD_PROBE"
 }
 copy_legacy_payload "$EV/rawlegacy/truss-v0.1.13"
+# The pre-change installer resolves its payload relative to a source checkout and
+# clones that source with `--source-git`, so the counterexample runs need real git
+# revisions in the legacy layout, not only the plain directory above. Revision B
+# carries a changed upstream path, so the pre-change installer meets a path whose
+# upstream bytes moved.
+copy_legacy_payload "$EV/legacyA"
+git -C "$EV/legacyA" init -q -b main
+git -C "$EV/legacyA" add -A
+git -C "$EV/legacyA" -c user.email=s5@example.com -c user.name=s5 commit -qm "legacy payload A"
+cp -a "$EV/legacyA" "$EV/legacyB"
+printf '\n<!-- upstream change in the next release -->\n' >> "$EV/legacyB/$PAYLOAD_PROBE"
+git -C "$EV/legacyB" add -A
+git -C "$EV/legacyB" -c user.email=s5@example.com -c user.name=s5 commit -qm "legacy payload B moves the probed path"
 
 cp "$PAYLOAD_SOURCE_PROBE" "$EV/trusses.md.bak"
 echo
@@ -377,6 +416,41 @@ check "resolved path staged for the conflict" \
   "$([ -f "$EV/w2/.truss/core/addon-update/delivery/resolved/$PAYLOAD_PROBE" ]; echo $?)"
 echo
 
+# -------------------------------------------- Row 2 gitignore idempotency -----
+# The two installers share one missing/skip rule for the root .gitignore: three
+# required entries, skip only when all three are present, append only the missing
+# ones. A run that finds one rule missing beside an existing marker used to append
+# the marker a second time, so the file grew on every run. This lane installs twice
+# into the same target and compares the file, and asserts each entry appears once.
+echo "== Row 2 gitignore idempotency: the binary rules are appended once and never duplicated =="
+WGI="$EV/w-gitignore"
+TRUSS_CORE_BINARY="$CLI" scripts/install-truss.sh --directory "$WGI" --yes > "$EV/gitignore-first.txt" 2>&1
+st=$?
+check "first install into a fresh target exits 0" "$st"
+GITIGNORE_FIRST="$(file_hash "$WGI/.gitignore")"
+TRUSS_CORE_BINARY="$CLI" scripts/install-truss.sh --directory "$WGI" --merge --yes > "$EV/gitignore-second.txt" 2>&1
+st=$?
+check "second install into the same target exits 0" "$st"
+check "the root .gitignore is byte-identical after the second install" \
+  "$([ "$(file_hash "$WGI/.gitignore")" = "$GITIGNORE_FIRST" ]; echo $?)"
+check "the marker line appears exactly once" \
+  "$([ "$(grep -Fxc '# Truss core maintenance binary' "$WGI/.gitignore")" = 1 ]; echo $?)"
+check "the Unix binary rule appears exactly once" \
+  "$([ "$(grep -Fxc '.truss/core/bin/truss' "$WGI/.gitignore")" = 1 ]; echo $?)"
+check "the Windows binary rule appears exactly once" \
+  "$([ "$(grep -Fxc '.truss/core/bin/truss.exe' "$WGI/.gitignore")" = 1 ]; echo $?)"
+# The same rule must repair a file that already carries the marker beside only one
+# rule, which is the exact shape that used to duplicate the marker.
+printf '# Truss core maintenance binary\n.truss/core/bin/truss.exe\n' > "$WGI/.gitignore"
+TRUSS_CORE_BINARY="$CLI" scripts/install-truss.sh --directory "$WGI" --merge --yes > "$EV/gitignore-repair.txt" 2>&1
+st=$?
+check "repairing a partially written ignore file exits 0" "$st"
+check "repairing does not duplicate the existing marker" \
+  "$([ "$(grep -Fxc '# Truss core maintenance binary' "$WGI/.gitignore")" = 1 ]; echo $?)"
+check "repairing adds the one missing rule" \
+  "$([ "$(grep -Fxc '.truss/core/bin/truss' "$WGI/.gitignore")" = 1 ]; echo $?)"
+echo
+
 # ------------------------------------------------------------ Row B ---------
 echo "== Row B: all three add-ons install through the CLI from their own manifest =="
 WALL="$EV/w-all"
@@ -466,44 +540,50 @@ CONSUMER_C="$(file_hash "$EV/w2c/$PAYLOAD_PROBE")"
 cp -a "$EV/w2c" "$EV/w2c-merge"
 cp -a "$EV/w2c" "$EV/w2c-force"
 
-# The pre-change installer is fed a legacy-layout source pinned to the release
-# tag, which is the shape it was written for: it resolves each destination
-# relative to the source base URL, so a post-0008 source would compare it against
-# a layout it never knew rather than against the state under test.
-#
-# Boundary this revision imposes, asserted rather than assumed: the pre-change
-# installer always delegates its core step to the CLI it stages, so against the
-# post-0008 CLI it cannot complete at all. It reads the target's legacy state and
-# then hands it to a CLI that parses it under the new schema, and it installs the
-# binary at .truss-core while that CLI wrote .truss/core. Decision 0008 records
-# this pairing as unsupported; the counterexample's merge/force semantics are
-# therefore proven against the candidate, whose Row 2 lanes cover preserve and
-# conflict handling, and the boundary is proven here.
+# The pre-change installer is driven against a legacy-layout source, the shape it
+# was written for, and against the pre-change CLI from the same baseline commit:
+# it hardcodes `.truss-core/bin/truss` for the binary it stages and delegates only
+# its core step to that CLI, so the faithful "pre-change installer on the identical
+# state" pairing is the one below. Its merge and force semantics are then the
+# defects this lane exists to catch, asserted on the real run rather than replaced
+# by a statement about the pairing.
 check "the legacy-layout source carries the payload the old installer expects" \
   "$([ -f "$EV/rawlegacy/truss-v0.1.13/$PAYLOAD_PROBE" ] && [ ! -d "$EV/rawlegacy/truss-v0.1.13/distribution" ]; echo $?)"
 
-TRUSS_CORE_BINARY="$CLI" TRUSS_SOURCE_BASE_URL="file://$EV/rawlegacy-b" \
-  TRUSS_CORE_SOURCE_BASE_URL="file://$EV/rawlegacy-b" \
-  bash "$EV/old-install.sh" --directory "$EV/w2c-merge" --with-delivery --merge --yes > "$EV/counterexample-merge.txt" 2>&1
+TRUSS_CORE_BINARY="$OLD_CLI" bash "$EV/old-install.sh" --directory "$EV/w2c-merge" \
+  --with-delivery --merge --yes --source-git "file://$EV/legacyB" > "$EV/counterexample-merge.txt" 2>&1
 st=$?
-check "the pre-change installer cannot complete against the post-0008 CLI (unsupported pairing)" \
-  "$([ "$st" -ne 0 ]; echo $?)"
-check "the unsupported pairing leaves the consumer bytes untouched" \
-  "$([ "$(file_hash "$EV/w2c-merge/$PAYLOAD_PROBE")" = "$CONSUMER_C" ]; echo $?)"
-check "the pre-change installer never reached its merge skip path" \
-  "$([ "$(grep -c 'merge keeps existing file' "$EV/counterexample-merge.txt")" = 0 ]; echo $?)"
-# The pre-change installer has no provenance format at all: it copies add-on
-# bytes directly and writes no record. That is asserted on the artefact itself,
-# because the tree it would have written into was prepared by the candidate.
+check "old installer --merge exits 0 while skipping every add-on path" \
+  "$([ "$st" = 0 ] && [ "$(grep -c 'merge keeps existing file' "$EV/counterexample-merge.txt")" = "$DELIVERY_PATHS" ]; echo $?)"
+check "old installer --merge leaves the upstream change unapplied (stale content)" \
+  "$([ "$(grep -c 'upstream change in the next release' "$EV/w2c-merge/$PAYLOAD_PROBE")" = 0 ]; echo $?)"
+check "old installer --merge records no provenance for the new ref" \
+  "$([ ! -f "$EV/w2c-merge/.truss-core/addons.json" ] || [ "$(python3 -c "import json;print(json.load(open('$EV/w2c-merge/.truss-core/addons.json'))['addons'][0]['source_ref'])" 2>/dev/null)" != "$(git -C "$EV/legacyB" rev-parse HEAD)" ]; echo $?)"
+
+TRUSS_CORE_BINARY="$OLD_CLI" bash "$EV/old-install.sh" --directory "$EV/w2c-force" \
+  --with-delivery --merge --force --yes --source-git "file://$EV/legacyB" > "$EV/counterexample-force.txt" 2>&1
+st=$?
+check "old installer --force clobbers the consumer edit" \
+  "$([ "$st" = 0 ] && [ "$(file_hash "$EV/w2c-force/$PAYLOAD_PROBE")" != "$CONSUMER_C" ]; echo $?)"
+check "old installer --force keeps the consumer bytes only in its own backup" \
+  "$([ "$(find "$EV/w2c-force/.truss-backup" -name 'trusses.md' 2>/dev/null | wc -l)" -ge 1 ]; echo $?)"
+# The pre-change installer has no provenance format at all: it copies add-on bytes
+# directly and writes no record. That is asserted on the artefact itself.
 check "the pre-change installer carries no add-on record or digest code" \
   "$([ "$(grep -c 'addons.json\|upstream_sha256\|source_ref' "$EV/old-install.sh")" = 0 ]; echo $?)"
 
-TRUSS_CORE_BINARY="$CLI" TRUSS_SOURCE_BASE_URL="file://$EV/rawlegacy-b" \
-  TRUSS_CORE_SOURCE_BASE_URL="file://$EV/rawlegacy-b" \
-  bash "$EV/old-install.sh" --directory "$EV/w2c-force" --with-delivery --merge --force --yes > "$EV/counterexample-force.txt" 2>&1
-st=$?
-check "the pre-change installer --force also cannot complete, so it cannot clobber" \
-  "$([ "$st" -ne 0 ] && [ "$(file_hash "$EV/w2c-force/$PAYLOAD_PROBE")" = "$CONSUMER_C" ]; echo $?)"
+# Boundary the rename imposes, asserted rather than assumed: the pre-change
+# installer paired with the post-0008 CLI splits one run across two trees. The CLI
+# writes `.truss/core`, the installer stages its binary at `.truss-core`, and no
+# add-on record is written, because the add-on steps the installer would have run
+# never record provenance. This is why the defect lanes above use the pre-change
+# CLI, and it is a separate claim from theirs.
+TRUSS_CORE_BINARY="$CLI" bash "$EV/old-install.sh" --directory "$EV/w2c-split" \
+  --with-delivery --yes --source-git "file://$EV/legacyA" > "$EV/counterexample-split.txt" 2>&1
+check "the pre-change installer paired with the post-0008 CLI leaves two trees" \
+  "$([ -d "$EV/w2c-split/.truss/core" ] && [ -d "$EV/w2c-split/.truss-core" ]; echo $?)"
+check "that split pairing records no add-on provenance at all" \
+  "$([ "$(find "$EV/w2c-split" -maxdepth 3 -name addons.json 2>/dev/null | wc -l)" = 0 ]; echo $?)"
 
 TRUSS_CORE_BINARY="$CLI" scripts/install-truss.sh --directory "$EV/w2c" --with-delivery --merge --yes \
   --source-git "file://$EV/gitB" > "$EV/candidate-on-same-state.txt" 2>&1

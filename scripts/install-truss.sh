@@ -428,7 +428,17 @@ merge_core_gitignore() {
   local marker="# Truss core maintenance binary"
   local unix_rule="$TARGET_STATE_LABEL/bin/truss"
   local windows_rule="$TARGET_STATE_LABEL/bin/truss.exe"
-  if [ -f "$target" ] && grep -Fxq "$unix_rule" "$target" && grep -Fxq "$windows_rule" "$target"; then
+  # One missing/skip rule shared with the PowerShell twin: three required lines,
+  # skip only when all three are present, append only the missing ones. Keying the
+  # skip on the two rules alone duplicated the marker on every run that found a
+  # rule missing beside an existing marker.
+  local rules=("$marker" "$unix_rule" "$windows_rule")
+  local missing_rules=()
+  local rule
+  for rule in "${rules[@]}"; do
+    [ -f "$target" ] && grep -Fxq "$rule" "$target" || missing_rules+=("$rule")
+  done
+  if [ "${#missing_rules[@]}" -eq 0 ]; then
     log "skip     .gitignore ($TARGET_STATE_LABEL binary rules already present)"
     return
   fi
@@ -436,12 +446,8 @@ merge_core_gitignore() {
     log "update   .gitignore (append Truss core binary rules)"
     return
   fi
-  local missing_rules=()
-  [ -f "$target" ] && grep -Fxq "$unix_rule" "$target" || missing_rules+=("$unix_rule")
-  [ -f "$target" ] && grep -Fxq "$windows_rule" "$target" || missing_rules+=("$windows_rule")
   {
     [ -s "$target" ] && printf '\n'
-    printf '%s\n' "$marker"
     printf '%s\n' "${missing_rules[@]}"
   } >> "$target"
   log "updated  .gitignore (appended Truss core binary rules)"
@@ -1146,6 +1152,13 @@ if [ "$YES" -eq 0 ] && can_prompt; then
   fi
 fi
 
+# Refuse an unsupported payload layout before this run touches anything: not
+# before the target directory is created, and not before an override has moved
+# protected paths into a backup. The marker is read through the source reader, so
+# this must sit after the source mode, source root, and source base URL are
+# resolved, and before every mutation below.
+require_supported_layout
+
 TARGET_DIR="$(make_absolute_parent "$(expand_path "$TARGET_INPUT")")"
 BACKUP_DIR="$TARGET_DIR/.truss-backup/$(date +%Y%m%d%H%M%S)"
 
@@ -1226,7 +1239,6 @@ fi
 log "Target project: $TARGET_DIR"
 log "Installed tree: $TARGET_STATE_LABEL"
 
-require_supported_layout
 preflight_addons
 
 install_truss_core

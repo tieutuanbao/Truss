@@ -202,6 +202,10 @@ function Get-TrussReleaseTag {
 }
 
 function Merge-CoreGitignore([string]$Target) {
+    # One missing/skip rule shared with the Bash twin: three required lines, skip
+    # only when all three are present, append only the missing ones. Keying the
+    # skip on the two rules alone duplicated the marker whenever a rule was missing
+    # beside an existing marker.
     $marker = "# Truss core maintenance binary"
     $rules = @($marker, "$script:TargetStateLabel/bin/truss", "$script:TargetStateLabel/bin/truss.exe")
     $existing = if (Test-Path $Target) { Get-Content -LiteralPath $Target } else { @() }
@@ -640,6 +644,14 @@ $script:PayloadManifest = "scripts/truss-install-files.txt"
 $script:EngineeringWisdomPayloadManifest = "scripts/engineering-wisdom-install-files.txt"
 $script:DeliveryPayloadManifest = "scripts/delivery-install-files.txt"
 $script:PlanningPayloadManifest = "scripts/plan-install-files.txt"
+
+# Refuse an unsupported payload layout before this run touches anything: not
+# before the target directory is created, and not before an override has moved
+# protected paths into a backup. The marker is read through the source reader, so
+# this must sit after the source mode and source base URL are resolved, and before
+# every mutation below.
+Assert-SupportedLayout
+
 $script:TargetDir = Resolve-TargetPath $Directory
 $script:BackupDir = Join-Path $script:TargetDir (".truss-backup/" + (Get-Date -Format "yyyyMMddHHmmss"))
 
@@ -742,7 +754,6 @@ if ($WithPlanning) {
 Write-Step "Target project: $script:TargetDir"
 Write-Step "Installed tree: $script:TargetStateLabel"
 
-Assert-SupportedLayout
 Invoke-AddOnPreflight
 
 Install-TrussCore

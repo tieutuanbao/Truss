@@ -220,49 +220,61 @@ mod tests {
         decoded
     }
 
-    /// The declaration in `distribution/generated.txt` must compose to the bytes
-    /// this crate embeds for the generated destination. The payload layout
-    /// contract proves the declaration agrees with the literals below; this test
-    /// proves those literals produce the installed entrypoint, so a change that
-    /// stays literal-consistent while altering the composed bytes is still
-    /// caught.
+    /// Every record in `distribution/generated.txt` must compose to the bytes
+    /// this crate embeds for that destination. The payload layout contract proves
+    /// the declarations agree with the literals below; this test proves those
+    /// literals produce the installed entrypoints, so a change that stays
+    /// literal-consistent while altering the composed bytes is still caught.
     #[test]
     fn generated_agents_md_matches_declaration() {
         let declaration = include_str!("../../../../distribution/generated.txt");
-        let record = declaration
+        let records = declaration
             .lines()
-            .find(|line| !line.is_empty())
-            .expect("generated.txt declares the generated destination");
-        let fields = record.split('\t').collect::<Vec<_>>();
-        assert_eq!(
-            fields.len(),
-            3,
-            "a generated.txt record is destination, generator input, prefix"
+            .filter(|line| !line.is_empty())
+            .collect::<Vec<_>>();
+        assert!(
+            !records.is_empty(),
+            "generated.txt declares the generated destinations"
         );
-        let (destination, generator, prefix) = (fields[0], fields[1], fields[2]);
-        assert_eq!(destination, "AGENTS.md");
-
-        let generator_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("..")
-            .join("..")
-            .join(generator);
-        let generator_bytes = std::fs::read(&generator_path).unwrap_or_else(|error| {
-            panic!(
-                "declared generator input {} is unreadable: {error}",
-                generator_path.display()
-            )
-        });
-
-        let mut composed = decode_escapes(prefix).into_bytes();
-        composed.extend_from_slice(&generator_bytes);
 
         let distribution = EmbeddedCoreDistribution.current().unwrap();
-        let installed = distribution
-            .files
-            .iter()
-            .find(|file| file.path.as_str() == destination)
-            .expect("the embedded distribution carries the generated destination");
-        assert_eq!(installed.content, composed);
+        for record in records {
+            let fields = record.split('\t').collect::<Vec<_>>();
+            assert_eq!(
+                fields.len(),
+                3,
+                "a generated.txt record is destination, generator input, prefix: {record:?}"
+            );
+            let (destination, generator, prefix) = (fields[0], fields[1], fields[2]);
+
+            let generator_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("..")
+                .join("..")
+                .join(generator);
+            let generator_bytes = std::fs::read(&generator_path).unwrap_or_else(|error| {
+                panic!(
+                    "declared generator input {} is unreadable: {error}",
+                    generator_path.display()
+                )
+            });
+
+            let mut composed = decode_escapes(prefix).into_bytes();
+            composed.extend_from_slice(&generator_bytes);
+
+            let installed = distribution
+                .files
+                .iter()
+                .find(|file| file.path.as_str() == destination)
+                .unwrap_or_else(|| {
+                    panic!(
+                        "the embedded distribution carries the declared destination {destination}"
+                    )
+                });
+            assert_eq!(
+                installed.content, composed,
+                "generated destination {destination}"
+            );
+        }
     }
 
     #[test]

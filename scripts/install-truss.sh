@@ -1118,8 +1118,12 @@ PLANNING_PAYLOAD_MANIFEST="scripts/plan-install-files.txt"
 # tree to `.truss/core`; a payload declaring anything else is refused.
 REQUIRED_LAYOUT="3"
 
+# A Truss source checkout is recognised by its distribution tree, which only a
+# source repository carries. An installed consumer has `.truss/core/` but no
+# `distribution/`, and product authority such as TRUSS.md lives in the source
+# repository's own `.truss/authority/`, never inside the installed payload.
 if [ -n "$SCRIPT_DIR" ] && [ -f "$SCRIPT_DIR/../AGENTS.md" ] && \
-   { [ -f "$SCRIPT_DIR/../.truss/core/docs/TRUSS.md" ] || [ -f "$SCRIPT_DIR/../.truss-core/docs/TRUSS.md" ]; }; then
+   [ -f "$SCRIPT_DIR/../distribution/layout-version" ]; then
   SOURCE_ROOT="$(cd "$SCRIPT_DIR/.." && pwd -P)"
   SOURCE_MODE="local"
 fi

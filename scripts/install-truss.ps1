@@ -68,9 +68,12 @@ function Resolve-TargetPath([string]$PathValue) {
 function Get-SourceMode {
     if ($PSScriptRoot) {
         $candidate = Split-Path -Parent $PSScriptRoot
-        $newSentinel = Test-Path (Join-Path $candidate ".truss/core/docs/TRUSS.md")
-        $legacySentinel = Test-Path (Join-Path $candidate ".truss-core/docs/TRUSS.md")
-        if ((Test-Path (Join-Path $candidate "AGENTS.md")) -and ($newSentinel -or $legacySentinel)) {
+        # A Truss source checkout is recognised by its distribution tree; an
+        # installed consumer has `.truss/core/` but no `distribution/`, and
+        # product authority lives in the source repository's own
+        # `.truss/authority/`, never inside the installed payload.
+        $sourceSentinel = Test-Path (Join-Path $candidate "distribution/layout-version")
+        if ((Test-Path (Join-Path $candidate "AGENTS.md")) -and $sourceSentinel) {
             return @{ Mode = "local"; Root = $candidate }
         }
     }

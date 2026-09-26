@@ -718,6 +718,12 @@ fn mode_of(path: &Path) -> u32 {
     fs::metadata(path).unwrap().permissions().mode() & 0o7777
 }
 
+#[cfg(unix)]
+fn set_mode(path: &Path, mode: u32) {
+    use std::os::unix::fs::PermissionsExt;
+    fs::set_permissions(path, fs::Permissions::from_mode(mode)).unwrap();
+}
+
 /// Remediation: a migrated executable stays runnable and the retained backup
 /// keeps its mode. Before the fix `copy_bytes_atomic` created every
 /// destination with the process default mode, so `.truss/core/bin/truss` was
@@ -785,4 +791,91 @@ fn migrated_executables_keep_their_permission_bits() {
             published.display()
         );
     }
+}
+
+/// Owner decision A (ADR 0008 amendment "Bundled executable refresh"):
+/// `migrate --apply` writes the *running* executable to the bundled entrypoint
+/// so a migrated pre-0008 installation is readable by its own entrypoint.
+///
+/// This is the discriminating instrument. Before the fix the migration moved
+/// the legacy stub byte-for-byte and reported `migrated`, leaving a dead
+/// entrypoint: the behaviour existed, ran, and returned a pass. The stub below
+/// is deliberately not the running binary, so a `migrated` run that publishes
+/// the legacy bytes is rejected.
+#[cfg(unix)]
+#[test]
+fn apply_publishes_the_running_executable_instead_of_the_legacy_stub() {
+    let fixture = legacy_repository();
+    let root = fixture.path();
+    let legacy_binary = root.join(".truss-core/bin/truss");
+    fs::create_dir_all(legacy_binary.parent().unwrap()).unwrap();
+    let stub = b"#!/bin/sh\necho not_installed\n";
+    fs::write(&legacy_binary, stub).unwrap();
+    // A legacy entrypoint that is not even executable: the published running
+    // executable must still be published executable (755 at minimum).
+    set_mode(&legacy_binary, 0o600);
+
+    let applied = json(&migrate(root, &["--apply", "--json"]));
+    assert_eq!(applied["state"], "migrated");
+
+    let published = root.join(".truss/core/bin/truss");
+    assert!(published.is_file(), "the bundled entrypoint exists");
+    assert_eq!(
+        fs::read(&published).unwrap(),
+        fs::read(BINARY).unwrap(),
+        "the published entrypoint is the running executable, not the legacy stub"
+    );
+    assert_eq!(
+        mode_of(&published),
+        0o755,
+        "the published entrypoint is executable (755 at minimum)"
+    );
+    assert!(
+        output_retrying_busy(Command::new(&published).arg("--version")).is_ok(),
+        "the published entrypoint runs"
+    );
+
+    // The legacy stub is still backed up byte-for-byte, so rollback and the
+    // retained recovery material keep the original installation.
+    let backup = PathBuf::from(applied["backup_path"].as_str().unwrap())
+        .join("backup/.truss-core/bin/truss");
+    assert_eq!(fs::read(&backup).unwrap(), stub);
+}
+
+/// Owner decision A: even when the legacy tree shipped no executable, the
+/// migration creates the bundled entrypoint from the running executable, and a
+/// rollback removes the file it created.
+#[cfg(unix)]
+#[test]
+fn apply_creates_the_bundled_entrypoint_when_the_legacy_tree_had_none() {
+    let fixture = legacy_repository();
+    let root = fixture.path();
+    assert!(!root.join(".truss-core/bin/truss").exists());
+    let applied = json(&migrate(root, &["--apply", "--json"]));
+    assert_eq!(applied["state"], "migrated");
+    let published = root.join(".truss/core/bin/truss");
+    assert_eq!(fs::read(&published).unwrap(), fs::read(BINARY).unwrap());
+    assert_eq!(mode_of(&published) & 0o111, 0o111);
+
+    // Force a real failure after publication, then assert the rollback removed
+    // the entrypoint the migration created (the legacy tree never had one).
+    let fixture = legacy_repository();
+    let root = fixture.path();
+    fs::create_dir_all(root.join(".truss/core")).unwrap();
+    fs::write(
+        root.join(".truss/core/docs"),
+        b"a file where a directory was needed\n",
+    )
+    .unwrap();
+    let rolled = json(&migrate(root, &["--apply", "--json"]));
+    assert_eq!(rolled["state"], "rolled_back", "{rolled}");
+    assert!(
+        !root.join(".truss/core/bin/truss").exists(),
+        "rollback removes the created entrypoint"
+    );
+    assert!(
+        root.join(".truss-core").is_dir(),
+        "rollback restores the legacy tree"
+    );
+    assert!(root.join(".truss-core/manifest.json").is_file());
 }

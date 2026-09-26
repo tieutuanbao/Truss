@@ -185,7 +185,7 @@ mod tests {
     use std::path::Path;
 
     use super::*;
-    use crate::application::CanonicalBlocks;
+    use crate::application::{CanonicalBlocks, ExecutablePayload};
     use crate::domain::{ContentHash, MigrationOperation, OperationKind};
 
     /// A port double: it answers `supported` from a flag, records whether
@@ -200,6 +200,10 @@ mod tests {
     impl MigrationPort for FakePort {
         fn supported(&self) -> bool {
             self.supported
+        }
+
+        fn running_executable(&self) -> Result<ExecutablePayload, PortError> {
+            Ok(ExecutablePayload::new(b"fake-running-executable".to_vec()))
         }
 
         fn inspect(

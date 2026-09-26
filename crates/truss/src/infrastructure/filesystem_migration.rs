@@ -19,15 +19,17 @@ use serde::{Deserialize, Serialize};
 
 use super::state_io::{copy_bytes_atomic, hash_bytes, io_error, reject_symlink};
 use crate::application::{
-    CanonicalBlocks, MigrationExecution, MigrationInspection, MigrationPort, PortError,
+    CanonicalBlocks, ExecutablePayload, MigrationExecution, MigrationInspection, MigrationPort,
+    PortError,
 };
 use crate::domain::{
     authority_destination, compose_entrypoint, core_destination, delivery_destination,
-    rewrite_document_tokens, ContentHash, IncompleteJournal, IntegrationKind, IntegrationOperation,
-    InventoryEntry, InventoryKind, MigrationOperation, MigrationPlan, MigrationReason,
-    MigrationState, OperationKind, BACKUP_LOCK, BACKUP_ROOT, ENTRYPOINTS, INTEGRATION_IGNORE_RULES,
-    JOURNAL_FILE, LEGACY_CORE_ROOT, LEGACY_DELIVERY_ROOT, LEGACY_DISPATCH_ROOT, LEGACY_ROOTS,
-    LOCAL_ONLY_IGNORE_RULES, NEW_CORE_ROOT,
+    is_bundled_executable, rewrite_document_tokens, ContentHash, IncompleteJournal,
+    IntegrationKind, IntegrationOperation, InventoryEntry, InventoryKind, MigrationOperation,
+    MigrationPlan, MigrationReason, MigrationState, OperationKind, BACKUP_LOCK, BACKUP_ROOT,
+    BUNDLED_EXECUTABLE, ENTRYPOINTS, INTEGRATION_IGNORE_RULES, JOURNAL_FILE, LEGACY_CORE_ROOT,
+    LEGACY_DELIVERY_ROOT, LEGACY_DISPATCH_ROOT, LEGACY_ROOTS, LOCAL_ONLY_IGNORE_RULES,
+    NEW_CORE_ROOT,
 };
 
 // ---------------------------------------------------------------------------
@@ -92,10 +94,21 @@ fn copy_content_with_mode_atomic(
 }
 
 /// The permission bits an operation's source carries, when it has one.
+///
+/// The bundled entrypoint is the running executable, so it must be executable
+/// even when the legacy file it replaces was not: the published mode is the
+/// legacy source mode with `0o755` guaranteed (ADR 0008 amendment).
 fn migration_source_mode(
     root: &Path,
     operation: &MigrationOperation,
 ) -> Result<Option<u32>, PortError> {
+    if is_bundled_executable(&operation.destination) {
+        let inherited = match operation.source.as_ref() {
+            Some(source) => permission_bits(&root.join(source))?,
+            None => 0,
+        };
+        return Ok(Some(inherited | 0o755));
+    }
     match operation.source.as_ref() {
         Some(source) => Ok(Some(permission_bits(&root.join(source))?)),
         None => Ok(None),
@@ -123,12 +136,21 @@ impl MigrationPort for FileSystemMigration {
         cfg!(target_os = "linux")
     }
 
+    /// The running image is the payload the apply publishes as
+    /// `.truss/core/bin/truss` (ADR 0008 amendment, owner decision A).
+    fn running_executable(&self) -> Result<ExecutablePayload, PortError> {
+        let path = std::env::current_exe().map_err(io_error)?;
+        let bytes = fs::read(&path).map_err(io_error)?;
+        Ok(ExecutablePayload::new(bytes))
+    }
+
     fn inspect(
         &self,
         root: &Path,
         blocks: &CanonicalBlocks,
     ) -> Result<MigrationInspection, PortError> {
-        inspect(root, blocks)
+        let executable = self.running_executable()?;
+        inspect(root, blocks, &executable)
     }
 
     fn execute(&self, root: &Path, plan: &MigrationPlan) -> Result<MigrationExecution, PortError> {
@@ -161,7 +183,11 @@ impl MigrationPort for FileSystemMigration {
 // Inspection: structural inventory and classification (D-02, D-10, D-11)
 // ---------------------------------------------------------------------------
 
-fn inspect(root: &Path, blocks: &CanonicalBlocks) -> Result<MigrationInspection, PortError> {
+fn inspect(
+    root: &Path,
+    blocks: &CanonicalBlocks,
+    executable: &ExecutablePayload,
+) -> Result<MigrationInspection, PortError> {
     if !root.is_dir() {
         return Err(PortError::new(format!(
             "migration directory is not a directory: {}",
@@ -238,7 +264,7 @@ fn inspect(root: &Path, blocks: &CanonicalBlocks) -> Result<MigrationInspection,
         );
     }
 
-    classify(root, &mut inspection, blocks)?;
+    classify(root, &mut inspection, blocks, executable)?;
     Ok(inspection)
 }
 
@@ -246,6 +272,7 @@ fn classify(
     root: &Path,
     inspection: &mut MigrationInspection,
     blocks: &CanonicalBlocks,
+    executable: &ExecutablePayload,
 ) -> Result<(), PortError> {
     let legacy_core = root.join(LEGACY_CORE_ROOT);
     let mut members: BTreeMap<String, String> = BTreeMap::new();
@@ -325,6 +352,7 @@ fn classify(
         &inventory,
         &members,
         run_key.as_deref(),
+        executable,
         &mut conflicts,
         &mut symlinks,
         inspection,
@@ -470,6 +498,7 @@ fn plan_operations(
     inventory: &[InventoryEntry],
     members: &BTreeMap<String, String>,
     run_key: Option<&str>,
+    executable: &ExecutablePayload,
     conflicts: &mut Vec<String>,
     symlinks: &mut Vec<String>,
     inspection: &mut MigrationInspection,
@@ -518,7 +547,11 @@ fn plan_operations(
             return Ok(operations);
         };
 
-        let content = if is_state_record(path) {
+        let content = if is_bundled_executable(&destination) {
+            // Owner decision A: the bundled entrypoint is the running
+            // executable, never the pre-0008 bytes it is replacing.
+            Some(executable.bytes.clone())
+        } else if is_state_record(path) {
             let bytes = read_bytes(root, path)?;
             match rewrite_state_record(&bytes, path) {
                 Ok(rewritten) => Some(rewritten),
@@ -559,6 +592,28 @@ fn plan_operations(
         });
     }
     let _ = symlinks;
+    // A legacy tree that shipped no executable still gets a working bundled
+    // entrypoint: the destination is always published from the running
+    // executable, and rollback removes it because it was created.
+    if inspection.blocked.is_none()
+        && !operations
+            .iter()
+            .any(|operation| is_bundled_executable(&operation.destination))
+    {
+        let destination = BUNDLED_EXECUTABLE.to_owned();
+        let intended = executable.bytes.clone();
+        let after_hash = hash_bytes(&intended)?;
+        let (kind, before_hash) = resolve_destination(root, &destination, &intended, conflicts)?;
+        operations.push(MigrationOperation {
+            source: None,
+            destination,
+            kind,
+            source_hash: None,
+            before_hash,
+            after_hash,
+            content: Some(intended),
+        });
+    }
     Ok(operations)
 }
 
@@ -1949,8 +2004,16 @@ mod tests {
         EmbeddedCoreDistribution.blocks().unwrap()
     }
 
+    /// The deterministic stand-in for the running executable. The real image is
+    /// resolved by [`FileSystemMigration::running_executable`]; unit tests
+    /// inject a fixed payload so no assertion depends on the test-harness
+    /// binary.
+    fn stub_executable() -> ExecutablePayload {
+        ExecutablePayload::new(b"#!/bin/sh\necho stub-truss\n".to_vec())
+    }
+
     fn inspect_fixture(root: &Path) -> MigrationInspection {
-        inspect(root, &blocks()).unwrap()
+        inspect(root, &blocks(), &stub_executable()).unwrap()
     }
 
     fn plan_for(root: &Path) -> MigrationPlan {

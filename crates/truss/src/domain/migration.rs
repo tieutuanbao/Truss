@@ -27,6 +27,15 @@ pub const AUTHORITY_ROOT: &str = ".truss/authority";
 pub const DELIVERY_NAMESPACE: &str = ".truss/delivery";
 /// The retained migration backup root.
 pub const BACKUP_ROOT: &str = ".truss-migration-backup";
+/// The bundled entrypoint the migration always refreshes from the running
+/// executable (ADR 0008 amendment, owner decision A). Its bytes are the one
+/// payload byte a migration may replace; every other moved file keeps its
+/// bytes exactly.
+pub const BUNDLED_EXECUTABLE: &str = ".truss/core/bin/truss";
+/// The Windows spelling of the bundled entrypoint. It is listed as an ignored
+/// integration path, but apply is Linux-only (D-04), so migration never
+/// publishes it from a non-Linux host.
+pub const BUNDLED_EXECUTABLE_EXE: &str = ".truss/core/bin/truss.exe";
 /// The stable apply lock, outside every moving root (D-08).
 pub const BACKUP_LOCK: &str = "migration.lock";
 /// The per-transaction journal file name.
@@ -49,8 +58,8 @@ pub const LEGACY_ROOTS: [&str; 3] = [LEGACY_CORE_ROOT, LEGACY_DELIVERY_ROOT, LEG
 pub const INTEGRATION_IGNORE_RULES: [&str; 5] = [
     ".truss/authority/",
     ".truss/delivery/",
-    ".truss/core/bin/truss",
-    ".truss/core/bin/truss.exe",
+    BUNDLED_EXECUTABLE,
+    BUNDLED_EXECUTABLE_EXE,
     ".truss-migration-backup/",
 ];
 
@@ -307,6 +316,13 @@ impl EntrypointDefect {
 /// The deterministic preview backup path (D-07): a template, no timestamp.
 pub fn backup_template(repository: &str) -> String {
     format!("{repository}/{BACKUP_ROOT}/{BACKUP_TIMESTAMP_PLACEHOLDER}/")
+}
+
+/// Whether a destination is the bundled entrypoint, whose intended bytes are
+/// the running executable rather than a byte-for-byte move of its legacy
+/// source (ADR 0008 amendment, owner decision A).
+pub fn is_bundled_executable(destination: &str) -> bool {
+    destination == BUNDLED_EXECUTABLE
 }
 
 /// The `.truss/core` destination for a path inside the legacy core root.

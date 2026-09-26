@@ -36,6 +36,24 @@ pub trait CanonicalEntrypointsPort {
     fn blocks(&self) -> Result<CanonicalBlocks, PortError>;
 }
 
+/// The bytes of the executable this process is running.
+///
+/// `truss migrate --apply` publishes exactly these bytes as the bundled
+/// entrypoint `.truss/core/bin/truss` (ADR 0008 amendment "Bundled executable
+/// refresh", owner decision A). Resolving the payload through the port keeps
+/// the application free of process and filesystem concerns and lets unit tests
+/// inject deterministic bytes instead of the test-harness image.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ExecutablePayload {
+    pub bytes: Vec<u8>,
+}
+
+impl ExecutablePayload {
+    pub fn new(bytes: Vec<u8>) -> Self {
+        Self { bytes }
+    }
+}
+
 /// The complete read-only classification of one repository (D-08, D-11–D-13).
 ///
 /// The adapter resolves every path transform and comparison so the application
@@ -105,6 +123,11 @@ impl MigrationExecution {
 pub trait MigrationPort {
     /// Whether this build and host may apply a migration (D-04: Linux only).
     fn supported(&self) -> bool;
+
+    /// The bytes of the currently running executable, which the apply publishes
+    /// as the bundled entrypoint inside the same transaction (ADR 0008
+    /// amendment, owner decision A).
+    fn running_executable(&self) -> Result<ExecutablePayload, PortError>;
 
     /// Classify the repository without mutating anything, including no lock
     /// and no backup directory (REQ-002).

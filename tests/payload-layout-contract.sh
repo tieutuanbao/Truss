@@ -27,6 +27,10 @@
 #       AGENTS.md from.
 #   L7  the payload mirror carries no .truss-core directory; the installed
 #       destination prefix is .truss/core since decision 0008.
+#   L8  the distribution entrypoint blocks are the canonical inputs the binary
+#       embeds: the CanonicalEntrypointsPort::blocks() include_bytes! literals
+#       name distribution/entrypoints/<block>, those files exist beneath it, and
+#       the AGENTS.md generator literal and the canonical agents input agree.
 #
 # L5 no longer compares the mirror against any repository tree. The pre-0008
 # root tree and crates/truss/assets were deleted by the repository migration,
@@ -190,6 +194,20 @@ GENERATOR_LITERAL = re.compile(
     r'let\s+agent_block\s*=\s*include_bytes!\("([^"]+)"\)', re.DOTALL
 )
 PREFIX_LITERAL = re.compile(r'let\s+mut\s+agents\s*=\s*b"((?:[^"\\]|\\.)*)"')
+
+# The canonical entrypoint blocks the binary embeds, keyed by the CanonicalBlocks
+# field that names them (decision record D-05). L8 binds the compile-time
+# literals to these paths so a source that embeds a different copy -- the
+# byte-identical scripts/ counterpart, a retired assets tree, or the sibling
+# block -- fails the contract instead of shipping silently.
+CANONICAL_ENTRYPOINTS = {
+    "agents": "distribution/entrypoints/agent-truss-block.md",
+    "claude": "distribution/entrypoints/claude-truss-block.md",
+}
+BLOCKS_IMPLEMENTATION = re.compile(
+    r"impl\s+CanonicalEntrypointsPort\s+for\s+\w+\s*\{(.*?)\n\}", re.DOTALL
+)
+BLOCKS_LITERAL = re.compile(r'(agents|claude)\s*:\s*include_bytes!\(\s*"([^"]+)"\s*\)')
 
 PROBLEMS = []
 
@@ -400,6 +418,73 @@ def check_generated_binding(declarations):
                  % (dest, decode_escapes(prefix), source_prefix))
 
 
+def check_canonical_entrypoint_sources():
+    """The binary embeds the distribution entrypoint blocks, and only those.
+
+    `CanonicalEntrypointsPort::blocks()` is the compile-time binding the migration
+    installs the managed block from. A literal that names any other copy is a
+    canonical-source drift the digest baseline cannot see, because the shipped
+    bytes may still be intact.
+    """
+    if not os.path.isfile(GENERATOR_SOURCE):
+        fail("payload-layout-contract L8",
+             "%s is missing, so the embedded entrypoint sources cannot be bound"
+             % os.path.relpath(GENERATOR_SOURCE, ROOT))
+        return
+    with open(GENERATOR_SOURCE, encoding="utf-8") as handle:
+        source = handle.read()
+    implementation = BLOCKS_IMPLEMENTATION.search(source)
+    if not implementation:
+        fail("payload-layout-contract L8",
+             "cannot find the CanonicalEntrypointsPort::blocks() implementation in "
+             "%s; the embedded canonical entrypoint sources are unbound"
+             % os.path.relpath(GENERATOR_SOURCE, ROOT))
+        return
+    embedded = {
+        field: literal
+        for field, literal in BLOCKS_LITERAL.findall(implementation.group(1))
+    }
+    entry_root = os.path.realpath(ENTRY)
+    for field in sorted(CANONICAL_ENTRYPOINTS):
+        canonical = CANONICAL_ENTRYPOINTS[field]
+        literal = embedded.get(field)
+        if literal is None:
+            fail("payload-layout-contract L8",
+                 "blocks() embeds no %s block; the canonical input %s must be its "
+                 "compile-time source" % (field, canonical))
+            continue
+        named = os.path.normpath(repo_relative(literal))
+        path = os.path.join(ROOT, named)
+        if not os.path.isfile(path):
+            fail("payload-layout-contract L8",
+                 "blocks() embeds %s for the %s block, which does not exist; a "
+                 "missing canonical entrypoint source must fail before it ships"
+                 % (named, field))
+            continue
+        resolved = os.path.realpath(path)
+        if resolved == entry_root or not resolved.startswith(entry_root + os.sep):
+            fail("payload-layout-contract L8",
+                 "blocks() embeds %s, which resolves to %s outside "
+                 "distribution/entrypoints/; a spelling prefix is not containment"
+                 % (named, resolved))
+            continue
+        if named != canonical:
+            fail("payload-layout-contract L8",
+                 "blocks() embeds %s for the %s block while the canonical input is "
+                 "%s; embedding another copy drifts the shipped block from its "
+                 "reviewed source" % (named, field, canonical))
+    generator = GENERATOR_LITERAL.search(source)
+    if generator is not None and "agents" in embedded:
+        generator_source = os.path.normpath(repo_relative(generator.group(1)))
+        canonical_agents = os.path.normpath(repo_relative(embedded["agents"]))
+        if generator_source != canonical_agents:
+            fail("payload-layout-contract L8",
+                 "the AGENTS.md generator literal names %s while the canonical "
+                 "blocks() agents input names %s; both embedded copies of the "
+                 "managed block must come from one canonical source"
+                 % (generator_source, canonical_agents))
+
+
 def check_payload_digests(entries, recorded):
     """Every mirror file and entrypoint block matches its recorded digest.
 
@@ -495,6 +580,7 @@ def main():
     check_mapping(declarations, entries)
     check_generators(declarations)
     check_generated_binding(declarations)
+    check_canonical_entrypoint_sources()
     check_payload_digests(entries, recorded)
     check_entrypoints_present()
     check_entrypoint_counterparts()
@@ -662,6 +748,45 @@ neg "a declared generator the CLI does not use is rejected" "L6" run_root "$WORK
 mkdir -p "$(fixture l7)/distribution/payload/.truss-core/docs"
 printf 'legacy\n' > "$WORK/l7/distribution/payload/.truss-core/docs/WORKFLOW.md"
 neg "a legacy directory left in the payload mirror is rejected" "L7" run_root "$WORK/l7"
+
+# --- L8: canonical embedded entrypoint sources -----------------------------
+# The blocks() literals are compile-time paths. Repoint the Claude block at the
+# byte-identical scripts/ copy: the digests, the counterparts, and the generated
+# binding all still hold, so only the canonical-ownership rule can see it.
+python3 - "$(fixture l8s)/crates/truss/src/infrastructure/embedded_distribution.rs" <<'PY'
+import sys
+path = sys.argv[1]
+text = open(path, encoding="utf-8").read()
+open(path, "w", encoding="utf-8").write(text.replace(
+    'distribution/entrypoints/claude-truss-block.md',
+    'scripts/claude-truss-block.md', 1))
+PY
+neg "a Claude block embedded from scripts/ instead of distribution/entrypoints is rejected" \
+  "L8" run_root "$WORK/l8s"
+
+# Both blocks are present and canonical-shaped, but the Claude field is bound to
+# the agent block: the assignment, not the path, is wrong.
+python3 - "$(fixture l8c)/crates/truss/src/infrastructure/embedded_distribution.rs" <<'PY'
+import sys
+path = sys.argv[1]
+text = open(path, encoding="utf-8").read()
+open(path, "w", encoding="utf-8").write(text.replace(
+    'claude: include_bytes!("../../../../distribution/entrypoints/claude-truss-block.md")',
+    'claude: include_bytes!("../../../../distribution/entrypoints/agent-truss-block.md")', 1))
+PY
+neg "a Claude block bound to the agent entrypoint source is rejected" "L8" run_root "$WORK/l8c"
+
+# A canonical-shaped literal that names a file the distribution does not hold.
+python3 - "$(fixture l8m)/crates/truss/src/infrastructure/embedded_distribution.rs" <<'PY'
+import sys
+path = sys.argv[1]
+text = open(path, encoding="utf-8").read()
+open(path, "w", encoding="utf-8").write(text.replace(
+    'claude: include_bytes!("../../../../distribution/entrypoints/claude-truss-block.md")',
+    'claude: include_bytes!("../../../../distribution/entrypoints/claude-truss-block-renamed.md")',
+    1))
+PY
+neg "an embedded entrypoint source the distribution does not hold is rejected" "L8" run_root "$WORK/l8m"
 
 echo
 echo "== payload-layout-contract summary: $OK ok, $BAD failed =="

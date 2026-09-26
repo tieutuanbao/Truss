@@ -10,7 +10,10 @@
 # role set's absence from active tables, the BA/architect/planner template
 # fields, and the delivery manifest membership of the new template.
 #
-# Authority: .truss-core/docs/decisions/0004-seven-role-delivery.md.
+# Authority: .truss-core/docs/decisions/0004-seven-role-delivery.md for the role
+# and template shape, and the two 0008-single-truss-root amendments for the
+# migration-only ownership exception and the five relative integration ignore
+# rules.
 # The check prints one line per observation plus a final summary and exits
 # non-zero when any observation fails. Negative proof mutates isolated
 # temporary copies; the candidate working tree is never modified.
@@ -114,6 +117,12 @@ PATH = {
     "manifest": os.environ.get("CONTRACT_MANIFEST",
                                os.path.join(ROOT, "scripts/delivery-install-files.txt")),
     "authority": os.path.join(ROOT, ".truss-core/docs/decisions/0004-seven-role-delivery.md"),
+    "adr": os.environ.get(
+        "CONTRACT_ADR",
+        os.path.join(ROOT, ".truss/authority/decisions/0008-single-truss-root.md")),
+    "gitignore": os.environ.get("CONTRACT_GITIGNORE", os.path.join(ROOT, ".gitignore")),
+    "git_exclude": os.environ.get("CONTRACT_GIT_EXCLUDE",
+                                  os.path.join(ROOT, ".git/info/exclude")),
     "workflow": os.environ.get(
         "CONTRACT_WORKFLOW", os.path.join(ROOT, "distribution/payload/.truss/core/docs/WORKFLOW.md")),
     "plans_readme": os.environ.get(
@@ -345,6 +354,32 @@ def check_migration():
              "delivery-setup migration does not introduce the project-manager row with `current` cells")
 
 
+# ADR 0008's 2026-09-26 amendment: the migration-only write exception and the
+# integration ignore contract D-01 extends to five relative rules. These are
+# repository-owned statements, so the contract asserts their exact accepted
+# shape: a broader grant or a shorter or rooted rule list must fail.
+ADR_EXCEPTION_HEADING = "### Migration-only ownership exception"
+ADR_IGNORE_HEADING = "### Integration ignore rules"
+ADR_EXCEPTION_SCOPE = (
+    "may write `.truss/authority/**` and `.truss/delivery/**` **only** as operations "
+    "enumerated in an immutable migration plan derived from recognized legacy roots"
+)
+ADR_EXCEPTION_NON_EXTENSION = (
+    "This exception does not extend install, update, status, doctor, self-update, or "
+    "add-on ownership."
+)
+ADR_ORDINARY_OWNERSHIP_UNCHANGED = (
+    "Ordinary CLI ownership stated earlier in this decision is otherwise unchanged."
+)
+INTEGRATION_IGNORE_RULES = [
+    ".truss/authority/",
+    ".truss/delivery/",
+    ".truss/core/bin/truss",
+    ".truss/core/bin/truss.exe",
+    ".truss-migration-backup/",
+]
+ROOT_ANCHORED_TRUSS = re.compile(r"^\s*/\.truss")
+
 PRIVATE_RUN_DIR = ".truss/delivery/runs/<run-key>/"
 APPROVAL_RECEIPT = ".truss/delivery/approvals/<run-key>.md"
 SNAPSHOT_FILE = "approved-envelope.md"
@@ -418,6 +453,85 @@ def check_envelope():
     # stale tree is what produced the false negative this rule existed to catch.
 
 
+def flatten(lines):
+    """One line of whitespace-collapsed text, so wrapping never hides a clause."""
+    return " ".join(" ".join(lines or []).split())
+
+
+def check_adr():
+    """The migration-only exception and the five-rule ignore contract.
+
+    Both live in the 2026-09-26 amendment of ADR 0008, which is repository-owned
+    authority rather than Rust behaviour, so the accepted wording is asserted
+    here: a grant of general authority writes that merely mentions migration, and
+    a four-only or root-anchored rule list, must fail.
+    """
+    adr = read("adr")
+    if adr is None:
+        return
+    exception = section(adr, ADR_EXCEPTION_HEADING)
+    if exception is None:
+        fail("delivery-role-contract R13",
+             "the ADR has no %r section; `truss migrate` writes `.truss/authority/**` "
+             "and `.truss/delivery/**` only under that accepted exception"
+             % ADR_EXCEPTION_HEADING)
+    else:
+        body = flatten(exception)
+        for path in (".truss/authority/**", ".truss/delivery/**"):
+            if path not in body:
+                fail("delivery-role-contract R13",
+                     "the migration-only exception does not name %s; both namespaces "
+                     "the exception covers must be stated" % path)
+        if ADR_EXCEPTION_SCOPE not in body:
+            fail("delivery-role-contract R13",
+                 "the migration-only exception does not scope the write to `only` the "
+                 "operations enumerated in an immutable migration plan derived from "
+                 "recognized legacy roots; a general authority write is not approved")
+        if ADR_EXCEPTION_NON_EXTENSION not in body:
+            fail("delivery-role-contract R13",
+                 "the migration-only exception does not state that it stops at "
+                 "install, update, status, doctor, self-update, and add-on ownership; "
+                 "a broader grant would weaken ordinary CLI ownership")
+    if ADR_ORDINARY_OWNERSHIP_UNCHANGED not in " ".join(adr.split()):
+        fail("delivery-role-contract R13",
+             "the ADR does not state that ordinary CLI ownership is otherwise "
+             "unchanged; the exception must not silently replace the ordinary "
+             "boundary")
+    ignore_section = section(adr, ADR_IGNORE_HEADING)
+    if ignore_section is None:
+        fail("delivery-role-contract R14",
+             "the ADR has no %r section, where the managed integration ignore "
+             "contract is stated" % ADR_IGNORE_HEADING)
+    else:
+        body = flatten(ignore_section)
+        for rule in INTEGRATION_IGNORE_RULES:
+            if "`%s`" % rule not in body:
+                fail("delivery-role-contract R14",
+                     "the integration ignore rules do not state the relative rule `%s`; "
+                     "D-01 makes the approved list five rules" % rule)
+        rooted = [token.strip()
+                  for token in re.findall(r"`([^`]*)`", "\n".join(ignore_section))
+                  if token.strip().startswith("/.truss")]
+        rooted += [line.strip() for line in ignore_section
+                   if ROOT_ANCHORED_TRUSS.match(line)]
+        if rooted:
+            fail("delivery-role-contract R14",
+                 "the integration ignore rules carry the root-anchored spelling(s) %s; "
+                 "every Truss ignore rule is relative to the project root"
+                 % ", ".join(rooted))
+    for label, path in ((".gitignore", PATH["gitignore"]),
+                        (".git/info/exclude", PATH["git_exclude"])):
+        if not os.path.isfile(path):
+            continue
+        with open(path, encoding="utf-8") as handle:
+            for number, line in enumerate(handle, 1):
+                if ROOT_ANCHORED_TRUSS.match(line.rstrip("\n")):
+                    fail("delivery-role-contract R14",
+                         "%s:%d carries the root-anchored spelling %r; every Truss "
+                         "ignore rule is relative to the project root"
+                         % (label, number, line.strip()))
+
+
 def main():
     command = sys.argv[1] if len(sys.argv) > 1 else "all"
     if command in ("roles", "all"):
@@ -430,6 +544,8 @@ def main():
         check_migration()
     if command in ("envelope", "all"):
         check_envelope()
+    if command in ("adr", "all"):
+        check_adr()
     if PROBLEMS:
         return 1
     return 0
@@ -547,6 +663,70 @@ neg "a workflow that drops the never-committed rule is rejected" "R11" \
 
 pos "the repository delivery skill carries the consumer-local envelope contract" \
   python3 "$CONTRACT" envelope
+pos "the amended ADR keeps the migration-only exception and the five relative integration ignore rules" \
+  python3 "$CONTRACT" adr
+echo
+
+# ------------------------------------------- ADR 0008 amendment negatives ----
+# A present-but-wrong amendment that mentions migration while granting general
+# authority writes, and one whose exception survives but whose unchanged
+# ordinary boundary is replaced by a general grant.
+python3 - "$REPO/.truss/authority/decisions/0008-single-truss-root.md" "$WORK/ng11-adr-broad.md" <<'PY'
+import re
+import sys
+text = open(sys.argv[1], encoding="utf-8").read()
+broad = ("### Migration-only ownership exception\n\n"
+         "The `truss migrate` command may write `.truss/authority/**` and "
+         "`.truss/delivery/**` at any time, and every other command may write "
+         "them too; migration is mentioned because the exception is migration-shaped.\n\n")
+mutated = re.sub(r"### Migration-only ownership exception\n.*?(?=\n### )",
+                 broad, text, count=1, flags=re.S)
+open(sys.argv[2], "w", encoding="utf-8").write(mutated)
+PY
+neg "an ADR granting general authority writes while merely mentioning migration is rejected" "R13" \
+  env CONTRACT_ADR="$WORK/ng11-adr-broad.md" python3 "$CONTRACT" adr
+
+python3 - "$REPO/.truss/authority/decisions/0008-single-truss-root.md" "$WORK/ng12-adr-general.md" <<'PY'
+import sys
+text = open(sys.argv[1], encoding="utf-8").read()
+open(sys.argv[2], "w", encoding="utf-8").write(text.replace(
+    "Ordinary CLI ownership stated earlier in this decision is otherwise unchanged.",
+    "The CLI may write `.truss/authority/**` and `.truss/delivery/**` for any command.",
+    1))
+PY
+neg "an ADR whose unchanged ordinary ownership is replaced by a general grant is rejected" "R13" \
+  env CONTRACT_ADR="$WORK/ng12-adr-general.md" python3 "$CONTRACT" adr
+
+python3 - "$REPO/.truss/authority/decisions/0008-single-truss-root.md" "$WORK/ng13-adr-four.md" <<'PY'
+import re
+import sys
+text = open(sys.argv[1], encoding="utf-8").read()
+four = ("### Integration ignore rules\n\nThe managed entrypoint integration rules are "
+        "the relative paths `.truss/authority/`, `.truss/delivery/`, "
+        "`.truss/core/bin/truss`, and `.truss/core/bin/truss.exe`. Root-anchored "
+        "spellings of any Truss ignore rule remain withdrawn.\n\n")
+mutated = re.sub(r"### Integration ignore rules\n.*?(?=\n### )", four, text,
+                 count=1, flags=re.S)
+open(sys.argv[2], "w", encoding="utf-8").write(mutated)
+PY
+neg "a four-only integration ignore list is rejected" "R14" \
+  env CONTRACT_ADR="$WORK/ng13-adr-four.md" python3 "$CONTRACT" adr
+
+python3 - "$REPO/.truss/authority/decisions/0008-single-truss-root.md" "$WORK/ng14-adr-rooted.md" <<'PY'
+import sys
+text = open(sys.argv[1], encoding="utf-8").read()
+open(sys.argv[2], "w", encoding="utf-8").write(text.replace(
+    "The managed entrypoint integration rules are the relative paths",
+    "The managed entrypoint integration rules are the relative paths `/.truss/authority/`,",
+    1))
+PY
+neg "a root-anchored spelling in the ADR integration ignore rules is rejected" "R14" \
+  env CONTRACT_ADR="$WORK/ng14-adr-rooted.md" python3 "$CONTRACT" adr
+
+cp -p "$REPO/.gitignore" "$WORK/ng15-gitignore"
+printf '/.truss/authority/\n' >> "$WORK/ng15-gitignore"
+neg "a root-anchored spelling in the repository ignore file is rejected" "R14" \
+  env CONTRACT_GITIGNORE="$WORK/ng15-gitignore" python3 "$CONTRACT" adr
 echo
 
 echo "== delivery-role-contract summary: $OK ok, $BAD failed =="

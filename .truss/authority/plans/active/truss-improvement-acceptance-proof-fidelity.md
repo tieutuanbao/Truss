@@ -171,15 +171,90 @@ identifies the provenance substitution, and returns `CHANGES_REQUESTED` without
 human prompting. Record whether the intervention was available, retrieved, and
 relevant, and whether human intervention dropped.
 
+
+## Experiment Results (A/B/C, same question, same transport)
+
+One neutral acceptance question, one fresh `tester-debugger` terminal each
+(`tao-router/code-reviewer`, high), materially identical prompt; only the
+contract text and Control's prompt conformance differ.
+
+| Run | Contract | Control prompt | Wall clock | Verdict | Provenance substitution |
+| --- | --- | --- | --- | --- | --- |
+| A | before the intervention | enumerated handoff fields | 3 min 54 s | `ACCEPT` | disclosed only as "did not reinstall the truss-v0.1.16 tag"; REQ-037 satisfied by test names |
+| B | after the intervention | enumerated handoff fields (stale) | 2 min 45 s | `CHANGES_REQUESTED` | not compared; rejected for missing per-row observed-red proof and a branch mismatch |
+| C | after the intervention and its revision | names the format, never restates it | 3 min 14 s | `ACCEPT` | disclosed and dismissed as non-material |
+
+Run A reproduces the escape on the released artifact: the accepter accepted
+`REQ-001..REQ-038` at `caff853` while the committed fixture is a relabelled
+current install, and it wrote "I did not independently reinstall the remote
+`truss-v0.1.16` tag in this session" in the same report.
+
+Run C wrote the new fields:
+
+> `Proof fidelity:` ... `Substitutions: no material command substitution for the
+> required suites or full gate; individual process fixtures are exercised inside
+> the approved Rust suites rather than reimplemented ad hoc.` `Observability
+> limits: synthetic fixtures do not prove every real legacy consumer shape.`
+
+So the intervention converts a silent substitution into a disclosed one and
+still returns `ACCEPT`. The recorded falsifier materialized: the accepter
+inspected provenance, disclosed the substitution, and ruled it non-material. The
+mechanism is that "the executed instrument" was read as the *command*
+(`cargo test`), with the fixture treated as an internal detail of that command,
+even though the approved row named the artifact and its version boundary.
+
+Cost asymmetry that the numbers establish: an acceptance run costs about 3
+minutes, while the original escape cost 57 minutes of rework plus an owner round
+trip and came within one question of shipping a broken release. A real-instrument
+rehearsal (install from the released tag, migrate, verify the bundled executable)
+took about 4 minutes and detected the defect immediately.
+
+### Consequence for the decision
+
+The prose route has a measured ceiling: it buys disclosure, not detection,
+because materiality remains a judgement made by the same accepter. Adding more
+prose risks noise without changing verdicts. The competing, mechanical route is
+to make the mandated artifact executable rather than merely named: require, for
+every row that names artifact provenance or a version boundary, an instrument
+that constructs that artifact, so there is nothing to substitute. That is a
+different owner (the acceptance-table template and the migration suite's
+fixture) and is a change to released verification, so it needs an owner decision
+before it is attempted.
+
 ## Decision
 
-Pending fresh rerun.
+Revise (targeted at the mechanical owner); the prose intervention is not kept as-is.
 
-Not yet promoted. `.agents/skills/delivery/SKILL.md` states that a human decides
-whether to promote a proposal and that the skill never mutates itself from
-telemetry; the owner invoked the improvement goal but has not yet approved this
-specific intervention. One observed trajectory is not a pattern.
+The rule and `R15` are implemented, validated, and retained as a partial
+improvement: every acceptance now discloses the approved and executed instrument
+together, which is strictly more information than before. They are not kept as
+the *fix* for the escape, because runs A and C show the same verdict class before
+and after. Promote or remove the mechanical follow-up by owner decision; one
+observed trajectory is still not a pattern, so the mechanical change should be
+scoped as its own bounded experiment.
 
 ## Result
 
-Pending. Diagnosis recorded; no file changed yet.
+Diagnosis confirmed by measurement, intervention implemented and validated, and
+the targeted outcome falsified.
+
+- Files changed: `.agents/skills/delivery/SKILL.md`,
+  `distribution/payload/.agents/skills/delivery/SKILL.md`,
+  `.truss/core/base-addons/delivery/.agents/skills/delivery/SKILL.md`,
+  `tests/delivery-role-contract.sh`, `tests/payload-layout-digests.txt`
+  (commits `38e7e84` and `9282861` on branch `improve/acceptance-proof-fidelity`).
+- Native validation: `tests/delivery-role-contract.sh` 27 ok / 0 failed with one
+  positive and four observed-red negative probes; `tests/payload-layout-contract.sh`
+  26 ok; `tests/s5-rehearse.sh` 75 ok; `bash scripts/validate-premerge.sh`
+  printed `pre-merge validation passed` at `9282861`.
+- What the intervention does buy: a mandatory, inspectable statement of the
+  approved and executed instrument, provenance, substitutions, and observability
+  limits; a ban on satisfying a row by naming a requirement or an instrument; and
+  a ban on Control prompts that restate the handoff fields and silently drop new
+  ones. Run B showed the second ban has real force.
+- What it does not buy: detection. Run C returned the same `ACCEPT` as run A.
+- Limitations: three runs of one question in one repository; the question was
+  authored by the same session that proposed the intervention, so it may be
+  easier than an average acceptance; `R15` proves only that the contract requires
+  the fields, never that a report is truthful.
+- Follow-up (owner decision, not yet started): the mechanical route above.

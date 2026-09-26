@@ -58,6 +58,38 @@ fn json(output: &Output) -> serde_json::Value {
     })
 }
 
+/// How many times an `ETXTBSY` exec is retried before the failure is
+/// reported. The holder is a concurrent child of this test process that
+/// inherited the destination's write descriptor at `fork` and drops it at its
+/// own `exec`; that window is sub-millisecond, so a short bounded wait is
+/// sufficient and the failure is still reported if no holder ever leaves.
+const BUSY_EXEC_ATTEMPTS: usize = 50;
+
+/// Runs `command`, retrying while the kernel reports `ETXTBSY`
+/// (`ErrorKind::ExecutableFileBusy`).
+///
+/// A destination written moments earlier (by the `fs::copy` below, or by the
+/// migration's atomic publish) can be briefly "busy" to `exec`: while another
+/// test thread forks during that write, the child inherits the write
+/// descriptor and holds it until its own `exec` closes it. This is a property
+/// of running these tests in parallel on Linux, not of the binary under test,
+/// so the retry waits out the transient holder without weakening any assertion.
+fn output_retrying_busy(command: &mut Command) -> std::io::Result<Output> {
+    let mut attempt = 0;
+    loop {
+        match command.output() {
+            Err(error)
+                if error.kind() == std::io::ErrorKind::ExecutableFileBusy
+                    && attempt + 1 < BUSY_EXEC_ATTEMPTS =>
+            {
+                attempt += 1;
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            result => return result,
+        }
+    }
+}
+
 /// A real installation moved to the pre-0008 layout: the state root becomes
 /// `.truss-core`, every managed destination is rewritten to `.truss-core/…`,
 /// the `base/` mirror follows, and the recorded core version is the released
@@ -654,15 +686,16 @@ fn a_copied_running_binary_applies_and_retires_its_own_tree() {
     fs::copy(BINARY, &legacy_binary).unwrap();
 
     let elsewhere = tempfile::tempdir().unwrap();
-    let output = Command::new(&legacy_binary)
-        .arg("migrate")
-        .arg("--directory")
-        .arg(root)
-        .arg("--apply")
-        .arg("--json")
-        .current_dir(elsewhere.path())
-        .output()
-        .expect("the copied binary runs");
+    let output = output_retrying_busy(
+        Command::new(&legacy_binary)
+            .arg("migrate")
+            .arg("--directory")
+            .arg(root)
+            .arg("--apply")
+            .arg("--json")
+            .current_dir(elsewhere.path()),
+    )
+    .expect("the copied binary runs");
     assert!(
         output.status.success(),
         "the running binary retires its own tree: {}",
@@ -730,7 +763,7 @@ fn migrated_executables_keep_their_permission_bits() {
         "the binary stays runnable"
     );
     assert!(
-        Command::new(&published).arg("--version").output().is_ok(),
+        output_retrying_busy(Command::new(&published).arg("--version")).is_ok(),
         "the migrated binary is still executable"
     );
 

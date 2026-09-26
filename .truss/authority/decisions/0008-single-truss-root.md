@@ -246,3 +246,65 @@ leading slash describes a different location than the one Truss uses.
 Truss product authority (its own `TRUSS.md`, `ARCHITECTURE.md`, decisions)
 stays in the Truss source repository and is never part of the installed
 payload.
+
+## Amendment
+
+Date: 2026-09-26. Amended by owner decision to accept `truss migrate` (stage 4
+of item 7) and to record its operator-visible limits.
+
+### Migration-only ownership exception
+
+The `truss migrate` command may write `.truss/authority/**` and
+`.truss/delivery/**` **only** as operations enumerated in an immutable
+migration plan derived from recognized legacy roots. This exception does not
+extend install, update, status, doctor, self-update, or add-on ownership.
+
+- Migration is preview-only unless `--apply` is supplied. Preview performs no
+  filesystem mutation: no create, no write, no lock, no backup directory, no
+  timestamp.
+- Unknown inputs, ambiguous delivery run identity, unsafe paths, pending
+  sessions, byte-differing collisions, and missing or broken entrypoint markers
+  refuse before mutation.
+- Apply uses a separate journal and a verified retained backup under
+  `.truss-migration-backup/<UTC-timestamp>/`. It merges without replacing
+  pre-existing namespace contents and retires legacy roots only after
+  destination and integration verification.
+- Rollback restores only recorded originals, removes only transaction-created
+  paths, fences post-crash edits, and must not claim safety when restoration is
+  incomplete.
+- The migration transaction is separate from the core update transaction,
+  which keeps its current ownership unchanged.
+
+Ordinary CLI ownership stated earlier in this decision is otherwise unchanged.
+
+### Integration ignore rules
+
+The managed entrypoint integration rules are the relative paths
+`.truss/authority/`, `.truss/delivery/`, `.truss/core/bin/truss`, and
+`.truss/core/bin/truss.exe`. `.truss-migration-backup/` is **additionally
+ignored** as retained local recovery material; it is not a managed namespace
+and is never auto-deleted. Root-anchored spellings of any Truss ignore rule
+remain withdrawn.
+
+### Operator-visible limits of this delivery
+
+- An absent `AGENTS.md` or `CLAUDE.md` is skipped as `absent_optional`; a
+  present file with zero, duplicate, broken, or out-of-order
+  `TRUSS:BEGIN`/`TRUSS:END` markers refuses before mutation. Migration never
+  creates an optional mixed file.
+- Apply is Linux-only in this delivery. A Windows host preview reports
+  `blocked` with reason `unsupported_apply_platform`, and `--apply` exits
+  non-zero before lock or mutation. Windows apply requires a later approved
+  design and a real proof lane.
+- Preview prints the deterministic backup template
+  `<repo>/.truss-migration-backup/<UTC-timestamp>/` with no concrete
+  timestamp; `--apply` freezes one UTC timestamp in the journal and prints the
+  exact created path.
+
+### Recognized legacy delivery shape
+
+Run-key recognition is intentionally narrow: `.delivery/<run-key>/**` and
+`.delivery-dispatch/<run-key>/**` with exactly one direct child directory per
+non-empty root, and byte-identical child names when both roots are non-empty.
+Files directly under a legacy root, multiple direct children, differing child
+names, symlinked children, and nested shapes are refused rather than guessed.

@@ -209,3 +209,27 @@ must be re-earned by a fresh acceptance at the new exact HEAD.
 - **Minor — unknown-run-key token rewrite fallback** to
   `.truss/delivery/runs/evidence/<rest>` can leave wrong-shape references (never
   misfile files).
+
+### Post-acceptance remediation 2 — flaky running-binary test (2026-09-26)
+
+The post-remediation acceptance returned ACCEPT at `1753e32`, but Control then
+observed that `crates/truss/tests/migration_lifecycle.rs::a_copied_running_binary_applies_and_retires_its_own_tree`
+failed intermittently under the default parallel test threads with
+`ExecutableFileBusy` ("Text file busy") at the exec of a freshly copied binary:
+1 failure in 6 full-suite runs, 0 in 13 isolated or single-threaded runs. That
+made `bash scripts/validate-premerge.sh` intermittently red with no code change,
+so the repository gate was not reproducibly green.
+
+- Remediation commit `571bf82` routes both execs of a freshly written binary in
+  that test through one bounded retry on `ErrorKind::ExecutableFileBusy`. It
+  touches only the test file, changes no product code, and weakens no assertion.
+- Evidence: before the change, 1 of 20 default-parallelism runs failed with
+  `Text file busy`; with the retry instrumented, 45 runs absorbed 5 real busy
+  execs with 0 failures; Control re-ran the full file suite 12 times at
+  `571bf82` with 0 failures.
+- This is test-fixture interference on Linux, not a product race: the busy state
+  comes from the test's own concurrent copy/exec of the fixture binary, and a
+  real consumer runs the migrated binary after the migration process has exited.
+
+The earlier verdicts at `1753e32` are invalidated by this mutation and must be
+re-earned by a fresh acceptance at the new exact HEAD.

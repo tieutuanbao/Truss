@@ -186,6 +186,18 @@ instrument that proves the contract. Documentation-only and configuration
 rows may name reading or diff inspection as the instrument when no executable
 one exists; they still state what that reading cannot prove.
 
+**An acceptance row is also invalid until the executed instrument is shown to be
+the approved one.** Naming a requirement or an instrument never satisfies a row
+by itself: the accepting session compares what it executed against what the
+approved contract named for that row, and reports both. A material substitution
+is itself a contract mismatch and returns `CHANGES_REQUESTED` for Control to
+reconcile; equivalence is demonstrated, never asserted. Treat as material any
+change to fixture provenance, source artifact or version, environment or
+platform, command cadence or repetition, the comparator, the attributes
+observed, or the interface used to observe the result. Where an approved row
+names artifact provenance, a version boundary, or a repetition count, the
+executed instrument must supply exactly that.
+
 Any claim about extent — an allowed scope, a count, a set of call sites —
 states the command that produced it. Naming the command is not the
 measurement: the command must have been run, and the claim reports its
@@ -499,6 +511,10 @@ Task commits:        task and remediation SHAs, or none with reason
 Changed paths:       contract-owned paths changed by this task
 Contract coverage:   each applicable acceptance row, quoted or identified by
                      its exact requirement
+Proof fidelity:      per applicable row, in this order: `Approved instrument`,
+                     `Executed instrument`, `Provenance`, `Substitutions`,
+                     `Observability limits`. Write `Substitutions: none` only
+                     after comparing the two instruments.
 Verification:        commands, working directories, reported outcomes, and
                      evidence locators
 Deviations from plan:

@@ -1,0 +1,185 @@
+# Truss Improvement: Bind acceptance proof to the approved instrument
+
+Date: 2026-09-26
+
+## Status
+
+Awaiting fresh rerun
+
+## Representative Job
+
+Architectural repository-hosted delivery of `truss migrate` in this Truss source
+checkout (`run_7f2427a4e9ea`, branch `delivery/truss-migrate`, baseline
+`f4d504b`, 13 commits, released as `truss-v0.2.1`). Transport: Orca supervised
+worker terminals; roles `ba` (Pi `tao-router/explore`, medium), `architect` (Pi
+`tao-router/thinking`, high), `planner` (Pi `tao-router/thinking-high`, high),
+`implement` (Pi `tao-router/code-writer`, medium), `tester-debugger` (Pi
+`tao-router/code-reviewer`, high). Authority: local only, no push until the owner
+authorized release; owner approved the design contract and three later decisions.
+Wall clock 14:55 → 21:23 (388 min).
+
+## Baseline
+
+Three defects were found only after an integration acceptance had already
+returned `ACCEPT`:
+
+1. **Permission bits lost** (`40e76b5`). `migrate --apply` published files through
+   a byte copy that dropped Unix modes, so `.truss/core/bin/truss` became `664`
+   and the retained backup lost the bit too, meaning a rollback would have
+   restored bytes without the mode.
+2. **Flaky gate** (`571bf82`).
+   `crates/truss/tests/migration_lifecycle.rs::a_copied_running_binary_applies_and_retires_its_own_tree`
+   failed about one run in six at default parallel threads with
+   `ExecutableFileBusy`, so `scripts/validate-premerge.sh` was intermittently red.
+3. **Stale bundled executable** (`c8712a4`, owner decision A). After migrating a
+   real `truss-v0.1.16` installation with the 0.2.0 binary,
+   `.truss/core/bin/truss` stayed 0.1.16 and reported `not_installed` on a
+   layout-3 root; `truss update` cannot repair it because
+   `crates/truss/src/application/self_update.rs` compares
+   `env!("CARGO_PKG_VERSION")` of the running binary. This defect was found only
+   because the owner asked whether a real old installation had been rehearsed.
+
+Evidence for the escapes:
+
+- The contract already named the instrument correctly:
+  `.truss/delivery/runs/truss-migrate/business-analysis.md` carries `ASM-09`
+  ("a complete legacy installation built from the `truss-v0.1.16` ref") and
+  `REQ-037` ("...the 0.1.16 migration fixture...").
+- The implementation delivered a substitute and labelled it as satisfying
+  `ASM-09`: `legacy_repository()` installs with the current binary and
+  `legacy_tree(state, Some("0.1.16"))` rewrites paths and stamps
+  `core_version`, while the doc comment claims a genuine legacy consumer.
+- An acceptance session certified the substitution in writing and cited the
+  requirement: `report-acceptance-task2.md:51` — "Fixtures built by
+  `install --json`, moving `.truss/core` → `.truss-core`, rewriting manifest
+  paths ... and `core_version` to `0.1.16` (the lifecycle suite's own fixture
+  recipe, ASM-09)." Integration acceptance #1 did the same by hand.
+- Four independent acceptance sessions returned `ACCEPT` before defect 3 was
+  found, all inheriting the same substituted fixture.
+- Mode blindness is visible in the criteria themselves: `REQ-011`'s instrument is
+  a per-file hash comparison and `REQ-012` demands `modified: 0, missing: 0`;
+  neither observes permission bits, and the post-apply reads were run with the
+  external `target/debug/truss`, so the dead installed file was never executed.
+- Flake blindness: `report-acceptance-task2.md:32` records a single invocation of
+  the lifecycle suite.
+
+Human intervention required: the owner asked whether the real old-install
+rehearsal had been done; Control then built it and discovered defect 3. Total
+post-acceptance rework was 177 min of 388 min (46%): 30 + 90 + 57 min.
+
+Known limitations: one observed trajectory, not a recurring pattern; the harness
+cannot generally decide semantic equivalence of two fixtures; Windows apply and
+several other boundaries remain unverified (see the completed migration plan).
+
+## Earliest Gap
+
+**Proof.** The requirement was strong enough; the executed proof object was not
+bound to it. Implementation and acceptance silently substituted a materially
+different fixture (provenance, payload version, bundled executable) and then
+satisfied the row by citing the requirement name.
+
+Escalated to Oracle (`advisor`, `tao-router/thinking-high`, read-only, fork
+context). Oracle's finding: the deepest category is **proof substitution was not
+bound to the approved instrument**, not candidate independence and not worker
+capability. Candidate independence remains correct and necessary; broadening it
+would be an overcorrection, because it was the *requirement* that was already
+explicit while the *executed instrument* changed.
+
+Oracle assigned three distinct earliest owners rather than one:
+
+| Defect | Earliest gap | Earliest owner |
+| --- | --- | --- |
+| Stale bundled executable | Proof substitution: a synthetic current-version fixture replaced the real released artifact | Delivery acceptance protocol |
+| Lost permission bits | Proof specification: byte hashes and status omitted filesystem metadata and execution of the installed entrypoint | BA/architect acceptance-table author |
+| ETXTBSY flake | Proof sampling: one passing concurrent-suite invocation treated as stability evidence | Planner/acceptance instrument design |
+
+Common ancestor: a proof row could be declared satisfied without showing that the
+executed instrument matched the approved outcome and observability boundaries.
+The existing skill already forbids narrowing an approved requirement, so this is
+partly non-compliance with existing intent plus one missing narrow rule —
+instrument substitution is itself a mismatch.
+
+## Correct Owner
+
+The Truss source, specifically the existing Delivery acceptance owner:
+`.agents/skills/delivery/SKILL.md` §Acceptance, its handoff contract, the
+canonical payload copy under `distribution/payload/.agents/skills/delivery/`,
+and the existing contract test `tests/delivery-role-contract.sh`. No new role and
+no parallel framework. Consumer repositories and the external environment are not
+the owners; the owner's question that exposed defect 3 was a human recovery, not
+a fix.
+
+## Intervention
+
+Stated as required:
+
+```text
+If the Delivery acceptance contract requires an explicit proof-fidelity
+statement for every row (approved instrument, executed instrument, provenance or
+starting state, substitutions, observability limits) and states that citing a
+requirement id or instrument name never satisfies a row, then a fresh accepter
+will report the substituted fixture instead of endorsing it on the
+representative job, because the mismatch becomes a required field of the verdict
+rather than an inference the accepter must make unprompted.
+Evidence that would weaken this: a fresh accepter with the new fields present
+still returns ACCEPT while executing a materially different instrument;
+or accepters write `Substitutions: none` mechanically without inspecting
+provenance.
+Maintenance owner: Truss source delivery skill owner.
+Removal condition: remove if a materially equivalent rerun shows the fields are
+written mechanically without changing detection, or if the cost of the fields
+exceeds the detection they buy.
+```
+
+Proposed change, one intervention only:
+
+1. `.agents/skills/delivery/SKILL.md` §Acceptance — add the five fidelity fields
+   and the rule: an accepter may not satisfy a requirement by citing its
+   identifier or instrument name; it must compare the executed instrument with
+   the approved one; any material substitution in fixture provenance, artifact
+   version, environment, cadence, comparator, or observation interface is a
+   contract mismatch and returns `CHANGES_REQUESTED` for Control reconciliation,
+   with "equivalent" demonstrated rather than asserted.
+2. The same text in the canonical payload copy
+   `distribution/payload/.agents/skills/delivery/SKILL.md`, plus regeneration of
+   `tests/payload-layout-digests.txt` because the payload bytes change.
+3. `tests/delivery-role-contract.sh` — one new check that the skill text requires
+   all five fields and the no-citation rule, with an observed-red negative probe
+   that removes a field or the rule.
+
+Honest ceiling: a repository check can only prove the contract *requires* the
+fields. Acceptance reports are private run artifacts under `.truss/delivery/`
+and are never committed, so no repository validator can inspect a real report
+here. Deciding whether a disclosed substitution is material remains human or
+agent judgement.
+
+## Native Validation
+
+Pending. To run after the intervention is authorized: `bash
+tests/delivery-role-contract.sh` with an observed-red negative probe (removing a
+field or the no-citation rule fails the new check), then the full
+`bash scripts/validate-premerge.sh` at the changed HEAD, plus digest
+regeneration verified by the payload-layout contract.
+
+## Fresh Rerun
+
+Pending and not yet authorized. Required design: a fresh accepter session,
+equivalent task class, given an approved instrument that names an immutable old
+release and a candidate suite that uses a relabelled current fixture while all
+tests and gates pass. Success means the accepter retrieves the new rule,
+identifies the provenance substitution, and returns `CHANGES_REQUESTED` without
+human prompting. Record whether the intervention was available, retrieved, and
+relevant, and whether human intervention dropped.
+
+## Decision
+
+Pending fresh rerun.
+
+Not yet promoted. `.agents/skills/delivery/SKILL.md` states that a human decides
+whether to promote a proposal and that the skill never mutates itself from
+telemetry; the owner invoked the improvement goal but has not yet approved this
+specific intervention. One observed trajectory is not a pattern.
+
+## Result
+
+Pending. Diagnosis recorded; no file changed yet.

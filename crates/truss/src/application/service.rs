@@ -1,5 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::application::{
     plan_update, CoreDistributionPort, InstallationStatePort, PortError, ThreeWayMergePort,
@@ -318,6 +318,7 @@ where
     }
 
     pub fn status(&self, root: &Path) -> Result<StatusReport, ApplicationError> {
+        refuse_conflicting_state_root(root, self.state.resolve_state_root(root))?;
         let distribution = self.load_distribution()?;
         let Some(installed) = self.state.load(root)? else {
             return Ok(StatusReport {
@@ -358,6 +359,7 @@ where
     }
 
     pub fn doctor(&self, root: &Path) -> Result<DoctorReport, ApplicationError> {
+        refuse_conflicting_state_root(root, self.state.resolve_state_root(root))?;
         let mut checks = Vec::new();
         let pending = self.state.transaction_pending(root)?;
         checks.push(DoctorCheck {
@@ -431,6 +433,29 @@ struct FinishUpdate<'a> {
     dry_run: bool,
     recovered: bool,
     expected: Option<&'a [FrozenWorkspaceFile]>,
+}
+
+/// Refuse a repository holding both `.truss/core` and `.truss-core` before a
+/// read command loads any state.
+///
+/// The state port owns the read-only presence check; this wrapper owns the
+/// operator-facing recommendation. Without it, `status`, `doctor`, and
+/// `addon status` report confidently from whichever tree the ordinary
+/// resolver prefers and the stale second baseline stays hidden, so each must
+/// refuse instead and name the migration preview form (REQ-009, D-15). The
+/// check is read-only and grants no journal or recovery authority, and
+/// `truss migrate` does not route through it: migration inventories both
+/// roots directly (D-08).
+pub(crate) fn refuse_conflicting_state_root(
+    root: &Path,
+    resolved: Result<PathBuf, PortError>,
+) -> Result<(), PortError> {
+    resolved.map(|_| ()).map_err(|error| {
+        PortError::new(format!(
+            "{error}; run `truss migrate --directory {}` to preview the migration",
+            root.display()
+        ))
+    })
 }
 
 fn ensure_forward_version(installed: &str, candidate: &str) -> Result<(), ApplicationError> {

@@ -221,9 +221,73 @@ different owner (the acceptance-table template and the migration suite's
 fixture) and is a change to released verification, so it needs an owner decision
 before it is attempted.
 
+
+## Mechanical Intervention (second experiment)
+
+Owner authorized the mechanical route. Implemented in commit `fc96895`:
+
+1. `distribution/payload/.agents/skills/delivery/templates/business-analysis.md`
+   §Acceptance now requires that a row naming artifact provenance name **a
+   command that constructs that artifact**, "not the artifact's name", and states
+   why: "bytes cannot show that the executed fixture is the approved one".
+2. `tests/legacy-migration-rehearsal.sh` is that command for a released pre-0008
+   installation. It installs the exact tag through that tag's own installer,
+   refuses any ref that is not an immutable release tag, and **fails when the
+   legacy artifact reports the current version**, so a relabelled current install
+   can never satisfy it. It is deliberately outside `scripts/validate-premerge.sh`,
+   which stays offline.
+3. `R16` in `tests/delivery-role-contract.sh` binds the template rule to that
+   script (existence, executability, the release-tag refusal, the version-skew
+   guard) with two observed-red probes.
+
+Measured:
+
+| Instrument | Result | Wall clock |
+| --- | --- | --- |
+| `tests/legacy-migration-rehearsal.sh --tag truss-v0.1.16` | 24 ok, 0 failed; legacy 0.1.16 -> current 0.2.1 | **17 s** |
+| same script with `--tag truss-v0.2.1` (anti-relabel probe) | 15 ok, 9 failed, exit 1, including "the legacy artifact reports the legacy version, not the current one" | 12 s |
+| `tests/delivery-role-contract.sh` | 30 ok, 0 failed | — |
+| `bash scripts/validate-premerge.sh` at `fc96895` | `pre-merge validation passed` | — |
+
+### Run D — the agent-level measurement, and why it did not test the intervention
+
+Fresh accepter, same neutral question, conformant prompt, contract containing the
+template rule and the script.
+
+| | |
+| --- | --- |
+| Wall clock | 3 min 20 s |
+| Verdict | `ACCEPT` |
+| `Proof fidelity` | present; `Substitutions: none for the required commands, working directory, fixture interfaces, or comparators` |
+| Did it invoke the rehearsal? | **No** — `tests/legacy-migration-rehearsal.sh` appears nowhere in the report |
+
+Per improve-thrift honesty rules this run must be scored as **not a test of the
+intervention**: the intervention was *available* and partly *retrieved*, but it
+was **not relevant** to the artifact under acceptance. `REQ-037` in
+`.truss/delivery/runs/truss-migrate/business-analysis.md` was authored before the
+template rule existed, so that row names an artifact and never names a
+constructing command. The accepter took its instrument set from the commands the
+plan lists, and no approved row or plan task named the script. The escape
+therefore survives because the *contract* predates the rule, not because the
+accepter ignored a rule that applied to it.
+
+Rewriting the historical `REQ-037` row to name the script would be editing an
+accepted record, which the harness forbids, and authoring a fresh BA solely to
+make the experiment pass would be manufacturing evidence. The bounded conclusion
+is therefore:
+
+- The mechanical instrument is correct, cheap, and provably rejects the relabel
+  class; it can be run in 17 seconds where the escape cost 57 minutes.
+- Its effect on an acceptance verdict is **unproven**, pending a contract whose
+  approved row actually names a constructing command — which the template now
+  requires of every new contract.
+- The next materially equivalent rerun is a future delivery whose BA is authored
+  under the new rule; that run should be measured against the A/D baseline of
+  `ACCEPT` with no rehearsal invoked.
+
 ## Decision
 
-Revise (targeted at the mechanical owner); the prose intervention is not kept as-is.
+Keep the mechanical instrument, the template rule, and the prompt rule; record the agent-level effect as unproven pending a contract authored under the new rule.
 
 The rule and `R15` are implemented, validated, and retained as a partial
 improvement: every acceptance now discloses the approved and executed instrument
@@ -257,4 +321,10 @@ the targeted outcome falsified.
   authored by the same session that proposed the intervention, so it may be
   easier than an average acceptance; `R15` proves only that the contract requires
   the fields, never that a report is truthful.
-- Follow-up (owner decision, not yet started): the mechanical route above.
+- Follow-up: the mechanical route is implemented (`fc96895`) but its
+  agent-level effect is unproven, because run D accepted a contract that predates
+  the template rule. Re-measure on the next delivery whose business analysis is
+  authored under the new rule, naming `tests/legacy-migration-rehearsal.sh` (or
+  its successor) in the task verification for any provenance row. Evidence that
+  would weaken the keep: that delivery still accepts a provenance row without
+  executing the named command.

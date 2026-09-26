@@ -1,6 +1,7 @@
 # Completed Execution Plans
 
-Move a plan here only after its requested outcome and validation are recorded.
+Move a plan to `.truss/authority/plans/completed/` only after its requested
+outcome and validation are recorded.
 Completed plans are historical evidence, not default task instructions.
 
 Keep a completed plan when it explains a consequential migration, recovery

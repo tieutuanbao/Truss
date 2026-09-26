@@ -1,5 +1,6 @@
 use std::path::Path;
 
+use super::service::refuse_conflicting_state_root;
 use super::{
     AddOnApplyRequest, AddOnExecutionPort, AddOnInstallRequest, AddOnPayloadPort, AddOnPayloadSpec,
     AddOnPlanPort, AddOnPlanRequest, AddOnStageRequest, AddOnStatePort, PortError,
@@ -49,6 +50,7 @@ where
     /// consulted, so a pending core session cannot be reported as an add-on
     /// session.
     pub fn status(&self, root: &Path, name: &AddOnName) -> Result<AddOnStatusReport, PortError> {
+        refuse_conflicting_state_root(root, self.state.resolve_state_root(root))?;
         let record = self
             .state
             .load(root)?

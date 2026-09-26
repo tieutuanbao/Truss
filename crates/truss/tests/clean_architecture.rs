@@ -45,6 +45,85 @@ fn composition_root_is_the_only_layer_wiring_infrastructure_to_interface() {
     assert!(main.contains("CoreApplication::new"));
     assert!(main.contains("SelfUpdateApplication::new"));
     assert!(main.contains("AddOnApplication::new"));
+    assert!(main.contains("MigrationApplication::new"));
+    assert!(main.contains("FileSystemMigration"));
+}
+
+/// REQ-035: the migration boundary is layered, and the adapter names the
+/// proven primitives it reuses instead of extending the core transaction.
+#[test]
+fn migration_boundary_is_layered_and_reuses_the_safe_primitives() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src");
+    let cases: [(&str, &[&str]); 4] = [
+        (
+            "domain/migration.rs",
+            &[
+                "crate::application",
+                "crate::infrastructure",
+                "crate::interface",
+                "serde",
+                "clap",
+                "fs2",
+                "std::fs",
+                "std::process",
+            ],
+        ),
+        (
+            "application/migration.rs",
+            &[
+                "crate::infrastructure",
+                "crate::interface",
+                "serde",
+                "clap",
+                "fs2",
+                "std::fs",
+                "std::process",
+            ],
+        ),
+        (
+            "application/migration_ports.rs",
+            &[
+                "crate::infrastructure",
+                "crate::interface",
+                "serde",
+                "clap",
+                "fs2",
+                "std::fs",
+                "std::process",
+            ],
+        ),
+        (
+            "infrastructure/filesystem_migration.rs",
+            &["crate::interface"],
+        ),
+    ];
+    for (relative, forbidden) in cases {
+        let path = root.join(relative);
+        assert!(path.is_file(), "{relative} must exist");
+        let source = fs::read_to_string(&path).unwrap();
+        for pattern in forbidden {
+            assert!(
+                !source.contains(pattern),
+                "{relative} imports forbidden dependency {pattern}"
+            );
+        }
+    }
+    let adapter = fs::read_to_string(root.join("infrastructure/filesystem_migration.rs")).unwrap();
+    for primitive in [
+        "copy_bytes_atomic",
+        "hash_bytes",
+        "reject_symlink",
+        "io_error",
+    ] {
+        assert!(
+            adapter.contains(primitive),
+            "the adapter reuses the proven primitive {primitive}"
+        );
+    }
+    assert!(
+        !adapter.contains("transaction::run"),
+        "migration must not extend the core update transaction"
+    );
 }
 
 fn assert_forbidden(root: &Path, forbidden: &[&str]) {

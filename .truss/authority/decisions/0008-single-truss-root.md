@@ -308,3 +308,26 @@ Run-key recognition is intentionally narrow: `.delivery/<run-key>/**` and
 non-empty root, and byte-identical child names when both roots are non-empty.
 Files directly under a legacy root, multiple direct children, differing child
 names, symlinked children, and nested shapes are refused rather than guessed.
+
+### Bundled executable refresh
+
+A migrated installation must have a working command at `.truss/core/bin/truss`.
+The bundle cannot be carried over from the legacy tree: a pre-0008 install ships
+an executable that cannot read a layout-3 root, and `truss update` will not
+repair it, because self-update compares the version compiled into the *running*
+executable and therefore never replaces the bundled one when it is already
+current.
+
+`truss migrate --apply` therefore writes the running executable to
+`.truss/core/bin/truss` as part of the same transaction, before the legacy roots
+are retired so the bytes are still readable when the running executable lives
+inside the tree being retired. The write is journaled like every other
+publication: the legacy executable is backed up with its tree, rollback restores
+it byte-for-byte when it existed and removes the created file when it did not,
+and the published file is executable and verified before commit. This is the
+only payload byte the migration is allowed to replace; every other moved file
+keeps its bytes exactly.
+
+After a cross-version migration the installation legitimately reports
+`update_available` with the legacy payload and an updated entrypoint block, and
+the operator completes the upgrade with the bundled executable.

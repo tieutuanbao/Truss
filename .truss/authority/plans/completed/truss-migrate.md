@@ -233,3 +233,35 @@ so the repository gate was not reproducibly green.
 
 The earlier verdicts at `1753e32` are invalidated by this mutation and must be
 re-earned by a fresh acceptance at the new exact HEAD.
+
+### Real-world simulation and remediation 3 — stale bundled executable (2026-09-26)
+
+Every earlier check used a *synthetic* legacy fixture built from the current
+payload, which could not show this class of defect. Control then installed the
+released `truss-v0.1.16` through its own installer into a fresh directory and
+migrated it with the branch binary.
+
+What the real run confirmed: preview is mutation-free and byte-identical; apply
+reports `migrated` and prints the exact retained backup path; `.truss-core` is
+retired; payload docs, `base/` (same hash multiset, paths rewritten) and the
+three add-on trees survive; the ignore repair writes the five relative rules and
+preserves the original comment; the published executable keeps mode `755`;
+`status`, `doctor`, and all three add-on statuses work from the new binary.
+
+What it exposed, and the owner's decision:
+
+- **Blocking — the bundled executable stayed at 0.1.16 and could not read the
+  layout-3 root.** `.truss/core/bin/truss status` reported `not_installed`.
+  `truss update` does not repair it: `application/self_update.rs` computes
+  `executable_version` from `env!("CARGO_PKG_VERSION")` of the *running* binary,
+  so running an already-current external binary sets
+  `replaces_executable = candidate_version > executable_version` to false and the
+  bundled executable is never replaced.
+- **Owner decision (A):** `truss migrate --apply` writes the running executable
+  to `.truss/core/bin/truss` inside the same transaction, recorded in decision
+  0008. Verified manually before implementing: replacing the bundled binary with
+  the current one yields `current (0.2.0)`, 31 doctor passes, and a further
+  update succeeds.
+- Consequence for evidence: the synthetic fixture is not sufficient evidence for
+  a migration contract; the real installer output is. The remediation and its
+  acceptance must include the real-install path.

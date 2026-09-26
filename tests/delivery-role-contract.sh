@@ -114,6 +114,9 @@ PATH = {
                                os.path.join(ROOT, "distribution/payload/.agents/skills/delivery/templates/decision-record.md")),
     "ba": os.environ.get("CONTRACT_BA_TEMPLATE",
                          os.path.join(ROOT, "distribution/payload/.agents/skills/delivery/templates/business-analysis.md")),
+    "legacy_rehearsal": os.environ.get(
+        "CONTRACT_LEGACY_REHEARSAL",
+        os.path.join(ROOT, "tests/legacy-migration-rehearsal.sh")),
     "manifest": os.environ.get("CONTRACT_MANIFEST",
                                os.path.join(ROOT, "scripts/delivery-install-files.txt")),
     "authority": os.path.join(ROOT, ".truss-core/docs/decisions/0004-seven-role-delivery.md"),
@@ -532,6 +535,101 @@ def check_adr():
                          % (label, number, line.strip()))
 
 
+FIDELITY_CLAUSES = (
+    "Naming a requirement or an instrument never satisfies a row by itself",
+    "is itself a contract mismatch",
+    "equivalence is demonstrated, never asserted",
+)
+FIDELITY_FIELDS = (
+    "`Approved instrument`",
+    "`Executed instrument`",
+    "`Provenance`",
+    "`Substitutions`",
+    "`Observability limits`",
+)
+
+
+def check_fidelity():
+    """R15: acceptance proof is bound to the approved instrument.
+
+    In the 2026-09-26 migration run, acceptances satisfied a row whose approved
+    instrument was a released `truss-v0.1.16` installation while the executed
+    fixture was a relabelled current install, and one acceptance disclosed the
+    substitution in writing and still returned ACCEPT. The contract must
+    therefore forbid satisfying a row by citing a requirement or instrument
+    name, and must make a material substitution a mismatch rather than a note.
+    """
+    skill = read("delivery")
+    if skill is None:
+        return
+    acceptance = flatten(section(skill, "### Acceptance"))
+    handoff = flatten(section(skill, "### Handoff"))
+    if not acceptance or not handoff:
+        fail("delivery-role-contract R15",
+             "the delivery skill has no '### Acceptance' or '### Handoff' section; the "
+             "proof-fidelity rule has no owner")
+        return
+    for clause in FIDELITY_CLAUSES:
+        if clause not in acceptance:
+            fail("delivery-role-contract R15",
+                 "the acceptance section does not state %r; an executed instrument that "
+                 "differs from the approved one must be a mismatch" % clause)
+    missing = [field for field in FIDELITY_FIELDS if field not in handoff]
+    if missing:
+        fail("delivery-role-contract R15",
+             "the handoff contract omits %s; an accepter must report the approved and "
+             "executed instruments side by side" % ", ".join(missing))
+    if "never restates the field list" not in handoff:
+        fail("delivery-role-contract R15",
+             "the handoff contract does not forbid a dispatch prompt from restating the "
+             "field list; a restated list silently omits fields this contract adds")
+
+
+PROVENANCE_CLAUSES = (
+    "the instrument must be a command that *constructs* that artifact",
+    "not the artifact's name",
+    "bytes cannot show that the executed fixture is the approved one",
+)
+
+
+def check_provenance_instrument():
+    """R16: a provenance row names a constructing command, not an artifact.
+
+    In the migration run the approved row named a released `truss-v0.1.16`
+    installation while the executed fixture was the current install renamed and
+    stamped, so the template now requires a runnable command that builds the
+    named artifact, and this check binds that requirement to an instrument that
+    actually exists and refuses a same-version artifact.
+    """
+    template = read("ba")
+    if template is None:
+        return
+    acceptance = flatten(section(template, "## Acceptance"))
+    for clause in PROVENANCE_CLAUSES:
+        if clause not in acceptance:
+            fail("delivery-role-contract R16",
+                 "the business-analysis acceptance section does not state %r; a row that "
+                 "names artifact provenance must name a command that builds it" % clause)
+    script = read("legacy_rehearsal")
+    if script is None:
+        return
+    for needle, why in (
+        ("--tag must be an immutable release tag",
+         "the rehearsal does not refuse a non-release ref before using the network"),
+        ("$LEGACY_VERSION\" != \"$CURRENT_VERSION",
+         "the rehearsal has no version-skew guard, so a relabelled current install "
+         "would satisfy it"),
+        ("distinguish the artifacts",
+         "the rehearsal does not say why a same-version artifact proves nothing"),
+    ):
+        if needle not in script:
+            fail("delivery-role-contract R16", why)
+    if not os.access(PATH["legacy_rehearsal"], os.X_OK):
+        fail("delivery-role-contract R16",
+             "%s is not executable; the named instrument must be runnable"
+             % PATH["legacy_rehearsal"])
+
+
 def main():
     command = sys.argv[1] if len(sys.argv) > 1 else "all"
     if command in ("roles", "all"):
@@ -546,6 +644,10 @@ def main():
         check_envelope()
     if command in ("adr", "all"):
         check_adr()
+    if command in ("fidelity", "all"):
+        check_fidelity()
+    if command in ("provenance", "all"):
+        check_provenance_instrument()
     if PROBLEMS:
         return 1
     return 0
@@ -635,6 +737,64 @@ PY
 neg "a skill that commits the transient plan unconditionally is rejected" "R9" \
   env CONTRACT_DELIVERY_SKILL="$WORK/ng7-skill.md" python3 "$CONTRACT" envelope
 
+python3 - "$REPO/distribution/payload/.agents/skills/delivery/SKILL.md" "$WORK/ng14-skill.md" <<'PY'
+import sys
+text = open(sys.argv[1], encoding="utf-8").read()
+open(sys.argv[2], "w", encoding="utf-8").write(text.replace(
+    "Naming a requirement or an instrument never satisfies a row",
+    "Naming a requirement or an instrument is usually enough for a row", 1))
+PY
+neg "a skill that lets a requirement name satisfy a row is rejected" "R15" \
+  env CONTRACT_DELIVERY_SKILL="$WORK/ng14-skill.md" python3 "$CONTRACT" fidelity
+
+python3 - "$REPO/distribution/payload/.agents/skills/delivery/SKILL.md" "$WORK/ng15-skill.md" <<'PY'
+import sys
+text = open(sys.argv[1], encoding="utf-8").read()
+open(sys.argv[2], "w", encoding="utf-8").write(text.replace(
+    "                     `Observability limits`. Write `Substitutions: none` only\n",
+    "", 1))
+PY
+neg "a handoff that drops the observability-limits field is rejected" "R15" \
+  env CONTRACT_DELIVERY_SKILL="$WORK/ng15-skill.md" python3 "$CONTRACT" fidelity
+
+python3 - "$REPO/distribution/payload/.agents/skills/delivery/SKILL.md" "$WORK/ng17-skill.md" <<'PY'
+import sys
+text = open(sys.argv[1], encoding="utf-8").read()
+open(sys.argv[2], "w", encoding="utf-8").write(text.replace(
+    " it never restates the field list.", " it should restate the field list.", 1))
+PY
+neg "a skill that lets a prompt restate the handoff fields is rejected" "R15" \
+  env CONTRACT_DELIVERY_SKILL="$WORK/ng17-skill.md" python3 "$CONTRACT" fidelity
+
+python3 - "$REPO/distribution/payload/.agents/skills/delivery/templates/business-analysis.md" "$WORK/ng18-ba.md" <<'PY'
+import sys
+text = open(sys.argv[1], encoding="utf-8").read()
+open(sys.argv[2], "w", encoding="utf-8").write(text.replace(
+    "*constructs* that artifact", "*names* that artifact", 1))
+PY
+neg "a BA template that lets an artifact name satisfy a provenance row is rejected" "R16" \
+  env CONTRACT_BA_TEMPLATE="$WORK/ng18-ba.md" python3 "$CONTRACT" provenance
+
+python3 - "$REPO/tests/legacy-migration-rehearsal.sh" "$WORK/ng19-rehearsal.sh" <<'PY'
+import sys
+text = open(sys.argv[1], encoding="utf-8").read()
+open(sys.argv[2], "w", encoding="utf-8").write(text.replace(
+    '"$LEGACY_VERSION" != "$CURRENT_VERSION"', '"x" != "y"', 1))
+PY
+chmod +x "$WORK/ng19-rehearsal.sh"
+neg "a rehearsal without the version-skew guard is rejected" "R16" \
+  env CONTRACT_LEGACY_REHEARSAL="$WORK/ng19-rehearsal.sh" python3 "$CONTRACT" provenance
+
+python3 - "$REPO/distribution/payload/.agents/skills/delivery/SKILL.md" "$WORK/ng16-skill.md" <<'PY'
+import sys
+text = open(sys.argv[1], encoding="utf-8").read()
+open(sys.argv[2], "w", encoding="utf-8").write(text.replace(
+    "is itself a contract mismatch and returns `CHANGES_REQUESTED`",
+    "is an acceptable note on the verdict", 1))
+PY
+neg "a skill that treats a material substitution as a note is rejected" "R15" \
+  env CONTRACT_DELIVERY_SKILL="$WORK/ng16-skill.md" python3 "$CONTRACT" fidelity
+
 python3 - "$REPO/distribution/payload/.agents/skills/delivery/templates/plan.md" "$WORK/ng8-plan.md" <<'PY'
 import sys
 text = open(sys.argv[1], encoding="utf-8").read()
@@ -663,6 +823,10 @@ neg "a workflow that drops the never-committed rule is rejected" "R11" \
 
 pos "the repository delivery skill carries the consumer-local envelope contract" \
   python3 "$CONTRACT" envelope
+pos "the delivery skill binds every acceptance row to the approved instrument" \
+  python3 "$CONTRACT" fidelity
+pos "a provenance row names a constructing command and the named instrument exists" \
+  python3 "$CONTRACT" provenance
 pos "the amended ADR keeps the migration-only exception and the five relative integration ignore rules" \
   python3 "$CONTRACT" adr
 echo

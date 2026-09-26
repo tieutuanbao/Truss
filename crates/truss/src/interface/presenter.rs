@@ -3,7 +3,8 @@ use serde::Serialize;
 use crate::application::{AddOnStatusReport, AddOnUpdateReport, ExecutableRecoveryReport};
 use crate::domain::{
     AddOnName, AddOnPayloadFile, ConflictReason, DoctorReport, FileChangeKind, InstallReport,
-    InstallationCondition, PlannedFileChange, StatusReport, UpdateReport,
+    InstallationCondition, MigrationReport, MigrationState, PlannedFileChange, StatusReport,
+    UpdateReport,
 };
 
 pub struct CommandExit {
@@ -396,6 +397,106 @@ pub fn present_doctor(report: &DoctorReport, json: bool) -> CommandExit {
     }
 }
 
+/// Present one migration report in the stable envelope (D-14) or as text.
+///
+/// Exit 0 covers only `ready`, `already_migrated`, and `migrated`; every
+/// refusal and failure is non-zero. The JSON envelope is emitted for every
+/// state, while text mode sends a refusal to stderr so a caller can tell a
+/// refusal from a report.
+pub fn present_migrate(report: &MigrationReport, json: bool) -> CommandExit {
+    let output = MigrationOutput {
+        operation: "migrate",
+        state: report.state.as_str(),
+        reason: report.reason.map(|reason| reason.as_str()),
+        applied: report.applied,
+        repository: &report.repository,
+        backup_path: report.backup_path.as_deref(),
+        backup_path_template: &report.backup_path_template,
+        transaction_id: report.transaction_id.as_deref(),
+        run_key: report.run_key.as_deref(),
+        legacy_roots: report.legacy_roots.clone(),
+        operations: report
+            .operations
+            .iter()
+            .map(|operation| MigrationOperationOutput {
+                source: operation.source.as_deref(),
+                destination: &operation.destination,
+                kind: operation.kind.as_str(),
+            })
+            .collect(),
+        conflicts: report.conflicts.clone(),
+        evidence: report.evidence.clone(),
+    };
+    let human = match report.state {
+        MigrationState::Ready => format!(
+            "Truss migration preview: ready. A backup will be created under {}\n{}",
+            report.backup_path_template,
+            render_migration_operations(report)
+        ),
+        MigrationState::AlreadyMigrated => match &report.backup_path {
+            Some(path) => format!("Truss migration: already_migrated; existing backup at {path}\n"),
+            None => "Truss migration: already_migrated\n".to_owned(),
+        },
+        MigrationState::Migrated => format!(
+            "Truss migration: migrated. Backup retained at {}\n{}",
+            report.backup_path.as_deref().unwrap_or("(unknown)"),
+            render_migration_operations(report)
+        ),
+        MigrationState::RecoveryRequired => format!(
+            "Truss migration: recovery_required; resolve the incomplete or conflicted transaction first\n{}\n",
+            render_lines(&report.conflicts)
+        ),
+        MigrationState::RolledBack => format!(
+            "Truss migration: rolled_back; originals restored and evidence retained at {}\n",
+            report.backup_path.as_deref().unwrap_or("(unknown)")
+        ),
+        MigrationState::RollbackFailed => format!(
+            "Truss migration: rollback_failed; the repository is not known to be safe. Recovery material: {}\n{}\n",
+            report.backup_path.as_deref().unwrap_or("(unknown)"),
+            render_lines(&report.evidence)
+        ),
+        MigrationState::Blocked => String::new(),
+    };
+    if json {
+        return CommandExit {
+            code: report.state.exit_code(),
+            stdout: render(json, &output, String::new()),
+            stderr: String::new(),
+        };
+    }
+    if report.state == MigrationState::Blocked {
+        return CommandExit {
+            code: report.state.exit_code(),
+            stdout: String::new(),
+            stderr: format!(
+                "Error: migration blocked ({}):\n{}\n",
+                report
+                    .reason
+                    .map(|reason| reason.as_str())
+                    .unwrap_or("unknown"),
+                render_lines(&report.conflicts)
+            ),
+        };
+    }
+    CommandExit {
+        code: report.state.exit_code(),
+        stdout: human,
+        stderr: String::new(),
+    }
+}
+
+fn render_migration_operations(report: &MigrationReport) -> String {
+    report
+        .operations
+        .iter()
+        .map(|operation| format!("{} {}\n", operation.kind.as_str(), operation.destination))
+        .collect()
+}
+
+fn render_lines(lines: &[String]) -> String {
+    lines.iter().map(|line| format!("  {line}\n")).collect()
+}
+
 fn success(stdout: String) -> CommandExit {
     CommandExit {
         code: 0,
@@ -495,6 +596,30 @@ fn condition(value: &InstallationCondition) -> &'static str {
         InstallationCondition::UpdateAvailable => "update_available",
         InstallationCondition::ExecutableOutdated => "executable_outdated",
     }
+}
+
+#[derive(Serialize)]
+struct MigrationOutput<'a> {
+    operation: &'static str,
+    state: &'static str,
+    reason: Option<&'static str>,
+    applied: bool,
+    repository: &'a str,
+    backup_path: Option<&'a str>,
+    backup_path_template: &'a str,
+    transaction_id: Option<&'a str>,
+    run_key: Option<&'a str>,
+    legacy_roots: Vec<String>,
+    operations: Vec<MigrationOperationOutput<'a>>,
+    conflicts: Vec<String>,
+    evidence: Vec<String>,
+}
+
+#[derive(Serialize)]
+struct MigrationOperationOutput<'a> {
+    source: Option<&'a str>,
+    destination: &'a str,
+    kind: &'static str,
 }
 
 #[derive(Serialize)]

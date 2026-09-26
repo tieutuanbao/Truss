@@ -4,14 +4,15 @@ use clap::{Parser, Subcommand};
 
 use crate::application::{
     AddOnApplication, AddOnExecutionPort, AddOnPayloadPort, AddOnPayloadSpec, AddOnPlanPort,
-    AddOnStatePort, CoreApplication, CoreDistributionPort, InstallationStatePort,
-    SelfUpdateApplication, SelfUpdateExit, ThreeWayMergePort, UpdateCandidatePort,
+    AddOnStatePort, CanonicalEntrypointsPort, CoreApplication, CoreDistributionPort,
+    InstallationStatePort, MigrationApplication, MigrationPort, SelfUpdateApplication,
+    SelfUpdateExit, ThreeWayMergePort, UpdateCandidatePort,
 };
 use crate::domain::{AddOnName, SourceRef};
 use crate::interface::presenter::{
     present_abort, present_addon_abort, present_addon_continue, present_addon_install,
     present_addon_status, present_addon_update, present_doctor, present_executable_recovery,
-    present_install, present_status, present_update, CommandExit,
+    present_install, present_migrate, present_status, present_update, CommandExit,
 };
 
 #[derive(Debug, Parser)]
@@ -72,6 +73,17 @@ pub enum Command {
     Addon {
         #[command(subcommand)]
         command: AddOnCommand,
+    },
+    /// Preview, or with `--apply` perform, the single-root migration of a
+    /// legacy Truss installation. Preview mutates nothing.
+    Migrate {
+        #[arg(long, default_value = ".")]
+        directory: PathBuf,
+        #[arg(long)]
+        json: bool,
+        /// Apply the migration as one journaled transaction.
+        #[arg(long)]
+        apply: bool,
     },
 }
 
@@ -158,11 +170,12 @@ pub enum AddOnCommand {
     },
 }
 
-pub fn execute<D, S, M, C, U, AP, AS, AL, AE>(
+pub fn execute<D, S, M, C, U, AP, AS, AL, AE, MP, MC>(
     cli: Cli,
     application: &CoreApplication<D, S, M>,
     self_update: &SelfUpdateApplication<C, U>,
     add_on: &AddOnApplication<AP, AS, AL, AE>,
+    migration: &MigrationApplication<MP, MC>,
 ) -> CommandExit
 where
     D: CoreDistributionPort,
@@ -174,6 +187,8 @@ where
     AS: AddOnStatePort,
     AL: AddOnPlanPort,
     AE: AddOnExecutionPort,
+    MP: MigrationPort,
+    MC: CanonicalEntrypointsPort,
 {
     let result: Result<CommandExit, String> = match cli.command {
         Command::Install {
@@ -241,6 +256,20 @@ where
             .map(|report| present_doctor(&report, json))
             .map_err(|error| error.to_string()),
         Command::Addon { command } => execute_addon(command, add_on),
+        Command::Migrate {
+            directory,
+            json,
+            apply,
+        } => {
+            let report = if apply {
+                migration.apply(&directory)
+            } else {
+                migration.preview(&directory)
+            };
+            report
+                .map(|report| present_migrate(&report, json))
+                .map_err(|error| error.to_string())
+        }
     };
     result.unwrap_or_else(present_error)
 }

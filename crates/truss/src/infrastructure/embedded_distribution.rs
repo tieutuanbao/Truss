@@ -1,10 +1,27 @@
 use sha2::{Digest, Sha256};
 
-use crate::application::{CoreDistributionPort, PortError};
+use crate::application::{
+    CanonicalBlocks, CanonicalEntrypointsPort, CoreDistributionPort, PortError,
+};
 use crate::domain::{ContentHash, CoreDistribution, DistributionFile, RelativePath};
 
 #[derive(Clone, Copy, Default)]
 pub struct EmbeddedCoreDistribution;
+
+/// The compile-time canonical managed blocks migration installs (D-05).
+///
+/// These are the exact distribution source bytes, so installer and migration
+/// share one canonical input and runtime never reads a source checkout path.
+impl CanonicalEntrypointsPort for EmbeddedCoreDistribution {
+    fn blocks(&self) -> Result<CanonicalBlocks, PortError> {
+        Ok(CanonicalBlocks {
+            agents: include_bytes!("../../../../distribution/entrypoints/agent-truss-block.md")
+                .to_vec(),
+            claude: include_bytes!("../../../../distribution/entrypoints/claude-truss-block.md")
+                .to_vec(),
+        })
+    }
+}
 
 impl CoreDistributionPort for EmbeddedCoreDistribution {
     fn current(&self) -> Result<CoreDistribution, PortError> {

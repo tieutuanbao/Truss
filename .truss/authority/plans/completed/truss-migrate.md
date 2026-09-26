@@ -265,3 +265,28 @@ What it exposed, and the owner's decision:
 - Consequence for evidence: the synthetic fixture is not sufficient evidence for
   a migration contract; the real installer output is. The remediation and its
   acceptance must include the real-install path.
+
+Implementation and accepted result:
+
+- Commit `c8712a4` publishes the running executable to `.truss/core/bin/truss`
+  inside the transaction, before legacy retirement, journaled and rollback-safe,
+  with mode `755`.
+- Control's own rehearsal on a real released 0.1.16 install: the bundled binary
+  became `0.2.0`, `status` reported `update_available (installed=0.1.16,
+  target=0.2.0, modified=1, missing=0)` instead of `not_installed`, `doctor`
+  passed 31 checks, all three add-ons were still recognized, and the bundled
+  binary then completed the upgrade to `current (0.2.0, modified=0, missing=0)`
+  with a second update idempotent. The retained backup still holds the runnable
+  0.1.16 original.
+- Independent acceptance 4 returned `ACCEPT` at `c8712a4` after reproducing the
+  real released-0.1.16 install path, the stale-binary counterexample, rollback of
+  the new write, byte-faithfulness of the payload, `base/` and add-on trees, the
+  ignore repair, the full gate, and eleven consecutive lifecycle runs.
+
+Remaining limits unchanged and accepted: Windows `--apply`; `rollback_failed`
+process-boundary proof in unit tests only; directory modes; retained `stage/`;
+`absent_optional` not surfaced; REQ-010 unit-fixture blindness; unknown-key token
+fallback; installer payload-to-install mode loss; and add-on records that keep
+naming the legacy source ref until the installer-driven `addon update` runs.
+Also unverified by any instrument: arbitrary unrecognized pre-0008 consumer
+shapes, which the contract refuses rather than guesses.

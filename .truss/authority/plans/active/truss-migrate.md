@@ -81,7 +81,7 @@ committed; durable authority and this plan are.
 ## Progress
 
 - [x] Task 0 — decision 0008 amendment and this durable plan (contract baseline).
-- [ ] Task 1 — refuse dual-root reads consistently.
+- [x] Task 1 — refuse dual-root reads consistently (commit `e438c62`, independently accepted).
 - [ ] Task 2 — complete preview and safe migration transaction.
 - [ ] Task 3 — contract checks and exact-HEAD repository proof.
 - [ ] Independent task acceptance and integration acceptance at final HEAD.

@@ -525,7 +525,10 @@ END OF HANDOFF
 
 Write this handoff to the worktree file designated by Control and send its
 path as `payload.reportPath`, as required under § Launching a worker; an
-inline final message does not replace the file. `END OF HANDOFF` must be
+inline final message does not replace the file. A dispatch
+prompt names this format and the report path; it never restates the field list.
+A restated list is a Control-authored contract that silently omits whatever this
+contract adds, and the worker follows the prompt rather than this skill. `END OF HANDOFF` must be
 the file's last line; a missing sentinel means the handoff may be truncated.
 Resolve SHAs from Git, not from a planned commit.
 Identify acceptance rows using existing identifiers or exact requirement

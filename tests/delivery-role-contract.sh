@@ -576,6 +576,10 @@ def check_fidelity():
         fail("delivery-role-contract R15",
              "the handoff contract omits %s; an accepter must report the approved and "
              "executed instruments side by side" % ", ".join(missing))
+    if "never restates the field list" not in handoff:
+        fail("delivery-role-contract R15",
+             "the handoff contract does not forbid a dispatch prompt from restating the "
+             "field list; a restated list silently omits fields this contract adds")
 
 
 def main():
@@ -702,6 +706,15 @@ open(sys.argv[2], "w", encoding="utf-8").write(text.replace(
 PY
 neg "a handoff that drops the observability-limits field is rejected" "R15" \
   env CONTRACT_DELIVERY_SKILL="$WORK/ng15-skill.md" python3 "$CONTRACT" fidelity
+
+python3 - "$REPO/distribution/payload/.agents/skills/delivery/SKILL.md" "$WORK/ng17-skill.md" <<'PY'
+import sys
+text = open(sys.argv[1], encoding="utf-8").read()
+open(sys.argv[2], "w", encoding="utf-8").write(text.replace(
+    " it never restates the field list.", " it should restate the field list.", 1))
+PY
+neg "a skill that lets a prompt restate the handoff fields is rejected" "R15" \
+  env CONTRACT_DELIVERY_SKILL="$WORK/ng17-skill.md" python3 "$CONTRACT" fidelity
 
 python3 - "$REPO/distribution/payload/.agents/skills/delivery/SKILL.md" "$WORK/ng16-skill.md" <<'PY'
 import sys

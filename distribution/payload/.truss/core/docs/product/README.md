@@ -4,9 +4,10 @@ This directory contains current consumer-product behavior derived from real
 accepted intent. Truss deliberately ships no fake product domains.
 
 When a user provides a product specification, derive smaller living documents
-here instead of keeping one growing specification as the operating manual. Name
-files after actual product domains, such as `overview.md`, `billing.md`,
-`permissions.md`, or `api-conventions.md`.
+under `.truss/authority/product/` instead of keeping one growing specification
+as the operating manual. Name files after actual product domains, such as
+`overview.md`, `billing.md`, `permissions.md`, or `api-conventions.md`. The
+installed payload is never a write target.
 
 ## Current Product Contract
 

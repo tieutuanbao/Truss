@@ -1,15 +1,18 @@
-# Communication Preferences
+# Communication Levels
 
-Repository-wide reply style for agent answers. Not a user profile and not
-product policy. Unconfigured preferences impose no requirement and never
-block work.
+Definitions for the repository-wide reply style of agent answers. This file is
+Truss-managed reference material: it defines the levels and the recording
+contract. A project never edits it.
 
-## Level
+A project records its selection in `.truss/authority/communication.md`, because
+the selection belongs to the project while `.truss/core/**` is the installed
+Truss payload. Unconfigured preferences impose no requirement and never block
+work.
 
-Not configured.
+## Levels
 
 The repository owner selects one level; an agent proposes all three with a
-worked example of the same answer at each level. Record the choice here with
+worked example of the same answer at each level. The selection is recorded with
 its date and source.
 
 - `expert` — precise terminology and abbreviations without expansion;
@@ -21,5 +24,6 @@ its date and source.
 
 ## Notes
 
-Optional. The owner may add constraints here, such as a preferred language
-or response length. Unspecified preferences impose no requirement.
+Optional. The owner may record constraints such as a preferred language or
+response length in the project's own file. Unspecified preferences impose no
+requirement.

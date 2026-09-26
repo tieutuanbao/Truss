@@ -7,4 +7,6 @@ Use `.truss/core/docs/templates/decision.md`. Task-local implementation choices 
 the active execution plan and do not require a separate decision.
 
 An installed consumer begins with no fabricated decisions. Add local decision
-documents here as real choices are accepted, then index them in this file.
+documents under `.truss/authority/decisions/` as real choices are accepted, and
+index them in `.truss/authority/decisions/README.md`; the installed payload is
+never a write target.

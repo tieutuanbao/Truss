@@ -12,7 +12,8 @@ Create one durable plan when work spans sessions, coordinates contributors, has
 meaningful dependencies or ordering, requires recovery steps, or would be unsafe
 to resume from the diff alone.
 
-Use `.truss/core/docs/templates/exec-plan.md` and place the file under `active/`.
+Use `.truss/core/docs/templates/exec-plan.md` and place the file under
+`.truss/authority/plans/active/`.
 A delivery run's transient control artifact is not a durable plan. For a
 repository-hosted run it is committed with the candidate and deleted in the
 release commit, before the release-binding review. For an approved

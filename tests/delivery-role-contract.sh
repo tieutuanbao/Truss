@@ -128,6 +128,27 @@ PATH = {
                                   os.path.join(ROOT, ".git/info/exclude")),
     "workflow": os.environ.get(
         "CONTRACT_WORKFLOW", os.path.join(ROOT, "distribution/payload/.truss/core/docs/WORKFLOW.md")),
+    "core_docs_readme": os.environ.get(
+        "CONTRACT_CORE_DOCS_README",
+        os.path.join(ROOT, "distribution/payload/.truss/core/docs/README.md")),
+    "communication": os.environ.get(
+        "CONTRACT_COMMUNICATION",
+        os.path.join(ROOT, "distribution/payload/.truss/core/docs/communication.md")),
+    "decisions_readme": os.environ.get(
+        "CONTRACT_DECISIONS_README",
+        os.path.join(ROOT, "distribution/payload/.truss/core/docs/decisions/README.md")),
+    "plans_readme": os.environ.get(
+        "CONTRACT_PLANS_README",
+        os.path.join(ROOT, "distribution/payload/.truss/core/docs/plans/README.md")),
+    "plans_active_readme": os.environ.get(
+        "CONTRACT_PLANS_ACTIVE_README",
+        os.path.join(ROOT, "distribution/payload/.truss/core/docs/plans/active/README.md")),
+    "plans_completed_readme": os.environ.get(
+        "CONTRACT_PLANS_COMPLETED_README",
+        os.path.join(ROOT, "distribution/payload/.truss/core/docs/plans/completed/README.md")),
+    "product_readme": os.environ.get(
+        "CONTRACT_PRODUCT_README",
+        os.path.join(ROOT, "distribution/payload/.truss/core/docs/product/README.md")),
     "plans_readme": os.environ.get(
         "CONTRACT_PLANS_README",
         os.path.join(ROOT, "distribution/payload/.truss/core/docs/plans/README.md")),
@@ -630,6 +651,70 @@ def check_provenance_instrument():
              % PATH["legacy_rehearsal"])
 
 
+PROJECT_CONTENT_DOCS = (
+    "core_docs_readme",
+    "communication",
+    "decisions_readme",
+    "plans_readme",
+    "plans_active_readme",
+    "plans_completed_readme",
+    "product_readme",
+)
+
+# The instruction forms that told a consumer to write project content into the
+# installed payload. Each is a targeted string, not a general proof: this check
+# rejects the regression it was written for and reports that limit.
+FORBIDDEN_CORE_WRITE_TARGETS = (
+    "Record the change in `.truss/core/docs/communication.md`",
+    "Add local decision documents here",
+    "place the file under `active/`",
+    "Place one evolving plan here",
+    "Move a plan here",
+    "derive smaller living documents here",
+)
+
+REQUIRED_AUTHORITY_PATHS = {
+    "workflow": ".truss/authority/communication.md",
+    "decisions_readme": ".truss/authority/decisions/",
+    "plans_readme": ".truss/authority/plans/active/",
+    "plans_active_readme": ".truss/authority/plans/active/",
+    "plans_completed_readme": ".truss/authority/plans/completed/",
+    "product_readme": ".truss/authority/product/",
+    "core_docs_readme": ".truss/authority/",
+}
+
+
+def check_project_content_ownership():
+    """R17: the payload never points project content at the installed tree.
+
+    The 2026-09-26 consumer update found six files permanently `modified`
+    because the shipped core docs told a project to write its communication
+    selection, decisions, plans, and product documents into
+    `.truss/core/docs/**`, while decision 0008 says `.truss/core/**` is
+    Truss-managed and project authority lives under `.truss/authority/**`.
+    """
+    for key in PROJECT_CONTENT_DOCS:
+        text = read(key)
+        if text is None:
+            continue
+        body = flatten(text.splitlines())
+        for forbidden in FORBIDDEN_CORE_WRITE_TARGETS:
+            if forbidden in body:
+                fail("delivery-role-contract R17",
+                     "%s still sends project content into the installed tree: %r; "
+                     "project authority lives under .truss/authority/"
+                     % (PATH[key], forbidden))
+    missing = []
+    for key, required in sorted(REQUIRED_AUTHORITY_PATHS.items()):
+        text = read(key)
+        if text is None:
+            continue
+        if required not in flatten(text.splitlines()):
+            missing.append("%s must name %s" % (PATH[key], required))
+    for message in missing:
+        fail("delivery-role-contract R17", message)
+
+
 def main():
     command = sys.argv[1] if len(sys.argv) > 1 else "all"
     if command in ("roles", "all"):
@@ -648,6 +733,8 @@ def main():
         check_fidelity()
     if command in ("provenance", "all"):
         check_provenance_instrument()
+    if command in ("ownership", "all"):
+        check_project_content_ownership()
     if PROBLEMS:
         return 1
     return 0
@@ -785,6 +872,35 @@ chmod +x "$WORK/ng19-rehearsal.sh"
 neg "a rehearsal without the version-skew guard is rejected" "R16" \
   env CONTRACT_LEGACY_REHEARSAL="$WORK/ng19-rehearsal.sh" python3 "$CONTRACT" provenance
 
+python3 - "$REPO/distribution/payload/.truss/core/docs/plans/README.md" "$WORK/ng20-plans.md" <<'PY'
+import sys
+text = open(sys.argv[1], encoding="utf-8").read()
+open(sys.argv[2], "w", encoding="utf-8").write(text.replace(
+    "place the file under\n`.truss/authority/plans/active/`.",
+    "place the file under `active/`.", 1))
+PY
+neg "a plan README that sends a plan into the installed tree is rejected" "R17" \
+  env CONTRACT_PLANS_README="$WORK/ng20-plans.md" python3 "$CONTRACT" ownership
+
+python3 - "$REPO/distribution/payload/.truss/core/docs/decisions/README.md" "$WORK/ng21-decisions.md" <<'PY'
+import sys
+text = open(sys.argv[1], encoding="utf-8").read()
+open(sys.argv[2], "w", encoding="utf-8").write(text.replace(
+    "Add local decision\ndocuments under `.truss/authority/decisions/`",
+    "Add local decision documents here", 1))
+PY
+neg "a decisions README that invites writing into the installed tree is rejected" "R17" \
+  env CONTRACT_DECISIONS_README="$WORK/ng21-decisions.md" python3 "$CONTRACT" ownership
+
+python3 - "$REPO/distribution/payload/.truss/core/docs/product/README.md" "$WORK/ng22-product.md" <<'PY'
+import sys
+text = open(sys.argv[1], encoding="utf-8").read()
+open(sys.argv[2], "w", encoding="utf-8").write(text.replace(
+    "`.truss/authority/product/`", "the product directory", 1))
+PY
+neg "a product README that stops naming the authority path is rejected" "R17" \
+  env CONTRACT_PRODUCT_README="$WORK/ng22-product.md" python3 "$CONTRACT" ownership
+
 python3 - "$REPO/distribution/payload/.agents/skills/delivery/SKILL.md" "$WORK/ng16-skill.md" <<'PY'
 import sys
 text = open(sys.argv[1], encoding="utf-8").read()
@@ -827,6 +943,8 @@ pos "the delivery skill binds every acceptance row to the approved instrument" \
   python3 "$CONTRACT" fidelity
 pos "a provenance row names a constructing command and the named instrument exists" \
   python3 "$CONTRACT" provenance
+pos "the installed payload never sends project content into itself" \
+  python3 "$CONTRACT" ownership
 pos "the amended ADR keeps the migration-only exception and the five relative integration ignore rules" \
   python3 "$CONTRACT" adr
 echo

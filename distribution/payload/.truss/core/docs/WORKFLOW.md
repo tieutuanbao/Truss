@@ -6,11 +6,13 @@ runtime signals are the system of record.
 ## Communication
 
 Every user-facing reply — answers, questions, progress updates, and
-completion reports — applies `.truss/core/docs/communication.md` when it is
-configured. It records a reply-style level the repository owner chose:
-`expert`, `intermediate`, or `layperson`, defined in that file. Missing or
-unconfigured preferences never block work; answer in clear, neutral language
-and explain unfamiliar terms when needed.
+completion reports — applies the project's `.truss/authority/communication.md`
+when one exists. It records a reply-style level the repository owner chose:
+`expert`, `intermediate`, or `layperson`, defined in
+`.truss/core/docs/communication.md`. The selection belongs to the project, so it
+lives under `.truss/authority/`; the installed payload is never a write target.
+Missing or unconfigured preferences never block work; answer in clear, neutral
+language and explain unfamiliar terms when needed.
 
 An explicit communication request in the current conversation takes
 precedence over the configured level. Do not infer a person's expertise,
@@ -23,7 +25,7 @@ durable change.
 When re-explanation requests recur or the configured level clearly
 mismatches the conversation, proactively propose switching levels, naming
 the target level and the observed signal. Record the change in
-`.truss/core/docs/communication.md` with its date and source only after the
+`.truss/authority/communication.md` with its date and source only after the
 owner chooses it. To configure initially, propose all three levels with a
 worked example of the same answer at each level; the owner's pick is
 recorded with its date and source.

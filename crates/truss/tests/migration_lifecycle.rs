@@ -678,3 +678,78 @@ fn a_copied_running_binary_applies_and_retires_its_own_tree() {
         "the executable moved to the new root"
     );
 }
+
+#[cfg(unix)]
+fn mode_of(path: &Path) -> u32 {
+    use std::os::unix::fs::PermissionsExt;
+    fs::metadata(path).unwrap().permissions().mode() & 0o7777
+}
+
+/// Remediation: a migrated executable stays runnable and the retained backup
+/// keeps its mode. Before the fix `copy_bytes_atomic` created every
+/// destination with the process default mode, so `.truss/core/bin/truss` was
+/// published as `-rw-rw-r--` and the installation was functionally broken.
+#[cfg(unix)]
+#[test]
+fn migrated_executables_keep_their_permission_bits() {
+    let fixture = legacy_repository();
+    let root = fixture.path();
+    let binary = root.join(".truss-core/bin/truss");
+    fs::create_dir_all(binary.parent().unwrap()).unwrap();
+    fs::copy(BINARY, &binary).unwrap();
+    let source_mode = mode_of(&binary);
+    assert_eq!(
+        source_mode & 0o111,
+        0o111,
+        "the fixture binary is executable before migration"
+    );
+    // The two canonical executable helper scripts the remediation names, made
+    // executable inside the legacy baseline so this fixture matches a real
+    // legacy consumer that carried them with an execute bit.
+    let scripts = [
+        ".truss-core/base/.agents/skills/onboard-repository/scripts/emit_evidence_bundle.py",
+        ".truss-core/base/.agents/skills/onboard-repository/scripts/render_patch.py",
+    ];
+    for script in scripts {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(root.join(script), fs::Permissions::from_mode(0o755)).unwrap();
+    }
+
+    let applied = json(&migrate(root, &["--apply", "--json"]));
+    assert_eq!(applied["state"], "migrated");
+    let published = root.join(".truss/core/bin/truss");
+    assert!(published.is_file());
+    assert_eq!(
+        mode_of(&published),
+        source_mode,
+        "the published binary keeps its permission bits"
+    );
+    assert_eq!(
+        mode_of(&published) & 0o111,
+        0o111,
+        "the binary stays runnable"
+    );
+    assert!(
+        Command::new(&published).arg("--version").output().is_ok(),
+        "the migrated binary is still executable"
+    );
+
+    let backup = PathBuf::from(applied["backup_path"].as_str().unwrap())
+        .join("backup/.truss-core/bin/truss");
+    assert_eq!(
+        mode_of(&backup),
+        source_mode,
+        "the retained backup keeps the mode for a later rollback"
+    );
+
+    for script in scripts {
+        let published = root.join(script.replace(".truss-core/", ".truss/core/"));
+        assert!(published.is_file(), "{} moved", published.display());
+        assert_eq!(
+            mode_of(&published) & 0o111,
+            0o111,
+            "{} stays executable",
+            published.display()
+        );
+    }
+}

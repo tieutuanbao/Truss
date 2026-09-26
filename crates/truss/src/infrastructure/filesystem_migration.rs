@@ -30,6 +30,90 @@ use crate::domain::{
     LOCAL_ONLY_IGNORE_RULES, NEW_CORE_ROOT,
 };
 
+// ---------------------------------------------------------------------------
+// Permission-bit preservation
+// ---------------------------------------------------------------------------
+//
+// Migration apply is Linux-only (D-04). Before this remediation every
+// destination was created by `copy_bytes_atomic`, which takes the process
+// default mode, so an executable legacy file was published non-executable and
+// the installation was functionally broken. The helpers below copy bytes and
+// permission bits together, for the backup, the stage, publication, the
+// integration writes, and every restore.
+//
+// On a non-Unix build the mode helpers compile to a no-op. That is a
+// documented limit, not a silent drop: `FileSystemMigration::supported` is
+// false there, so `unsupported_apply_platform` is returned before the lock and
+// no publication ever runs.
+
+#[cfg(unix)]
+fn permission_bits(path: &Path) -> Result<u32, PortError> {
+    use std::os::unix::fs::PermissionsExt;
+    let metadata = fs::metadata(path).map_err(io_error)?;
+    Ok(metadata.permissions().mode() & 0o7777)
+}
+
+#[cfg(not(unix))]
+fn permission_bits(_path: &Path) -> Result<u32, PortError> {
+    Ok(0)
+}
+
+#[cfg(unix)]
+fn set_permission_bits(path: &Path, mode: u32) -> Result<(), PortError> {
+    use std::os::unix::fs::PermissionsExt;
+    fs::set_permissions(path, fs::Permissions::from_mode(mode)).map_err(io_error)
+}
+
+#[cfg(not(unix))]
+fn set_permission_bits(_path: &Path, _mode: u32) -> Result<(), PortError> {
+    Ok(())
+}
+
+/// Copy `source`'s bytes and permission bits to `target` atomically.
+fn copy_file_with_mode_atomic(source: &Path, target: &Path, id: &str) -> Result<(), PortError> {
+    let bytes = fs::read(source).map_err(io_error)?;
+    let mode = permission_bits(source)?;
+    copy_bytes_atomic(&bytes, target, id)?;
+    set_permission_bits(target, mode)
+}
+
+/// Write `content` to `target` atomically, then apply `mode` when one is known.
+fn copy_content_with_mode_atomic(
+    content: &[u8],
+    target: &Path,
+    id: &str,
+    mode: Option<u32>,
+) -> Result<(), PortError> {
+    copy_bytes_atomic(content, target, id)?;
+    match mode {
+        Some(mode) => set_permission_bits(target, mode),
+        None => Ok(()),
+    }
+}
+
+/// The permission bits an operation's source carries, when it has one.
+fn migration_source_mode(
+    root: &Path,
+    operation: &MigrationOperation,
+) -> Result<Option<u32>, PortError> {
+    match operation.source.as_ref() {
+        Some(source) => Ok(Some(permission_bits(&root.join(source))?)),
+        None => Ok(None),
+    }
+}
+
+/// The permission bits a rewritten integration original carries. A newly
+/// created integration file has none to preserve.
+fn migration_integration_mode(
+    root: &Path,
+    integration: &IntegrationOperation,
+) -> Result<Option<u32>, PortError> {
+    if integration.before_hash.is_none() {
+        return Ok(None);
+    }
+    Ok(Some(permission_bits(&root.join(&integration.path))?))
+}
+
 /// The one adapter the composition root wires into `MigrationApplication`.
 #[derive(Clone, Copy, Default)]
 pub struct FileSystemMigration;
@@ -1323,7 +1407,7 @@ fn run_transaction(
             )));
         }
         let target = backup_dir.join(&entry.path);
-        copy_bytes_atomic(&bytes, &target, &id)?;
+        copy_file_with_mode_atomic(&source, &target, &id)?;
         let copied = fs::read(&target).map_err(io_error)?;
         if Some(hash_bytes(&copied)?) != entry.hash {
             return Err(PortError::new(format!(
@@ -1336,9 +1420,8 @@ fn run_transaction(
         if integration.before_hash.is_none() {
             continue;
         }
-        let bytes = fs::read(root.join(&integration.path)).map_err(io_error)?;
-        copy_bytes_atomic(
-            &bytes,
+        copy_file_with_mode_atomic(
+            &root.join(&integration.path),
             &backup_dir.join("integration").join(&integration.path),
             &id,
         )?;
@@ -1361,7 +1444,8 @@ fn run_transaction(
             )));
         }
         let target = stage_dir.join(&operation.destination);
-        copy_bytes_atomic(&bytes, &target, &id)?;
+        let mode = migration_source_mode(root, operation)?;
+        copy_content_with_mode_atomic(&bytes, &target, &id, mode)?;
         if hash_bytes(&fs::read(&target).map_err(io_error)?)? != operation.after_hash {
             return Err(PortError::new(format!(
                 "stage verification failed for {}",
@@ -1370,11 +1454,9 @@ fn run_transaction(
         }
     }
     for integration in &plan.integration {
-        copy_bytes_atomic(
-            &integration.content,
-            &stage_dir.join("integration").join(&integration.path),
-            &id,
-        )?;
+        let target = stage_dir.join("integration").join(&integration.path);
+        let mode = migration_integration_mode(root, integration)?;
+        copy_content_with_mode_atomic(&integration.content, &target, &id, mode)?;
     }
     journal.phase = JournalPhase::StageVerified;
     write_journal(tx_dir, journal)?;
@@ -1386,11 +1468,11 @@ fn run_transaction(
         if operation.kind == OperationKind::Preserve {
             continue;
         }
-        let bytes = fs::read(stage_dir.join(&operation.destination)).map_err(io_error)?;
+        let staged = stage_dir.join(&operation.destination);
         let destination = root.join(&operation.destination);
         ensure_parent_dirs(root, &destination, &mut journal.created_paths)?;
         let existed = fs::symlink_metadata(&destination).is_ok();
-        copy_bytes_atomic(&bytes, &destination, &id)?;
+        copy_file_with_mode_atomic(&staged, &destination, &id)?;
         journal.operations.push(JournalOperation {
             destination: operation.destination.clone(),
             source: operation.source.clone(),
@@ -1417,7 +1499,8 @@ fn run_transaction(
     for (index, integration) in plan.integration.iter().enumerate() {
         let destination = root.join(&integration.path);
         ensure_parent_dirs(root, &destination, &mut journal.created_paths)?;
-        copy_bytes_atomic(&integration.content, &destination, &id)?;
+        let mode = migration_integration_mode(root, integration)?;
+        copy_content_with_mode_atomic(&integration.content, &destination, &id, mode)?;
         journal.integration.push(JournalIntegration {
             path: integration.path.clone(),
             kind: integration.kind.as_str().to_owned(),
@@ -1668,18 +1751,8 @@ fn rollback(
             continue;
         }
         let backup = backup_dir.join(&entry.path);
-        match fs::read(&backup) {
-            Ok(bytes) => {
-                if let Err(error) = copy_bytes_atomic(&bytes, &root.join(&entry.path), &id) {
-                    io_failure = Some(error.to_string());
-                }
-            }
-            Err(error) => {
-                io_failure = Some(format!(
-                    "backup {} is unreadable: {error}",
-                    backup.display()
-                ));
-            }
+        if let Err(error) = copy_file_with_mode_atomic(&backup, &root.join(&entry.path), &id) {
+            io_failure = Some(error.to_string());
         }
     }
 
@@ -1738,18 +1811,8 @@ fn rollback(
 }
 
 fn restore(backup: &Path, destination: &Path, id: &str, failure: &mut Option<String>) {
-    match fs::read(backup) {
-        Ok(bytes) => {
-            if let Err(error) = copy_bytes_atomic(&bytes, destination, id) {
-                *failure = Some(error.to_string());
-            }
-        }
-        Err(error) => {
-            *failure = Some(format!(
-                "backup {} is unreadable: {error}",
-                backup.display()
-            ));
-        }
+    if let Err(error) = copy_file_with_mode_atomic(backup, destination, id) {
+        *failure = Some(error.to_string());
     }
 }
 
@@ -2579,5 +2642,74 @@ mod tests {
                 "{point:?} must journal the boundary it completed"
             );
         }
+    }
+
+    #[cfg(unix)]
+    fn mode_of(path: &Path) -> u32 {
+        use std::os::unix::fs::PermissionsExt;
+        fs::metadata(path).unwrap().permissions().mode() & 0o7777
+    }
+
+    /// Remediation: publication preserves the source permission bits, the
+    /// retained backup keeps them, and a rollback restores them.
+    ///
+    /// Before the fix every destination and every backup copy was created by
+    /// `copy_bytes_atomic`, which takes the process default mode, so a migrated
+    /// `.truss/core/bin/truss` was no longer runnable and a rollback restored
+    /// the bytes but not the execute bit.
+    #[cfg(unix)]
+    #[test]
+    fn migration_preserves_executable_bits_and_restores_them_on_rollback() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let fixture = legacy_repository();
+        let root = fixture.path();
+        let executable = root.join(".truss-core/bin/truss");
+        fs::create_dir_all(executable.parent().unwrap()).unwrap();
+        fs::write(&executable, b"#!/bin/sh\necho truss\n").unwrap();
+        fs::set_permissions(&executable, fs::Permissions::from_mode(0o755)).unwrap();
+        let source_mode = mode_of(&executable);
+
+        let application = MigrationApplication::new(FileSystemMigration, EmbeddedCoreDistribution);
+        let report = application.apply(root).unwrap();
+        assert_eq!(report.state, MigrationState::Migrated);
+        let published = root.join(".truss/core/bin/truss");
+        assert!(published.is_file());
+        assert_eq!(
+            mode_of(&published),
+            source_mode,
+            "the published file keeps its permission bits"
+        );
+        assert_eq!(
+            mode_of(&published) & 0o111,
+            0o111,
+            "the executable bit must survive publication"
+        );
+
+        let backup = PathBuf::from(report.backup_path.unwrap().trim_end_matches('/'))
+            .join("backup/.truss-core/bin/truss");
+        assert_eq!(
+            mode_of(&backup),
+            source_mode,
+            "the retained backup keeps the mode, so a rollback can restore it"
+        );
+
+        // A failure after retirement retires the legacy tree and then rolls it
+        // back from the backup, which must restore bytes and mode together.
+        let fixture = legacy_repository();
+        let root = fixture.path();
+        let executable = root.join(".truss-core/bin/truss");
+        fs::create_dir_all(executable.parent().unwrap()).unwrap();
+        fs::write(&executable, b"#!/bin/sh\necho truss\n").unwrap();
+        fs::set_permissions(&executable, fs::Permissions::from_mode(0o755)).unwrap();
+        let before = mode_of(&executable);
+        let execution = run(root, faults::Point::AfterRetire);
+        assert_eq!(execution.state, MigrationState::RolledBack);
+        assert_eq!(
+            mode_of(&executable),
+            before,
+            "a rollback restores the original permission bits"
+        );
+        assert_eq!(fs::read(&executable).unwrap(), b"#!/bin/sh\necho truss\n");
     }
 }

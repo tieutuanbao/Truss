@@ -4,7 +4,7 @@ Date: 2026-09-26
 
 ## Status
 
-Active
+Completed
 
 ## Outcome
 
@@ -82,9 +82,10 @@ committed; durable authority and this plan are.
 
 - [x] Task 0 — decision 0008 amendment and this durable plan (contract baseline).
 - [x] Task 1 — refuse dual-root reads consistently (commit `e438c62`, independently accepted).
-- [ ] Task 2 — complete preview and safe migration transaction.
-- [ ] Task 3 — contract checks and exact-HEAD repository proof.
-- [ ] Independent task acceptance and integration acceptance at final HEAD.
+- [x] Task 2 — complete preview and safe migration transaction (commit `644b805`, independently accepted with two Minor findings).
+- [x] Task 3 — contract checks and exact-HEAD repository proof (commit `8361a11`).
+- [x] Independent task acceptance for Tasks 1 and 2.
+- [ ] Final integration acceptance at the exact final HEAD.
 
 ## Decisions
 
@@ -115,5 +116,49 @@ committed; durable authority and this plan are.
 
 ## Result
 
-Complete after implementation. Record the verified outcome, limitations, and
-follow-up before moving this plan to `.truss/authority/plans/completed/`.
+Completed 2026-09-26 at candidate HEAD `8361a11271c900d3b28dc78388d6bf23071f3c73`
+on branch `delivery/truss-migrate`. Local delivery only: nothing was pushed,
+merged, tagged, or released.
+
+Verified outcome:
+
+- `truss migrate --directory <repo> [--json] [--apply]` is present, preview-first
+  and mutation-free; apply is a verified, backed-up, rollback-capable
+  transaction that prints the exact retained backup path.
+- `truss status`, `truss doctor`, and `truss addon status` refuse a dual-root
+  repository and name the migration preview.
+- Decision 0008 carries the accepted migration-only ownership exception, the
+  five relative integration ignore rules including `.truss-migration-backup/`,
+  the absent-optional entrypoint rule, the Linux-only apply limit, the preview
+  backup template, and the narrow legacy delivery run-key shape.
+- Evidence: `bash scripts/validate-premerge.sh` exited 0 printing
+  `pre-merge validation passed`; focused suites `migration_lifecycle` (14),
+  `clean_architecture` (3), and `dual_root_refusal` (4) passed; delivery-role
+  contract 22 ok / 0 failed; payload-layout contract 26 ok / 0 failed.
+- Independent acceptances: Task 1 `ACCEPT`, Task 2 `ACCEPT`, both by fresh
+  read-only sessions; the Task 2 session observed all four rows the implementer
+  had left un-red on a scratch copy and drove the real binary end to end.
+
+Limitations recorded rather than hidden:
+
+- Windows `--apply` is unsupported in this delivery (D-04). Preview reports
+  `blocked` with reason `unsupported_apply_platform`; no Windows lane exists and
+  no prose claims one.
+- `rollback_failed` at the process boundary is proven by a unit test and by the
+  Task 2 acceptance session, not by the shipped binary in the lifecycle suite,
+  because no portable fixture provokes the restore I/O error.
+- Minor (accepted, no remediation required): the two REQ-010 unit fixtures skip
+  the backup root in their snapshot helper, so residue limited to that root is
+  discriminated only by the process-level collision test.
+- Minor (accepted): the unknown-run-key token rewrite falls back to
+  `.truss/delivery/runs/evidence/<rest>`, which can leave wrong-shape
+  *references* (never misfile files) when no delivery root exists.
+- Applying to a dual root whose new tree carries a different manifest is the
+  contract's honest byte-different collision refusal, not a fast-forward; a real
+  consumer in that state needs an operator decision.
+
+Follow-up (not authorized here):
+
+- Publishing, release, and tag are out of scope. Window apply support and
+  legacy-read removal require their own approved records.
+- The retained backup under `.truss-migration-backup/` is never auto-deleted.

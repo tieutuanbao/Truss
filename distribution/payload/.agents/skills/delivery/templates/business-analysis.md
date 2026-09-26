@@ -76,6 +76,14 @@ How a human or an independent tester confirms the set of requirements is
 satisfied, including the negative cases that must be rejected. Name the evidence
 each check produces.
 
+Where an acceptance row names artifact provenance — a released artifact, a
+version boundary, a legacy installation, a specific tag or revision — the
+instrument must be a command that *constructs* that artifact, named so it can be
+run, not the artifact's name. A row satisfied by running an existing suite is not
+a provenance instrument: bytes cannot show that the executed fixture is the
+approved one. State the command, and state what running it proves that a
+substitute could not.
+
 ## Planner handoff
 
 The concrete handoff the planner consumes: requirement IDs and their priorities,

@@ -1122,8 +1122,13 @@ REQUIRED_LAYOUT="3"
 # source repository carries. An installed consumer has `.truss/core/` but no
 # `distribution/`, and product authority such as TRUSS.md lives in the source
 # repository's own `.truss/authority/`, never inside the installed payload.
-if [ -n "$SCRIPT_DIR" ] && [ -f "$SCRIPT_DIR/../AGENTS.md" ] && \
-   [ -f "$SCRIPT_DIR/../distribution/layout-version" ]; then
+#
+# The distribution tree is the only test. This gate previously also required
+# `AGENTS.md` at the source root, but `AGENTS.md` is deliberately absent from the
+# published tree (see 0.2.9: the local installation and the agent entrypoints are
+# no longer published), so that requirement made this gate unreachable from any
+# published checkout and the installer reported an empty source instead.
+if [ -n "$SCRIPT_DIR" ] && [ -f "$SCRIPT_DIR/../distribution/layout-version" ]; then
   SOURCE_ROOT="$(cd "$SCRIPT_DIR/.." && pwd -P)"
   SOURCE_MODE="local"
 fi

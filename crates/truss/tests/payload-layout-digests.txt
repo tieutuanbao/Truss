@@ -5,7 +5,7 @@
 7a4475b165ddeda63577fb806b6b8821571a85283d40655e1d3cc3c03981cc1b  distribution/payload/.agents/skills/audit-onboarding-proposal/scripts/validate_evidence_capsule.py
 2c4d0db2c0c1624ca961b5c92f96791348c0169d53ec9383e42851a82e391b47  distribution/payload/.agents/skills/delivery-setup/SKILL.md
 39403bc0572650386db561c99172de5e440361510333da0cb61ed352a1ec49a3  distribution/payload/.agents/skills/delivery-setup/agents/openai.yaml
-732727e473bab46b1315dc38ee59bad963f8a4d98155175191eac4e91ecf9502  distribution/payload/.agents/skills/delivery/SKILL.md
+1b274792edfec8d704907cfb019e80d601b68af549edf4e80632404b5bb2ee4e  distribution/payload/.agents/skills/delivery/SKILL.md
 db79bbde3bea5404f2079e5381c81d5d3400bcf16fcdf128c6503f512a58790d  distribution/payload/.agents/skills/delivery/agents/openai.yaml
 d164839f59056cf45d95f146bda8bd5f1d6e334f333b60c6e07ecfb7ea54fa73  distribution/payload/.agents/skills/delivery/references/maintenance-log.md
 58ca4e4839ae1a7fa73de8b1127d313be6053ecc39912c77ec16b1008fde8236  distribution/payload/.agents/skills/delivery/references/trusses.md

@@ -336,11 +336,15 @@ from a different repository.
 
 A valid runtime does not prove worker readiness. The first worker dispatch
 must be treated as a readiness probe: inspect the actual terminal output when
-it fails. Error labels such as `codex-trust-workspace` are Orca classifications,
-not proof that Codex launched. If the terminal shows a Claude, Antigravity, or
-other agent trust prompt, trust that exact agent in that exact worktree; do not
-change a global Codex trust setting or enable a bypass. Do not dispatch the
-next role until the probe reaches agent readiness.
+it fails. A start that does not reach readiness names the stage it failed at
+in `failedStage`, its reason in `lastError`, and any terminal it created in
+`residualResources`; read all three before choosing a recovery. A `lastError`
+that names an Orca classification — a blocked trust prompt, for example —
+classifies the failure and is not proof that the agent launched. If the
+terminal shows a Claude, Antigravity, or other agent trust prompt, trust that
+exact agent in that exact worktree; do not change a global Codex trust setting
+or enable a bypass. Do not dispatch the next role until the probe reaches
+agent readiness.
 
 For a truss whose model cannot be pinned by `worker-start`, bootstrap trust
 before creating the dispatch. Launch its configured interactive argv in an
@@ -432,19 +436,23 @@ coordinator. Otherwise the plane redelivers it. A wait's type filter controls
 wakeup, not which messages belong to the returned batch.
 
 A dispatch that does not reach `ready` is diagnosed by reading its terminal
-and handling what is actually there. It is retried into that same terminal
-with `--terminal` and `--retry-of` only when that read shows the worker is
-not already progressing; a `failed` receipt is not that showing. A
-`dispatched` receipt is not evidence the worker is alive any more than a
-`failed` receipt is evidence it is dead. A wait timeout is likewise a
-transport outcome, not a worker outcome: re-enter the wait or read the
-terminal before concluding anything about the worker. Retry is refused while
-the plane still considers the dispatch live, whether or not the worker still
-is; the live terminal is re-engaged instead. `--model` and `--effort` cannot
-combine with `--terminal`; that is not an exception to naming the model and
-effort on every dispatch, because the terminal was launched pinned and the
-retry reuses it rather than launching an unpinned one. Control does not route
-by an enumerated vendor dialog; `agent_prompt_blocked` and
+and handling what is actually there. A retry names the failed task with
+`--task` and the failed attempt with `--retry-of`; `--spec` would create a new
+task instead of retrying this one, and `--retry-of` inherits no placement, so
+the intended `--worktree` and exactly one of `--agent` (a fresh terminal) or
+`--terminal` (the pinned terminal) are repeated explicitly. The pinned
+terminal is reused only when that read shows the worker is not already
+progressing; a `failed` receipt is not that showing. A `dispatched` receipt is
+not evidence the worker is alive any more than a `failed` receipt is evidence
+it is dead. A wait timeout is likewise a transport outcome, not a worker
+outcome: re-enter the wait or read the terminal before concluding anything
+about the worker. Retry is refused while the plane still considers the
+dispatch live, whether or not the worker still is; the live terminal is
+re-engaged instead. `--agent`, `--model`, and `--effort` all fail alongside
+`--terminal`, because it reuses the agent it was launched with; reusing the
+pinned terminal is therefore not an exception to naming the model and effort
+on every dispatch, since that terminal was launched pinned. Control does not
+route by an enumerated vendor dialog; `agent_prompt_blocked` and
 `agent_prompt_stalled` do not distinguish separate recoveries.
 
 ### Specialists, not a consultation role
@@ -747,9 +755,10 @@ is safe.
 | Scope or architecture must change | Return to the design gate |
 | New authority or destructive action is required | Ask the human |
 | Orca or a required capability is unavailable | Stop; no headless fallback |
+| A dispatch never reaches readiness (`failedStage` names the readiness stage) while the runtime still reports ready | Read `failedStage`, `lastError`, and `residualResources` first. The terminal the failed start created is still owned by that dispatch: release it with `worker-release`, never by closing it by hand. A `failed` or `stopped` attempt is replaced once with `--task` and `--retry-of` and explicit placement. A second identical failure on the same agent and worktree is an execution-plane defect, not an in-contract defect: preserve the candidate, escalate to the human with the receipt and a terminal read, and report it upstream without opening any direct or headless path |
 | The candidate location would move out of the consumer checkout | Not a Control decision: present it as a gate 1 decision with the named path, or deliver in the consumer checkout when the envelope authorizes no relocation |
 | Truss fails or evidence is insufficient | Preserve the candidate, report the native outcome and disposition |
-| Dispatch wait times out or receipt is ambiguous | Treat as transport-unknown: re-enter the wait or read the terminal; retry only into the same pinned terminal with `--retry-of` when it is not progressing |
+| Dispatch wait times out or receipt is ambiguous | Treat as transport-unknown: re-enter the wait or read the terminal; retry only with `--task` and `--retry-of` and explicit placement when the receipt is `failed` or `stopped` and it is not progressing |
 | Architect rejects the drafted contract | Control routes findings back to `ba`, `architect`, or `planner` when those roles are pinned; only without those pins may Control redraft in-session. Gate 1 is not presented until the contract is settled |
 | Control session is interrupted | Resume from Git state, the durable decision record or execution plan, and Orca run records; re-verify a live dispatch before re-engaging it; never start a competing implementer or accepting session for work already in flight |
 | Idempotent release step is interrupted | Verify Git and pull-request state, then resume |

@@ -354,12 +354,24 @@ fn load_state(state_root: &Path) -> Result<Option<AddOnState>, PortError> {
             })?;
             let actual = hash_bytes(&content)?;
             if actual != expected {
+                // Which side moved is not knowable here, so name both, name the
+                // file that was actually read, and say what the refusal means
+                // for the operator. Every add-on command reads this record, so
+                // an operator told only "mismatch" has no next step at all.
                 return Err(PortError::new(format!(
-                    "add-on base hash mismatch for {}/{}: expected {}, got {}",
-                    name.as_str(),
-                    path.as_str(),
-                    expected.as_str(),
-                    actual.as_str()
+                    "add-on base hash mismatch for {name}/{path}: the record in {label}/{record} \
+                     names {expected}, but the baseline copy {baseline} hashes to {actual}. The \
+                     record and the baseline disagree, so this command cannot tell which of the \
+                     two moved. The baseline is the pristine copy the record describes, and \
+                     `status`, `update`, and `install` all stop on this record until the two \
+                     agree.",
+                    name = name.as_str(),
+                    path = path.as_str(),
+                    label = state_label(state_root),
+                    record = ADDONS_FILE,
+                    expected = expected.as_str(),
+                    baseline = baseline.display(),
+                    actual = actual.as_str(),
                 )));
             }
             files.push(BaselineFile {

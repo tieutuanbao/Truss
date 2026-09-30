@@ -1,0 +1,6 @@
+interface:
+  display_name: "Plan Product"
+  short_description: "Turn an idea into approved repository authority"
+  default_prompt: "Use $plan-product to turn this idea into approved product authority and a first implementation slice."
+policy:
+  allow_implicit_invocation: false

@@ -1,0 +1,726 @@
+use serde::Serialize;
+
+use crate::application::{AddOnStatusReport, AddOnUpdateReport, ExecutableRecoveryReport};
+use crate::domain::{
+    AddOnName, AddOnPayloadFile, ConflictReason, DoctorReport, FileChangeKind, InstallReport,
+    InstallationCondition, MigrationReport, MigrationState, PlannedFileChange, StatusReport,
+    UpdateReport,
+};
+
+pub struct CommandExit {
+    pub code: i32,
+    pub stdout: String,
+    pub stderr: String,
+}
+
+pub fn present_install(report: &InstallReport, json: bool) -> CommandExit {
+    let output = InstallOutput {
+        operation: "install",
+        version: &report.version,
+        dry_run: report.dry_run,
+        applied: report.applied,
+        changes: report
+            .changes
+            .iter()
+            .map(|change| ChangeOutput {
+                path: change.path.as_str(),
+                kind: change_kind(&change.kind),
+            })
+            .collect(),
+        backup_path: report.backup_path.as_deref(),
+        recovered_interrupted_transaction: report.recovered_interrupted_transaction,
+    };
+    success(render(
+        json,
+        &output,
+        format!(
+            "Truss core {} {}.\n{}",
+            report.version,
+            if report.dry_run {
+                "install preview"
+            } else {
+                "installed"
+            },
+            render_changes(&report.changes)
+        ),
+    ))
+}
+
+pub fn present_update(report: &UpdateReport, json: bool) -> CommandExit {
+    let output = UpdateOutput {
+        operation: "update",
+        from_version: &report.from_version,
+        to_version: &report.to_version,
+        dry_run: report.dry_run,
+        applied: report.applied,
+        changes: report
+            .changes
+            .iter()
+            .map(|change| ChangeOutput {
+                path: change.path.as_str(),
+                kind: change_kind(&change.kind),
+            })
+            .collect(),
+        conflicts: report
+            .conflicts
+            .iter()
+            .map(|conflict| ConflictOutput {
+                path: conflict.path.as_str(),
+                reason: conflict_reason(&conflict.reason),
+                detail: &conflict.detail,
+            })
+            .collect(),
+        resolution_staged: report.resolution_staged,
+        backup_path: report.backup_path.as_deref(),
+        recovered_interrupted_transaction: report.recovered_interrupted_transaction,
+    };
+    let human = if report.conflicts.is_empty() {
+        format!(
+            "Truss core {} -> {} {}.\n{}",
+            report.from_version,
+            report.to_version,
+            if report.dry_run {
+                "update preview"
+            } else {
+                "updated"
+            },
+            render_changes(&report.changes)
+        )
+    } else {
+        let conflicts = report
+            .conflicts
+            .iter()
+            .map(|conflict| {
+                format!(
+                    "conflict {} ({:?}): {}",
+                    conflict.path, conflict.reason, conflict.detail
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        let resolution = if report.resolution_staged {
+            let paths = report
+                .conflicts
+                .iter()
+                .map(|conflict| format!("  .truss-core/update/resolved/{}", conflict.path))
+                .collect::<Vec<_>>()
+                .join("\n");
+            format!(
+                "\nResolve after human direction:\n{paths}\nThen run: truss update --continue\nAbort with: truss update --abort\n"
+            )
+        } else {
+            String::new()
+        };
+        format!("Update stopped; no files changed.\n{conflicts}\n{resolution}")
+    };
+    CommandExit {
+        code: if report.conflicts.is_empty() { 0 } else { 2 },
+        stdout: render(json, &output, human),
+        stderr: String::new(),
+    }
+}
+
+pub fn present_abort(removed: bool, json: bool) -> CommandExit {
+    #[derive(Serialize)]
+    struct AbortOutput {
+        operation: &'static str,
+        removed: bool,
+    }
+    success(render(
+        json,
+        &AbortOutput {
+            operation: "update_abort",
+            removed,
+        },
+        if removed {
+            "Staged update resolution aborted; managed files were unchanged.\n".to_owned()
+        } else {
+            "No staged update resolution exists.\n".to_owned()
+        },
+    ))
+}
+
+/// Report one add-on's recorded provenance and pending session.
+///
+/// Absence is reported as data, not as an error message: the JSON carries
+/// `record: null` and the text says `not recorded`. The exit code mirrors the
+/// core `status`, whose uninstalled answer is also `1`.
+pub fn present_addon_status(report: &AddOnStatusReport, json: bool) -> CommandExit {
+    let output = AddOnStatusOutput {
+        operation: "addon_status",
+        name: report.name.as_str(),
+        session_pending: report.session_pending,
+        record: report.record.as_ref().map(|record| AddOnRecordOutput {
+            source_ref: record.source_ref.as_str(),
+            source_core_version: &record.source_core_version,
+            files: record.files.iter().map(addon_file_output).collect(),
+        }),
+    };
+    let human = match &report.record {
+        Some(record) => format!(
+            "Add-on {}: {} (core {}, session_pending={}).\n{}",
+            report.name,
+            record.source_ref,
+            record.source_core_version,
+            report.session_pending,
+            render_addon_files(&record.files)
+        ),
+        None => format!(
+            "Add-on {}: not recorded (session_pending={}).\n",
+            report.name, report.session_pending
+        ),
+    };
+    CommandExit {
+        code: if report.record.is_some() { 0 } else { 1 },
+        stdout: render(json, &output, human),
+        stderr: String::new(),
+    }
+}
+
+pub fn present_addon_install(report: &AddOnUpdateReport, json: bool) -> CommandExit {
+    let output = addon_update_output("addon_install", report);
+    let source_ref = report
+        .source_ref
+        .as_ref()
+        .map(|value| value.as_str())
+        .unwrap_or("unknown");
+    let human = if report.dry_run {
+        format!("Add-on {} {source_ref} install preview.\n", report.name)
+    } else {
+        format!(
+            "Add-on {} {source_ref} installed (adopted={}).\n",
+            report.name,
+            report.adopted.unwrap_or(false)
+        )
+    };
+    success(render(json, &output, human))
+}
+
+pub fn present_addon_update(report: &AddOnUpdateReport, json: bool) -> CommandExit {
+    let output = addon_update_output("addon_update", report);
+    let source_ref = report
+        .source_ref
+        .as_ref()
+        .map(|value| value.as_str())
+        .unwrap_or("unknown");
+    let human = if report.conflicts.is_empty() {
+        format!(
+            "Add-on {} {source_ref} {}.\n{}",
+            report.name,
+            if report.dry_run {
+                "update preview"
+            } else {
+                "updated"
+            },
+            render_changes(&report.changes)
+        )
+    } else {
+        let conflicts = report
+            .conflicts
+            .iter()
+            .map(|conflict| {
+                format!(
+                    "conflict {} ({:?}): {}",
+                    conflict.path, conflict.reason, conflict.detail
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        let resolution = if report.resolution_staged {
+            let paths = report
+                .conflicts
+                .iter()
+                .map(|conflict| {
+                    format!(
+                        "  .truss-core/addon-update/{}/resolved/{}",
+                        report.name, conflict.path
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+            format!(
+                "\nResolve after human direction:\n{paths}\nThen run: truss addon continue --name {}\nAbort with: truss addon abort --name {}\n",
+                report.name, report.name
+            )
+        } else {
+            String::new()
+        };
+        format!(
+            "Add-on {} update stopped; no files changed.\n{conflicts}\n{resolution}",
+            report.name
+        )
+    };
+    CommandExit {
+        code: if report.conflicts.is_empty() { 0 } else { 2 },
+        stdout: render(json, &output, human),
+        stderr: String::new(),
+    }
+}
+
+pub fn present_addon_continue(report: &AddOnUpdateReport, json: bool) -> CommandExit {
+    let output = addon_update_output("addon_continue", report);
+    success(render(
+        json,
+        &output,
+        format!(
+            "Add-on {} continued; the staged resolution was applied.\n",
+            report.name
+        ),
+    ))
+}
+
+pub fn present_addon_abort(name: &AddOnName, removed: bool, json: bool) -> CommandExit {
+    #[derive(Serialize)]
+    struct AddOnAbortOutput<'a> {
+        operation: &'static str,
+        name: &'a str,
+        removed: bool,
+    }
+    success(render(
+        json,
+        &AddOnAbortOutput {
+            operation: "addon_abort",
+            name: name.as_str(),
+            removed,
+        },
+        if removed {
+            format!("Staged add-on resolution for {name} aborted; managed files were unchanged.\n")
+        } else {
+            format!("No staged add-on resolution exists for {name}.\n")
+        },
+    ))
+}
+
+pub fn present_executable_recovery(report: &ExecutableRecoveryReport, json: bool) -> CommandExit {
+    #[derive(Serialize)]
+    struct RecoveryOutput<'a> {
+        operation: &'static str,
+        executable_version: &'a str,
+        core_version: &'a str,
+        dry_run: bool,
+        applied: bool,
+    }
+    success(render(
+        json,
+        &RecoveryOutput {
+            operation: "executable_recovery",
+            executable_version: &report.executable_version,
+            core_version: &report.core_version,
+            dry_run: report.dry_run,
+            applied: report.applied,
+        },
+        format!(
+            "{} Truss executable {} to match installed core {}.\n",
+            if report.dry_run {
+                "Would recover"
+            } else {
+                "Recovered"
+            },
+            report.executable_version,
+            report.core_version
+        ),
+    ))
+}
+
+pub fn present_status(report: &StatusReport, json: bool) -> CommandExit {
+    let output = StatusOutput {
+        operation: "status",
+        condition: condition(&report.condition),
+        installed_version: report.installed_version.as_deref(),
+        target_version: &report.target_version,
+        files: report
+            .files
+            .iter()
+            .map(|file| FileStatusOutput {
+                path: file.path.as_str(),
+                modified: file.modified,
+                missing: file.missing,
+            })
+            .collect(),
+    };
+    let modified = report.files.iter().filter(|file| file.modified).count();
+    let missing = report.files.iter().filter(|file| file.missing).count();
+    CommandExit {
+        code: if report.condition == InstallationCondition::NotInstalled {
+            1
+        } else {
+            0
+        },
+        stdout: render(
+            json,
+            &output,
+            format!(
+                "Truss core: {} (installed={}, target={}, modified={}, missing={})\n",
+                condition(&report.condition),
+                report.installed_version.as_deref().unwrap_or("none"),
+                report.target_version,
+                modified,
+                missing
+            ),
+        ),
+        stderr: String::new(),
+    }
+}
+
+pub fn present_doctor(report: &DoctorReport, json: bool) -> CommandExit {
+    let output = DoctorOutput {
+        operation: "doctor",
+        healthy: report.healthy,
+        checks: report
+            .checks
+            .iter()
+            .map(|check| DoctorCheckOutput {
+                name: &check.name,
+                passed: check.passed,
+                detail: &check.detail,
+            })
+            .collect(),
+    };
+    let human = report
+        .checks
+        .iter()
+        .map(|check| {
+            format!(
+                "{} {}: {}",
+                if check.passed { "pass" } else { "fail" },
+                check.name,
+                check.detail
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+        + "\n";
+    CommandExit {
+        code: if report.healthy { 0 } else { 1 },
+        stdout: render(json, &output, human),
+        stderr: String::new(),
+    }
+}
+
+/// Present one migration report in the stable envelope (D-14) or as text.
+///
+/// Exit 0 covers only `ready`, `already_migrated`, and `migrated`; every
+/// refusal and failure is non-zero. The JSON envelope is emitted for every
+/// state, while text mode sends a refusal to stderr so a caller can tell a
+/// refusal from a report.
+pub fn present_migrate(report: &MigrationReport, json: bool) -> CommandExit {
+    let output = MigrationOutput {
+        operation: "migrate",
+        state: report.state.as_str(),
+        reason: report.reason.map(|reason| reason.as_str()),
+        applied: report.applied,
+        repository: &report.repository,
+        backup_path: report.backup_path.as_deref(),
+        backup_path_template: &report.backup_path_template,
+        transaction_id: report.transaction_id.as_deref(),
+        run_key: report.run_key.as_deref(),
+        legacy_roots: report.legacy_roots.clone(),
+        operations: report
+            .operations
+            .iter()
+            .map(|operation| MigrationOperationOutput {
+                source: operation.source.as_deref(),
+                destination: &operation.destination,
+                kind: operation.kind.as_str(),
+            })
+            .collect(),
+        conflicts: report.conflicts.clone(),
+        evidence: report.evidence.clone(),
+    };
+    let human = match report.state {
+        MigrationState::Ready => format!(
+            "Truss migration preview: ready. A backup will be created under {}\n{}",
+            report.backup_path_template,
+            render_migration_operations(report)
+        ),
+        MigrationState::AlreadyMigrated => match &report.backup_path {
+            Some(path) => format!("Truss migration: already_migrated; existing backup at {path}\n"),
+            None => "Truss migration: already_migrated\n".to_owned(),
+        },
+        MigrationState::Migrated => format!(
+            "Truss migration: migrated. Backup retained at {}\n{}",
+            report.backup_path.as_deref().unwrap_or("(unknown)"),
+            render_migration_operations(report)
+        ),
+        MigrationState::RecoveryRequired => format!(
+            "Truss migration: recovery_required; resolve the incomplete or conflicted transaction first\n{}\n",
+            render_lines(&report.conflicts)
+        ),
+        MigrationState::RolledBack => format!(
+            "Truss migration: rolled_back; originals restored and evidence retained at {}\n",
+            report.backup_path.as_deref().unwrap_or("(unknown)")
+        ),
+        MigrationState::RollbackFailed => format!(
+            "Truss migration: rollback_failed; the repository is not known to be safe. Recovery material: {}\n{}\n",
+            report.backup_path.as_deref().unwrap_or("(unknown)"),
+            render_lines(&report.evidence)
+        ),
+        MigrationState::Blocked => String::new(),
+    };
+    if json {
+        return CommandExit {
+            code: report.state.exit_code(),
+            stdout: render(json, &output, String::new()),
+            stderr: String::new(),
+        };
+    }
+    if report.state == MigrationState::Blocked {
+        return CommandExit {
+            code: report.state.exit_code(),
+            stdout: String::new(),
+            stderr: format!(
+                "Error: migration blocked ({}):\n{}\n",
+                report
+                    .reason
+                    .map(|reason| reason.as_str())
+                    .unwrap_or("unknown"),
+                render_lines(&report.conflicts)
+            ),
+        };
+    }
+    CommandExit {
+        code: report.state.exit_code(),
+        stdout: human,
+        stderr: String::new(),
+    }
+}
+
+fn render_migration_operations(report: &MigrationReport) -> String {
+    report
+        .operations
+        .iter()
+        .map(|operation| format!("{} {}\n", operation.kind.as_str(), operation.destination))
+        .collect()
+}
+
+fn render_lines(lines: &[String]) -> String {
+    lines.iter().map(|line| format!("  {line}\n")).collect()
+}
+
+fn success(stdout: String) -> CommandExit {
+    CommandExit {
+        code: 0,
+        stdout,
+        stderr: String::new(),
+    }
+}
+
+fn render<T: Serialize>(json: bool, output: &T, human: String) -> String {
+    if json {
+        serde_json::to_string(output).expect("serializable presenter output") + "\n"
+    } else {
+        human
+    }
+}
+
+fn addon_update_output<'a>(
+    operation: &'static str,
+    report: &'a AddOnUpdateReport,
+) -> AddOnUpdateOutput<'a> {
+    AddOnUpdateOutput {
+        operation,
+        name: report.name.as_str(),
+        source_ref: report.source_ref.as_ref().map(|value| value.as_str()),
+        dry_run: report.dry_run,
+        applied: report.applied,
+        adopted: report.adopted,
+        resolution_staged: report.resolution_staged,
+        changes: report
+            .changes
+            .iter()
+            .map(|change| ChangeOutput {
+                path: change.path.as_str(),
+                kind: change_kind(&change.kind),
+            })
+            .collect(),
+        conflicts: report
+            .conflicts
+            .iter()
+            .map(|conflict| ConflictOutput {
+                path: conflict.path.as_str(),
+                reason: conflict_reason(&conflict.reason),
+                detail: &conflict.detail,
+            })
+            .collect(),
+        backup_path: report.backup_path.as_deref(),
+    }
+}
+
+fn addon_file_output(file: &AddOnPayloadFile) -> AddOnFileOutput<'_> {
+    AddOnFileOutput {
+        path: file.path.as_str(),
+        sha256: file.sha256.as_str(),
+    }
+}
+
+fn render_addon_files(files: &[AddOnPayloadFile]) -> String {
+    files
+        .iter()
+        .map(|file| format!("  {} {}\n", file.path, file.sha256.as_str()))
+        .collect()
+}
+
+fn render_changes(changes: &[PlannedFileChange]) -> String {
+    changes
+        .iter()
+        .map(|change| format!("{} {}", change_kind(&change.kind), change.path))
+        .collect::<Vec<_>>()
+        .join("\n")
+        + "\n"
+}
+
+fn change_kind(kind: &FileChangeKind) -> &'static str {
+    match kind {
+        FileChangeKind::Create => "create",
+        FileChangeKind::Update => "update",
+        FileChangeKind::Delete => "delete",
+        FileChangeKind::Preserve => "preserve",
+        FileChangeKind::Adopt => "adopt",
+    }
+}
+
+fn conflict_reason(reason: &ConflictReason) -> &'static str {
+    match reason {
+        ConflictReason::OverlappingChanges => "overlapping_changes",
+        ConflictReason::MissingManagedFile => "missing_managed_file",
+        ConflictReason::ExistingUnmanagedPath => "existing_unmanaged_path",
+        ConflictReason::ModifiedRemovedFile => "modified_removed_file",
+        ConflictReason::UnsafePath => "unsafe_path",
+    }
+}
+
+fn condition(value: &InstallationCondition) -> &'static str {
+    match value {
+        InstallationCondition::NotInstalled => "not_installed",
+        InstallationCondition::Current => "current",
+        InstallationCondition::UpdateAvailable => "update_available",
+        InstallationCondition::ExecutableOutdated => "executable_outdated",
+    }
+}
+
+#[derive(Serialize)]
+struct MigrationOutput<'a> {
+    operation: &'static str,
+    state: &'static str,
+    reason: Option<&'static str>,
+    applied: bool,
+    repository: &'a str,
+    backup_path: Option<&'a str>,
+    backup_path_template: &'a str,
+    transaction_id: Option<&'a str>,
+    run_key: Option<&'a str>,
+    legacy_roots: Vec<String>,
+    operations: Vec<MigrationOperationOutput<'a>>,
+    conflicts: Vec<String>,
+    evidence: Vec<String>,
+}
+
+#[derive(Serialize)]
+struct MigrationOperationOutput<'a> {
+    source: Option<&'a str>,
+    destination: &'a str,
+    kind: &'static str,
+}
+
+#[derive(Serialize)]
+struct InstallOutput<'a> {
+    operation: &'static str,
+    version: &'a str,
+    dry_run: bool,
+    applied: bool,
+    changes: Vec<ChangeOutput<'a>>,
+    backup_path: Option<&'a str>,
+    recovered_interrupted_transaction: bool,
+}
+
+#[derive(Serialize)]
+struct UpdateOutput<'a> {
+    operation: &'static str,
+    from_version: &'a str,
+    to_version: &'a str,
+    dry_run: bool,
+    applied: bool,
+    changes: Vec<ChangeOutput<'a>>,
+    conflicts: Vec<ConflictOutput<'a>>,
+    resolution_staged: bool,
+    backup_path: Option<&'a str>,
+    recovered_interrupted_transaction: bool,
+}
+
+#[derive(Serialize)]
+struct AddOnStatusOutput<'a> {
+    operation: &'static str,
+    name: &'a str,
+    session_pending: bool,
+    record: Option<AddOnRecordOutput<'a>>,
+}
+
+#[derive(Serialize)]
+struct AddOnRecordOutput<'a> {
+    source_ref: &'a str,
+    source_core_version: &'a str,
+    files: Vec<AddOnFileOutput<'a>>,
+}
+
+#[derive(Serialize)]
+struct AddOnFileOutput<'a> {
+    path: &'a str,
+    sha256: &'a str,
+}
+
+#[derive(Serialize)]
+struct AddOnUpdateOutput<'a> {
+    operation: &'static str,
+    name: &'a str,
+    source_ref: Option<&'a str>,
+    dry_run: bool,
+    applied: bool,
+    adopted: Option<bool>,
+    resolution_staged: bool,
+    changes: Vec<ChangeOutput<'a>>,
+    conflicts: Vec<ConflictOutput<'a>>,
+    backup_path: Option<&'a str>,
+}
+
+#[derive(Serialize)]
+struct StatusOutput<'a> {
+    operation: &'static str,
+    condition: &'static str,
+    installed_version: Option<&'a str>,
+    target_version: &'a str,
+    files: Vec<FileStatusOutput<'a>>,
+}
+
+#[derive(Serialize)]
+struct DoctorOutput<'a> {
+    operation: &'static str,
+    healthy: bool,
+    checks: Vec<DoctorCheckOutput<'a>>,
+}
+
+#[derive(Serialize)]
+struct ChangeOutput<'a> {
+    path: &'a str,
+    kind: &'static str,
+}
+
+#[derive(Serialize)]
+struct ConflictOutput<'a> {
+    path: &'a str,
+    reason: &'static str,
+    detail: &'a str,
+}
+
+#[derive(Serialize)]
+struct FileStatusOutput<'a> {
+    path: &'a str,
+    modified: bool,
+    missing: bool,
+}
+
+#[derive(Serialize)]
+struct DoctorCheckOutput<'a> {
+    name: &'a str,
+    passed: bool,
+    detail: &'a str,
+}

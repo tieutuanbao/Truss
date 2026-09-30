@@ -1,0 +1,4 @@
+# Optional explicit-only product-planning add-on.
+# This manifest is intentionally absent from the default core manifest.
+.agents/skills/plan-product/SKILL.md
+.agents/skills/plan-product/agents/openai.yaml

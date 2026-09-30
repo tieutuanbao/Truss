@@ -1,0 +1,13 @@
+# macOS Finder metadata.
+.DS_Store
+
+# Python bytecode and tool caches.
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Rust build output for truss tooling.
+target/
+dist/

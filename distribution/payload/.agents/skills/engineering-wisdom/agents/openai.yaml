@@ -1,0 +1,6 @@
+interface:
+  display_name: "Engineering Wisdom"
+  short_description: "Context-aware engineering review heuristics"
+  default_prompt: "Use $engineering-wisdom to review this change with explicit observations, heuristics, trade-offs, and verification."
+policy:
+  allow_implicit_invocation: false

@@ -955,7 +955,8 @@ impl RealDeliveryFixture {
 }
 
 /// Acceptance row 1: the whole cycle works for the real delivery add-on at its
-/// real location `.agents/skills/delivery` and `.agents/skills/delivery-setup`.
+/// real locations under `.agents/skills/business-analyst`,
+/// `.agents/skills/delivery`, and `.agents/skills/delivery-setup`.
 #[test]
 fn cli_addon_real_delivery_cycle_installs_updates_resolves_and_aborts() {
     let fixture = RealDeliveryFixture::new();
@@ -965,8 +966,8 @@ fn cli_addon_real_delivery_cycle_installs_updates_resolves_and_aborts() {
     // update this count deliberately rather than silently widening the add-on.
     assert_eq!(
         paths.len(),
-        19,
-        "the real delivery manifest is 19 paths; update this reviewed count when the manifest changes"
+        27,
+        "the real delivery manifest is 27 paths; update this reviewed count when the manifest changes"
     );
     fixture.core_state(&mut transcript);
 

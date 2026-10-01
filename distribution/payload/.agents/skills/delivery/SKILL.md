@@ -11,8 +11,11 @@ and release preparation on the Orca execution plane. It is a thin control
 protocol, not an orchestrator, SDLC framework, or second source of Git state.
 
 Read `AGENTS.md` for repository instructions and per-role truss/model/effort
-pins. Follow repository-owned workflow, developer documentation, and native
-validation entry points for required gates and artifact conventions; those
+pins. The `ba` role uses the co-installed `$business-analyst` skill for discovery,
+requirement quality, behavioural scenarios, traceability, and handoff review;
+Delivery still owns the artifact, approval, and acceptance boundaries. Follow
+repository-owned workflow, developer documentation, and native validation entry
+points for required gates and artifact conventions; those
 values need not be stored in `AGENTS.md`. Resolve the default branch from
 repository policy or verified Git/forge metadata, not the current branch.
 Record resolved paths and Git targets in the approved execution envelope.
@@ -99,12 +102,19 @@ never dispatched.
 | Role | Owns | Dispatch |
 | --- | --- | --- |
 | `project-manager` | Coordination, required dev/ops preflight, approvals, dispatch, integration, recovery, authorized release | current session |
-| `ba` | The concrete business analysis: goals, actors, flows, business rules, exceptions, scope, stable requirement IDs, acceptance and planner handoff | fresh dispatched worker |
+| `ba` | Evidence-backed discovery and business analysis: problem and goals, stakeholders and actors, current/target flows, rules and exceptions, scope and priorities, stable requirement IDs, user stories and behavioural scenarios, business-facing non-functional expectations, acceptance, traceability, and architect/planner handoff | fresh dispatched worker |
 | `architect` | Technical contracts, interfaces, boundaries, dependencies, risks, and the decision record mapping choices to business requirements | fresh dispatched worker |
 | `planner` | The detailed task plan: inputs, outputs, exact path ownership, dependency DAG, commands, waves, integration and recovery, plus explicit acceptance criteria and mapped test cases for every task | fresh dispatched worker |
 | `implement` | Task-scoped code and documentation, tests, evidence, and commits | fresh dispatched worker |
 | `visual-engineering` | UI/UX/visual advice and authorized UI implementation, including relevant code, docs, and tests | fresh dispatched worker when the task needs it |
 | `tester-debugger` | Testing and diagnosis, authorized fixes, or independent acceptance in a separate fresh read-only session | fresh dispatched worker |
+
+The `ba` chooses the smallest sufficient artifact under `$business-analyst`:
+a focused review, a product brief when intent still needs alignment, or
+Delivery's canonical business analysis for the approved design contract. It
+returns `NEEDS_INPUT` rather than inventing a material product decision, and it
+does not choose architecture, implementation tasks, engineering estimates, or
+acceptance test decomposition.
 
 When the managed block pins `ba`, `architect`, and `planner`, Architectural work
 is analyzed, decided, and planned by those fresh, separate sessions before

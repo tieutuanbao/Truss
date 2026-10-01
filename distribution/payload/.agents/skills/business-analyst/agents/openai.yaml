@@ -1,0 +1,6 @@
+interface:
+  display_name: "Business Analyst"
+  short_description: "Discover, define, review, and hand off business requirements"
+  default_prompt: "Use $business-analyst to clarify the product intent, produce the smallest sufficient business artifact, and make requirements traceable and ready for architecture and planning."
+policy:
+  allow_implicit_invocation: false

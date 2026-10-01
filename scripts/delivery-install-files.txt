@@ -1,5 +1,13 @@
 # Optional explicit-only delivery orchestration add-on.
 # This manifest is intentionally absent from the default core manifest.
+.agents/skills/business-analyst/SKILL.md
+.agents/skills/business-analyst/agents/openai.yaml
+.agents/skills/business-analyst/references/discovery-and-interviews.md
+.agents/skills/business-analyst/references/requirement-quality.md
+.agents/skills/business-analyst/references/traceability-and-handoff.md
+.agents/skills/business-analyst/references/user-stories-and-acceptance.md
+.agents/skills/business-analyst/templates/product-brief.md
+.agents/skills/business-analyst/templates/requirements-review.md
 .agents/skills/delivery/SKILL.md
 .agents/skills/delivery/agents/openai.yaml
 .agents/skills/delivery/references/maintenance-log.md

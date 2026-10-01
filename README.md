@@ -230,8 +230,11 @@ $delivery-setup configure the delivery roles for this repository.
 Choose the quick path to use the current harness defaults, or customize the
 six dispatched roles: `ba`, `architect`, `planner`, `implement`,
 `visual-engineering`, and `tester-debugger`. `project-manager` is the current
-interactive session and is never dispatched. Delivery also requires the Orca
-execution plane; see [Delivery with Orca](#delivery-with-orca).
+interactive session and is never dispatched. The Delivery add-on also installs
+`$business-analyst`; the `ba` role uses it for evidence-backed discovery,
+requirement quality, behavioural scenarios, traceability, and handoff while
+Delivery retains the approval and acceptance contract. Delivery also requires
+the Orca execution plane; see [Delivery with Orca](#delivery-with-orca).
 
 This setup is repository configuration. Run it again only when the available
 harnesses or role preferences change.
@@ -509,6 +512,7 @@ the GNOME screen reader and is not the execution-plane command.
 | [Repository workflow](distribution/payload/.truss/core/docs/WORKFLOW.md) | Work shapes, task flows, validation, and completion standards |
 | [Documentation map](distribution/payload/.truss/core/docs/README.md) | Entry point to product, decisions, plans, patterns, and templates |
 | [Encoding invariants](distribution/payload/.truss/core/docs/patterns/encoding-invariants.md) | Turning accepted rules into mechanical validation |
+| [Business Analyst skill](distribution/payload/.agents/skills/business-analyst/SKILL.md) | Discovery, requirement quality, user-story and acceptance-scenario guidance, traceability, and handoff methodology for the delivery `ba` role or standalone analysis |
 | [Delivery skill](distribution/payload/.agents/skills/delivery/SKILL.md) | The approved seven-role delivery contract and its acceptance rules |
 
 The installed payload is the shipped documentation. `distribution/payload/**`

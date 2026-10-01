@@ -21,7 +21,7 @@ the other six are dispatched per task:
 | Role | Owns | Dispatched |
 | --- | --- | --- |
 | `project-manager` | Project coordination, required dev/ops preflight, approvals, dispatch, integration, recovery and authorized release | no — the current interactive session |
-| `ba` | The concrete business analysis: goals, actors, flows, business rules, exceptions, scope, stable requirement IDs, acceptance and planner handoff | yes |
+| `ba` | Evidence-backed discovery and business analysis: goals, actors, flows, rules, exceptions, scope, stable requirement IDs, behavioural scenarios, non-functional expectations, acceptance, traceability and architect/planner handoff | yes |
 | `architect` | Technical contracts, interfaces, boundaries, dependencies, risks, and the decision record mapping choices to business requirements | yes |
 | `planner` | The detailed task plan: inputs, outputs, exact path ownership, dependency DAG, commands, waves, integration and recovery | yes |
 | `implement` | Task-scoped code and documentation, tests, evidence, and commits | yes |

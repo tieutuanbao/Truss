@@ -11,3 +11,5 @@ __pycache__/
 # Rust build output for truss tooling.
 target/
 dist/
+
+/.tmp

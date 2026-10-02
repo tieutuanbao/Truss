@@ -411,6 +411,7 @@ A read performed only at run start does not satisfy this check.
 | Exactly one block, one well-formed header-compatible table, exactly one target-role row, all cells resolvable, full tuple == frozen tuple | continue this dispatch with the frozen values |
 | Any single field differs (role, truss, model, or effort) | stop before dispatch; report observed vs approved; dispatch with neither value; next-delivery eligibility only |
 | No `delivery:begin` delimiter (block absent) | stop and report |
+| No `delivery:end` delimiter (block unterminated) | stop and report |
 | More than one `begin`, more than one `end`, or `end` before `begin` | stop and report |
 | Malformed table, header, or row | stop and report |
 | Target role row missing | stop and report |

@@ -14,5 +14,13 @@ cargo clippy --workspace --all-targets --locked -- -D warnings
 # shipped payload file, entrypoint parity with scripts/, and the absence of the
 # legacy mirror directory. Digest coverage is the drift guard because the binary
 # embeds distribution/payload with include_bytes! at compile time.
+# A shipped file must end with a newline: a missing one makes every later diff
+# noisy and can confuse line-oriented tooling. `git diff --check` does not catch
+# it, so check the shipped set directly.
+while IFS= read -r file; do
+  [ -s "$file" ] || continue
+  [ "$(tail -c 1 "$file" | od -An -tuC | tr -d ' \n')" = "10" ] ||
+    { echo "missing final newline: $file" >&2; exit 1; }
+done < <(git ls-files 'distribution/payload/*' 'distribution/entrypoints/*')
 git diff --check
 echo "pre-merge validation passed"

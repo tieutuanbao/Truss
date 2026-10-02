@@ -47,7 +47,7 @@ f441b8d3d82492263b5abd6235247e5ae51b192cd5f00ef3042afb409b3cbeae  distribution/p
 0e0be8760aeb4033f68b0034e792889ce95e978120d6ef24c81d9a40300cae6b  distribution/payload/.agents/skills/plan-product/SKILL.md
 c655dad9c71c1be6a8b3d3767d1116e3897d84e4ab703882ee6f2ecdf73593a5  distribution/payload/.agents/skills/plan-product/agents/openai.yaml
 b89cd0f704bb1986c5fa8a218992fff0dc225ee19a7ca3baeaf77e845a752a7a  distribution/payload/.truss/core/docs/README.md
-5d3429a257c38a0d5464e286fcb94ec95e3cc41cc13dc61305fe192abea335b4  distribution/payload/.truss/core/docs/WORKFLOW.md
+2013e50bf7bd745ebbb55b87657047f2134f6c77ec2d58de5e08d71991d78dac  distribution/payload/.truss/core/docs/WORKFLOW.md
 17c9dcd6eca8f1ed876d7c6aa51fdb19c2a716859326685c7b689be28a38d554  distribution/payload/.truss/core/docs/decisions/README.md
 f4e0ecfcd1ae735daf01f472b60e6f6052a2c1e2f151928c0df65d1c3d496178  distribution/payload/.truss/core/docs/patterns/encoding-invariants.md
 712fc97325cbfbdd6da06ccaaf81938035c79ac207f8561526afe1b8efa7fe12  distribution/payload/.truss/core/docs/plans/README.md
@@ -55,7 +55,7 @@ b852f7e08229688175cc61b1cf0adf1ede793278a3d3269e71169a01efca2d7c  distribution/p
 16db0e87716887570263883129a802b9b6c6fc73c2cfdc49ad8bb7c1aec94285  distribution/payload/.truss/core/docs/plans/completed/README.md
 9b7157eb10aa7b3b14d2e9cfc1189b0a53136193a9c957e3765b619d37817ef7  distribution/payload/.truss/core/docs/product/README.md
 1e87f2189066dd0469555406c9ef63c3939e53adfcb23494d2f13f0b9552a72d  distribution/payload/.truss/core/docs/templates/application-runbook.md
-a88018fce59c6c0455fc62e7f12f2e49ff31bb1752e9f144638eb75d1dcaebbe  distribution/payload/.truss/core/docs/templates/communication.md
+c603305b10ac20e0385c0c09196661b0e4dd89c102cdd9fdc3ad49abc8aba9dd  distribution/payload/.truss/core/docs/templates/communication.md
 e92ba7a5b7bc10ce6c213af75a191619fc305c3945cdd55d4dc6bac72dcd42c1  distribution/payload/.truss/core/docs/templates/decision.md
 a50e40b48939b2390afd491a3abf6cbf8992af62e029bac44349945245c53780  distribution/payload/.truss/core/docs/templates/exec-plan.md
 271a7ebe400ed8e08cf90c3a347fb2ca6cf17cfcc24094c1a6addc0a1db9fd2c  distribution/payload/.truss/core/docs/templates/truss-improvement.md

@@ -5,46 +5,103 @@ runtime signals are the system of record.
 
 ## Communication
 
-Every user-facing reply — answers, questions, progress updates, and
-completion reports — applies the project's `.truss/authority/communication.md`
-when one exists. It records a reply-style level the repository owner chose:
+Every user-facing reply — answers, questions, progress updates, and completion
+reports — follows the reply-style level recorded in
+`.truss/authority/communication.md`. The level belongs to the project, so it
+lives under `.truss/authority/`; `.truss/core/` is never a write target.
+
+### Levels
 
 - `expert` — precise terminology and abbreviations without expansion; minimal
-  background; risks, evidence, and exact commands preserved.
+  background; evidence, risks, and exact commands preserved. Lead with the
+  result; skip motivation the reader already has.
 - `intermediate` — terminology allowed, explained on first use; enough
   background for an informed reader; outcome, effect, and next step stated.
-- `layperson` — plain language with no unexplained term or abbreviation;
-  analogies welcome; explicit cause, effect, and next step.
+  May be organized around the work performed.
+- `layperson` — plain language, no unexplained term or abbreviation;
+  analogies welcome; explicit cause, effect, and next step. Must also satisfy
+  *What `layperson` requires* below.
 
-The selection and its notes belong to the project, so they live under
-`.truss/authority/`. Truss installs no communication record into `.truss/core/`,
-and the installed payload is never a write target. Missing or unconfigured
-preferences never block work; answer in clear, neutral language and explain
-unfamiliar terms when needed.
+### Resolution order
 
-To configure initially: while `.truss/authority/communication.md` does not exist
-or still says `Not configured`, offer the choice once, at the first substantive
-user-facing interaction where reply style can affect the answer. Show all three
-levels with a worked example of the same answer at each. When the owner picks
-one, create `.truss/authority/communication.md` from
-`.truss/core/docs/templates/communication.md` and record the level with its date
-and source. A declined offer is durable for the conversation: do not re-offer
-unprompted, and never block work on an unconfigured level.
+1. An explicit style request in the current conversation (not persisted).
+2. Constraints in the `Notes` of `communication.md` (language, length).
+3. The configured level.
+4. Otherwise: `intermediate`, in the language the person is writing in. A
+   missing, unconfigured, or invalid record never blocks work.
 
-An explicit communication request in the current conversation takes
-precedence over the configured level. Do not infer a person's expertise,
-identity, or preferences from vocabulary, pasted material, or product
-audience descriptions. Adapting explanation never drops risks, uncertainty,
-safety instructions, or exact commands and identifiers. In-conversation
-style requests are not persisted; only an explicit owner request records a
-durable change.
+When the record exists but its level cannot be read — absent, misspelled, or an
+unrecognised value — say once in the reply that the level could not be read and
+which level is being used instead, then continue. Never fall through silently:
+an unreadable level is a defect the owner can only fix if it is named.
 
-When re-explanation requests recur or the configured level clearly
-mismatches the conversation, proactively propose switching levels, naming
-the target level and the observed signal. Record the change in
-`.truss/authority/communication.md` with its date and source only after the
-owner chooses it, creating the file from the installed template when it does
-not exist yet.
+Unless 1 or 2 says otherwise, reply in the language the person writes in.
+Code, commands, paths, flags, and identifiers are never translated.
+
+### Invariants at every level
+
+Adapting explanation never drops: risks, uncertainty, safety instructions,
+what was verified and what was not, and exact commands and identifiers.
+
+### Do not infer
+
+Do not infer expertise, identity, or preferences from vocabulary, pasted
+material, or product audience descriptions.
+
+### Initial configuration
+
+When the record is missing or its level is `Not configured`, offer the choice
+once per conversation, at the first reply that goes beyond a one-line answer
+(an explanation, plan, or report). Append the offer after the answer; never
+precede or replace it. Give a one-line description of each level and the key
+point of the pending answer rendered at each level (max 3 sentences each).
+
+- On a choice: create the record from `.truss/core/docs/templates/communication.md`
+  and fill in the level, date, and source.
+- On a decline: do not re-offer in this conversation. If the owner says not to
+  ask again, record `declined` with date and source.
+
+### Changing the level
+
+- The person in the conversation is treated as the owner. A durable change
+  needs an explicit instruction to save or change the project default;
+  one-off style requests are not persisted.
+- Propose a switch only on observed behavior: the same re-explanation requested
+  twice, or an explicit "too long / too basic / too technical". Name the target
+  level and the signal. Propose at most once per conversation; record the change
+  only after the owner chooses.
+
+### What `layperson` requires
+
+**Wording (every reply, including one-liners):** no unexplained term or
+abbreviation; paths, commands, flags, and identifiers stay exact, and may
+appear whenever the reader needs them to act. An analogy must not change the
+facts; say where it stops being accurate.
+
+**Shape (reports and multi-part replies; a short answer needs only wording
+and a next step):**
+
+1. Organize around the reader's problems, not the work performed. Section
+   count follows problems, not work items.
+2. Open each section on a problem in the reader's terms; headings state a plain
+   claim about their situation, not a process label.
+3. Report work as before/after: the symptom the reader would notice, then what
+   happens now.
+4. Internal work vocabulary (session, phase, gate, dispatch, checkpoint) is
+   never the subject of a sentence; translate it into an observable effect.
+   Do not narrate who did what, in which file, in what order.
+5. State why each item matters.
+6. State limits plainly: what was not checked, and any author's error that
+   affects trust.
+7. End with the reader's next action and its exact command, or say that
+   nothing is needed.
+
+**Contrast**
+
+- ✗ "Phase 2 complete: auth middleware refactored across 3 sessions; gate passed."
+- ✓ "Before: typing a wrong password blanked the page, so people thought the
+  site was down. Now: a message says the password is wrong. Not checked: the
+  phone layout. Next: run `npm test` to confirm on your machine."
 
 ## Repository Map
 

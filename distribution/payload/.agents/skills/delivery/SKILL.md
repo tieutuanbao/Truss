@@ -248,7 +248,8 @@ contract names the candidate path, and the owner approves that path at gate 1
 before any dispatch. Absent that authorization, deliver in the consumer
 checkout.
 
-Concurrent writers require separately approved isolated worktrees. Only when
+Concurrent writers require separately approved isolated worktrees. This is a
+Delivery ownership policy stricter than Orca's placement capability. Only when
 the approved envelope names a worktree, a branch, and a base for each writer
 may two tasks run at the same time; coupled work that shares a checkout or a
 path is serialized in one worktree, one writer at a time. No two tasks in one
@@ -262,7 +263,9 @@ Every delivered shape freezes the same safeguards in its approved envelope:
   its current owner, the evidence that establishes it, and whether the approved
   task may create, repair, validate, or only consume it. A required create or
   repair action not granted in owned scope is `NEEDS_REPLAN`; path relevance or
-  tool capability does not grant that authority.
+  tool capability does not grant that authority. Include execution-plane
+  identity evidence: CLI path, version, selected server/environment, capability
+  evidence, and the live surface that advertised each capability.
 - Scope: owned paths, forbidden scope, and protected pre-existing dirty paths.
 - Proof: acceptance criteria, counterexample or permitted manual inspection,
   focused instruments, and applicable gates.
@@ -272,7 +275,9 @@ Every delivered shape freezes the same safeguards in its approved envelope:
   approved envelope explicitly authorizes a separate, Orca-managed checkout.
   State each concurrent writer's worktree, branch, and base when parallel work
   is authorized.
-- Deployment: resolved truss, model, and effort for each dispatched role.
+- Deployment: the complete role-keyed tuple (`role + truss + model + effort`)
+  for each dispatched role, frozen from the managed block in the approved
+  envelope.
 - Authority: granted branch, owned-path commit, gate, push, and pull-request
   actions; local delivery explicitly excludes push and pull-request authority.
 - Never authorized: merge, force-push, stash, reset, clean or other cleanup,
@@ -371,12 +376,23 @@ TUI actually exposes; a model banner alone does not verify effective effort.
 Null launch fields on a reused-terminal receipt prove neither an unpinned
 launch nor the requested pin.
 
+Before the first dispatch, resolve the configured execution-plane CLI and use
+that same executable for the whole run. Record its resolved path and version
+and the selected server/environment in the approved envelope. Read the live
+`skills get orchestration` guide and relevant command help, including
+`orchestration worker-start --help` and help for lifecycle or recovery actions
+the run may need. Record the required capabilities, the live surfaces that
+advertised them, and every requested role deployment value in the envelope.
+Help is syntax/capability discovery only: the first applicable start/readiness
+probe and its `launch.requested` versus `launch.effective` establish whether
+the selected server and agent can serve the request. Missing required
+capability or unproved readiness stops the delivery.
+
 For Zcode, read `references/trusses/zcode.md` before launch. Its standalone
 TUI verification and custom-terminal dispatch procedure apply; neither a
 desktop launcher nor a headless prompt is a worker substitute.
 
-The preflight must verify the binary identity and required subcommands; a
-successful `command -v orca` is not sufficient. If the configured CLI is
+If the configured CLI is
 unavailable or is the GNOME accessibility application, stop and report the
 installation boundary. Do not alias, shadow, or replace the system `orca`,
 and do not fall back to direct worker execution.
@@ -395,7 +411,8 @@ plan, and Control retains them until the owner deletes them explicitly: delivery
 deletes no run artifact on its own. The handoff is likewise a file in the
 worktree; its path travels as `payload.reportPath` and the message body stays
 short. `--spec` and `--body` are shell arguments, which this skill already
-forbids for prompts.
+forbids for prompts. This transport rule is Delivery safety policy stricter
+than Orca's accepted grammar.
 
 The dispatch prompt carries the task, its scope and the evidence required.
 It does not define the role dispositions or the conditions for reaching
@@ -507,7 +524,8 @@ may be the correct instrument for configuration, documentation, generated
 files, or environment-bound integration.
 
 Concurrent implementers run only in separately approved isolated worktrees, one
-writer per path, and coupled work is serialized. A writer never edits a path
+writer per path, and coupled work is serialized. This is a Delivery ownership
+policy stricter than Orca's placement capability. A writer never edits a path
 another concurrent task owns.
 
 The counterexample named in each acceptance row is observed red and cited.

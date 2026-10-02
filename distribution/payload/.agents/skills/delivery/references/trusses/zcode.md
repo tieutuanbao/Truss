@@ -1,6 +1,7 @@
 # Zcode CLI
 
-Orca agent ID: custom terminal.
+Orca agent ID: resolve from live `orchestration worker-start --help` before
+launch.
 Permission default: `--mode yolo`.
 Forbidden headless forms: `--prompt`, `-p`, and `--print`.
 
@@ -25,15 +26,17 @@ the editor is idle and a model is shown; a setup, login, or trust picker is not
 ready. Settle that picker outside orchestration, close the bootstrap terminal,
 and launch a fresh terminal before dispatch.
 
-Zcode 0.16.x exposes no non-interactive model-list command and Orca cannot pin
-its model, so accept only a `default` model/effort row and record the model
-shown by the ready TUI. Never copy credentials into a repository or print them
-in a log. If the terminal client needs access setup, complete it in Zcode's
-user-scoped configuration and keep the resulting file private.
+Zcode 0.16.x exposes no non-interactive model-list command. Check the current
+live help for model-pin coverage; when it lacks coverage, accept only a
+`default` model/effort row and record the model shown by the ready TUI. Never
+copy credentials into a repository or print them in a log. If the terminal
+client needs access setup, complete it in Zcode's user-scoped configuration and
+keep the resulting file private.
 
-Until Orca advertises a native Zcode agent ID and status hooks, it rejects both
-`worker-start --agent zcode` and `worker-start --terminal` for Zcode. Use the
-low-level path:
+When live help advertises the `zcode` agent ID, use native
+`worker-start --agent zcode` as the default path, require readiness, and
+compare `launch.requested` with `launch.effective`. Use the low-level path only
+when the live guide identifies a genuine expressiveness gap:
 
 1. Create the task with `orchestration task-create`.
 2. Dispatch it to the ready terminal without `--inject`, requesting the

@@ -388,9 +388,10 @@ probe and its `launch.requested` versus `launch.effective` establish whether
 the selected server and agent can serve the request. Missing required
 capability or unproved readiness stops the delivery.
 
-For Zcode, read `references/trusses/zcode.md` before launch. Its standalone
-TUI verification and custom-terminal dispatch procedure apply; neither a
-desktop launcher nor a headless prompt is a worker substitute.
+For Zcode, read `references/trusses/zcode.md` before launch. It selects native
+`worker-start` when live help advertises support and uses its custom-terminal
+procedure only as the conditional fallback; neither a desktop launcher nor a
+headless prompt is a worker substitute.
 
 If the configured CLI is
 unavailable or is the GNOME accessibility application, stop and report the

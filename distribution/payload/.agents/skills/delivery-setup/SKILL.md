@@ -93,10 +93,10 @@ package, from memory, or from `.truss/core/docs/`.
 - OpenCode models: `opencode models` (offer each `provider/model` pair).
   OpenCode's interactive command has no effort flag: `--variant` exists only on
   `opencode run`, which is not a dispatch. Write `default` for Effort and let
-  the resolved model or its configured variant carry the reasoning effort. Orca
-  cannot pin this agent's model; the composed dispatch argv carries it. A model
-  that refuses a request reports the error in the TUI and leaves the dispatch
-  unsettled.
+  the resolved model or its configured variant carry the reasoning effort. Check
+  live `worker-start --help` for native model coverage; where coverage is
+  absent, the composed dispatch argv carries the pin. A model that refuses a
+  request reports the error in the TUI and leaves the dispatch unsettled.
 - Zcode: run the resolved standalone terminal client's `version` and
   `doctor --json`. The doctor must identify process name `zcode-cli`; final
   usability is proved by a clean interactive TUI readiness check at dispatch.

@@ -3,8 +3,8 @@
 Orca agent ID: `opencode`.
 Forbidden headless form: `opencode run`.
 
-Orca cannot pin this agent's model; it launches opencode with the model from
-opencode's own config. For a non-default pin compose:
+Check live `orchestration worker-start --help` for native model coverage. When
+coverage is absent, compose a non-default pin:
 
 `opencode --model <provider/model>`
 
@@ -22,6 +22,7 @@ that are not explicitly denied.
 A model that refuses a request reports the error inside the TUI and leaves the
 dispatch unsettled, so read the terminal rather than assuming a stuck worker.
 
-Prove TUI readiness before dispatch with `--terminal`.
+Prove the composed TUI is ready before dispatch with `--terminal`, and prove
+the model from its banner or `launch.effective`. Observed 1.4.217 help says
 `--model` and `--effort` cannot combine with `--terminal`.
 Shared readiness and retry rules remain in `../../SKILL.md`.

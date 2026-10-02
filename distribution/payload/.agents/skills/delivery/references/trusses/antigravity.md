@@ -5,12 +5,17 @@ Orca agent ID: `antigravity`.
 Permission default: `--dangerously-skip-permissions`.
 Forbidden headless forms: `agy -p` and `agy --print`.
 
-Orca cannot pin this agent's model. Compose:
+Check live `orchestration worker-start --help` for model coverage. When it
+advertises native coverage, use `worker-start --agent antigravity --model <id>
+--effort <level>`, require readiness, and compare `launch.requested` with
+`launch.effective`. Use the composed argv only when the selected server cannot
+pin the native launch:
 
 `agy --model <slug> --effort <level> --dangerously-skip-permissions`
 
-Prove TUI readiness before dispatch with `--terminal`.
-`--model` and `--effort` cannot combine with `--terminal`.
+For the composed path, prove TUI readiness before dispatch with `--terminal`.
+Observed 1.4.217 help says `--model` and `--effort` cannot combine with
+`--terminal`.
 
 Workspace trust and tool approval are separate boundaries. On first use,
 Antigravity may still ask whether the exact worktree is trusted even when

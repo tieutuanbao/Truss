@@ -45,6 +45,3 @@ when the live guide identifies a genuine expressiveness gap:
    Pass it as a structured process argument; never interpolate it into a shell
    command.
 4. Supervise the returned dispatch ID and require its `worker_done` outcome.
-
-If Orca later recognizes Zcode, prefer native `--inject` and the normal
-supervised-worker lifecycle.

@@ -461,6 +461,11 @@ truss is not a TUI;
 use `references/trusses.md` to select and read only the resolved truss's
 launch reference before composing its argv.
 
+Use low-level task, dispatch, injection, and returned-preamble actions only
+where the live guide says the normal supervised start cannot express the
+launch; follow that guide for the current task, dispatch, injection, preamble,
+and supervision semantics.
+
 **Name the model and effort on every dispatch.** A worker left on a truss
 default is an unpinned environment: it lives in the truss's own config, it
 changes without announcing itself, and the dispatch that relies on it looks
@@ -478,7 +483,9 @@ a heartbeat ends one wait but settles nothing.
 The worker reports once with `worker_done` and an `--outcome`.
 Completion comes from the worker's own `worker_done`;
 do not infer it from reading the worker's terminal.
-`worker-read` is the bounded evidence read. After settlement, request
+`worker-read` is the bounded evidence read. After settlement or positive exit
+evidence, choose and record exactly one applicable retain, release, stop, or
+abandon outcome — absence is not exit evidence. When release is chosen, request
 `worker-release` and inspect its result; success does not always mean the
 terminal closed. Reused or external terminals may be retained without
 process action. Control may close an exact retained terminal only after
@@ -486,12 +493,24 @@ verifying that this run created and still owns it, no work is active there,
 and required evidence has been recovered or its gap reported. Do not close
 user-owned, taken-over, or uncertain terminals.
 
-Each delivery opens its own Run on the execution plane rather than reusing
-another's, so a stale report cannot settle a new wait. Control handles every
+Each delivery creates a new Run with an objective by using the live documented
+creation verb — currently `orchestration run-create --objective` — then confirms
+the coordinator's current Run with the live documented inspection verbs,
+currently `run-current`/`run-list`, and refuses implicit reuse of another Run;
+live guide/help owns the exact grammar. Control handles every
 message in a returned batch, then acknowledges that batch with
 `check --ack <deliveryId>` using its returned ID and the same Run and
 coordinator. Otherwise the plane redelivers it. A wait's type filter controls
 wakeup, not which messages belong to the returned batch.
+
+Use Run-scoped fleet liveness, currently `worker-list` with its
+`projection.liveness`, as the agent-level verdict. Use `worker-show` only for
+its terminal/PTY observation (`observation.status`); never infer fleet liveness
+from terminal-only observation.
+
+When a mutation result is unknown, inspect the request record before any replay
+— currently `request-show` — and preserve the original request identity through
+the live retry mechanism, currently `--retry-request`.
 
 A dispatch that does not reach `ready` is diagnosed by reading its terminal
 and handling what is actually there. A retry names the failed task with

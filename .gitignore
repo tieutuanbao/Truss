@@ -13,3 +13,6 @@ target/
 dist/
 
 /.tmp
+# Truss core maintenance binary
+.truss/core/bin/truss
+.truss/core/bin/truss.exe

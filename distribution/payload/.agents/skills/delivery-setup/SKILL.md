@@ -206,12 +206,11 @@ deployment preference, not a reproducible pin, and the execution envelope
 records the configured value and, where the truss exposes it, the actual
 observed model and effort.
 
-Where `AGENTS.md` carries no managed block, or a dispatched row is missing,
-`delivery` falls back per role: every dispatched role runs on the current
-truss with that truss's defaults, and `project-manager` remains the current
-session with no launch fallback. Missing BA, architect, or planner pins never
-move those duties into `project-manager`. Delivery setup is a convenience over
-those fallbacks, not a precondition for them.
+Before every dispatch, `delivery` requires exactly one managed block and
+exactly one matching tuple for the target role; any absence, defect, or
+mismatch stops that dispatch without adopting another value. Missing BA,
+architect, or planner pins never move those duties into `project-manager`.
+Delivery setup is the sole writer of that block, not a convenience fallback.
 
 ## When a choice cannot be offered
 

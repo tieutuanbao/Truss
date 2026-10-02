@@ -398,6 +398,33 @@ unavailable or is the GNOME accessibility application, stop and report the
 installation boundary. Do not alias, shadow, or replace the system `orca`,
 and do not fall back to direct worker execution.
 
+### Pre-dispatch role-tuple check
+
+Immediately before every dispatch attempt — first start, `--retry-of` retry,
+and low-level dispatch — Control must read `AGENTS.md` from disk, not session
+context, and compare the target role's complete normalized tuple
+`role + truss + model + effort` with the tuple frozen in the approved envelope.
+A read performed only at run start does not satisfy this check.
+
+| Observed disk state | Required outcome |
+| --- | --- |
+| Exactly one block, one well-formed header-compatible table, exactly one target-role row, all cells resolvable, full tuple == frozen tuple | continue this dispatch with the frozen values |
+| Any single field differs (role, truss, model, or effort) | stop before dispatch; report observed vs approved; dispatch with neither value; next-delivery eligibility only |
+| No `delivery:begin` delimiter (block absent) | stop and report |
+| More than one `begin`, more than one `end`, or `end` before `begin` | stop and report |
+| Malformed table, header, or row | stop and report |
+| Target role row missing | stop and report |
+| Target role row duplicated | stop and report |
+| Role not in Delivery's seven-role set | stop and report |
+| Unresolvable value in any cell | stop and report |
+
+The run is never silently continued on a stale value or switched to the new one.
+The dispatch attempt stops, the discrepancy is reported, and only a later
+delivery's envelope may adopt the changed tuple. This is a direct read-and-
+compare — no new digest, database, cached parse, or migration — and
+`delivery-setup` remains the sole writer of the managed block; Delivery is a
+strict consumer.
+
 ### Launching a worker
 
 Write the prompt to an untracked file **inside the worktree**. Never inline
@@ -414,6 +441,9 @@ worktree; its path travels as `payload.reportPath` and the message body stays
 short. `--spec` and `--body` are shell arguments, which this skill already
 forbids for prompts. This transport rule is Delivery safety policy stricter
 than Orca's accepted grammar.
+
+Before every launch, retry, or low-level dispatch, complete § Pre-dispatch
+role-tuple check against the current bytes on disk.
 
 The dispatch prompt carries the task, its scope and the evidence required.
 It does not define the role dispositions or the conditions for reaching

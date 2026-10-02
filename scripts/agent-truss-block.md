@@ -27,6 +27,9 @@ validation material.
 - Claim completion only with executable or observable evidence. Report outcome,
   changes, validation, and unresolved risks.
 
-Truss has no task database or orchestration lifecycle. Use repository plans
-and behavior-level proof; do not create parallel control-plane state.
+Truss owns no durable task database or orchestration lifecycle of its own.
+Repository plans remain durable memory and authority. When an explicitly
+installed workflow uses an execution plane, its Runs, Tasks, and Dispatches are
+permitted transient execution state; they do not replace repository authority or
+create a second durable source of truth.
 <!-- TRUSS:END -->

@@ -1,4 +1,4 @@
-2d49d33f650a90fd87f07832bc88d2841d6b29f7e212374f179b319290331152  distribution/entrypoints/agent-truss-block.md
+b6a8b99a28aaa3f810b67e1870f20abf0990bba7dfd9624338495ddeabe3e99c  distribution/entrypoints/agent-truss-block.md
 29d36f3bf54a7f652fecb51b83811246c5251c9513dbe8cce412bc5f85239ad2  distribution/entrypoints/claude-truss-block.md
 5e0bb9252a1e02275f2928944cfec18549724b81647910116eb32e3b2e02bfa5  distribution/payload/.agents/skills/audit-onboarding-proposal/SKILL.md
 1f822840d05d627c43e8dcb87a8c54ef28e52c24cba72cf6950c142e360e1a81  distribution/payload/.agents/skills/audit-onboarding-proposal/agents/openai.yaml

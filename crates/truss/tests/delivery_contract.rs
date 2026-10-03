@@ -757,7 +757,7 @@ fn tc01_current_role_table_is_exactly_ordered() {
     let error = require_exact_roles(
         &table_roles(&stale_allowlist),
         &CURRENT_ROLES,
-        "seven-role allowlist",
+        "legacy seven-role allowlist",
     )
     .unwrap_err();
     assert!(error.contains("`detailed-designer`"), "{error}");

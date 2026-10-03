@@ -6,16 +6,18 @@ can tell whether a later implementation meets it. Use `$business-analyst` for
 discovery, requirement quality, user-story and scenario guidance, and handoff
 review; this template remains Delivery's canonical business artifact.
 
-Write it to a real project-owned path that the approved envelope names — for
-example `.truss/authority/product/<feature>.md`. A copy of this template with
+Write it to the exact repository-authority path named by the approved envelope,
+normally `.truss/authority/product/<feature>.md`. A copy of this template with
 its placeholders intact is not completed analysis and must not be handed to the
 planner. Every requirement needs a stable ID that the decision record and the
 task plan can cite back to this document.
 
-For an approved consumer-local run this analysis is a private artifact: it is
-never committed and never staged. Write it under
-`.truss/delivery/runs/<run-key>/` and obtain approval through the local receipt
-`.truss/delivery/approvals/<run-key>.md` instead of through a baseline commit.
+For a repository-hosted run, the approved baseline commit carries the exact
+authority path and SHA-256. For an approved consumer-local run, the analysis
+stays repository-local at that authority path: it is never staged, committed, or
+force-added, and the accepting dispatch carries its absolute candidate-local
+path and SHA-256. If placement, persistence, or retrieval authority is missing
+or ambiguous, return `NEEDS_INPUT` before writing the analysis.
 
 Proposals here remain drafts until a human approves them; this template does not
 grant authority and does not replace the repository decision record.

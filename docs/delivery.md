@@ -89,5 +89,32 @@ merge, push, reset, clean, stash, force-push, or edit outside the approved
 scope. If the execution plane is unavailable, Delivery stops rather than
 falling back to an untracked worker.
 
+### Where Delivery artifacts live
+
+- Run coordination, under `.truss/delivery/runs/<run-key>/`: the transient plan
+  `plan.md`, the approved envelope beside it, dispatch prompts, handoffs, gate
+  output, and run state.
+- The approval receipt, at `.truss/delivery/approvals/<run-key>.md`.
+- Durable content, under `.truss/authority/`: business analysis under
+  `product/`, decisions under `decisions/`, architecture and design under the
+  repository authority map, durable plans under `plans/`, and the communication
+  choice at `communication.md`.
+
+Classify every artifact by purpose and lifecycle, not filename. Anything that
+must outlive the run moves to its authority owner before the run closes, and the
+transient copy is not kept as a second canonical artifact. Ambiguous
+classification, persistence, or retrieval authority returns `NEEDS_INPUT`.
+
+### Authority retrieval
+
+- Repository-hosted: `git cat-file -e <approved-baseline-commit>:<authority-path>`
+  and `git show <approved-baseline-commit>:<authority-path> | sha256sum`.
+- Consumer-local: the authorized Orca handoff carries each absolute
+  candidate-local path and its SHA-256; the accepting session runs
+  `test -r <absolute-path>` and `sha256sum <absolute-path>`.
+
+A missing path, unreadable bytes, digest mismatch, wrong root, or absent
+authorization returns `NEEDS_INPUT` and blocks acceptance.
+
 The complete protocol is in
 [`distribution/payload/.agents/skills/delivery/SKILL.md`](../distribution/payload/.agents/skills/delivery/SKILL.md).

@@ -13,15 +13,19 @@ meaningful dependencies or ordering, requires recovery steps, or would be unsafe
 to resume from the diff alone.
 
 Use `.truss/core/docs/templates/exec-plan.md` and place the file under
-`.truss/authority/plans/active/`.
-A delivery run's transient control artifact is not a durable plan. For a
-repository-hosted run it is committed with the candidate and deleted in the
+`.truss/authority/plans/active/`. Classify a plan by purpose and lifecycle, not
+filename: cross-session recovery memory is authority; mutable per-run task
+control is run coordination.
+
+A delivery run's transient control artifact is not a durable plan. Its path is
+`.truss/delivery/runs/<run-key>/plan.md` in both profiles, with the approved
+envelope beside it as `approved-envelope.md` and the approval receipt at
+`.truss/delivery/approvals/<run-key>.md`. For a repository-hosted run it is
+committed only where the Delivery baseline requires it and deleted in the
 release commit, before the release-binding review. For an approved
-consumer-local run it is never committed: it lives at
-`.truss/delivery/runs/<run-key>/plan.md`, with the approved envelope beside it
-as `approved-envelope.md`, and the approval receipt at
-`.truss/delivery/approvals/<run-key>.md`. Nothing that must outlive the run
-stays there.
+consumer-local run it is never committed. The two plan contracts are never
+duplicated: anything that must outlive the run moves to the owning authority
+record, and the transient copy is not retained as a second canonical artifact.
 
 For an explicitly authorized baseline-to-rerun Truss experiment, use
 `.truss/core/docs/templates/truss-improvement.md` instead.

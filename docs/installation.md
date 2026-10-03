@@ -97,9 +97,19 @@ Core owns `AGENTS.md`, `.truss/core/`, and its core skills under
 `.agents/skills/`. Optional profiles add their own skills. Project code, tests,
 continuous integration, and existing application documentation remain in place.
 
-Use `.gitignore` or `.git/info/exclude` when Truss should remain local. A
-repository that versions Truss normally commits `.truss/core/` while excluding
-`.truss/delivery/` and `.truss/authority/`.
+`.truss/` holds three namespaces with three owners:
+
+| Path | Owner | Contents |
+| --- | --- | --- |
+| `.truss/core/` | the Truss CLI | Installed payload, manifest, baselines, and update state |
+| `.truss/delivery/` | the Delivery skill | Run coordination: transient plan, approved envelope, prompts, handoffs, run state, and approval receipts |
+| `.truss/authority/` | the repository | Durable authority: `product/`, `architecture/`, `decisions/`, `plans/`, and `communication.md` |
+
+Placement follows purpose and lifecycle, not filename. A repository-hosted
+consumer commits `.truss/core/` and its approved durable authority. A
+consumer-local consumer ignores `.truss/` with one rule and never stages,
+commits, or force-adds authority. See
+[Maintenance](maintenance.md) for the full ownership and placement rules.
 
 ## Verify
 

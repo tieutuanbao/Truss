@@ -69,12 +69,28 @@ stages its frozen resolution under:
 Edit those copies and run `addon continue`. `addon abort` removes only that
 session and leaves managed files unchanged.
 
-## Ownership boundaries
+## Artifact ownership
 
-- `.truss/core/` — installed payload and CLI-owned state.
-- `.truss/delivery/` — local Delivery run memory; never committed.
-- `.truss/authority/` — the repository's own decisions and plans; never written by the CLI.
-- `.agents/skills/` — core and optional skills discovered by agent tools.
+`.truss/` holds three namespaces with three owners:
+
+| Path | Owner | Contents |
+| --- | --- | --- |
+| `.truss/core/` | the Truss CLI | Installed payload, manifest, baselines, and update state |
+| `.truss/delivery/` | the Delivery skill | Run coordination: transient plan, approved envelope, prompts, handoffs, run state, and approval receipts |
+| `.truss/authority/` | the repository | Durable authority: `product/`, `architecture/`, `decisions/`, `plans/active/`, `plans/completed/`, and `communication.md` |
+
+Classify an artifact by purpose and lifecycle, not by filename. Content that
+must survive the run is authority; content used only to dispatch, communicate,
+hand off, bind an approval, or track run state is run coordination. Split a
+mixed-purpose artifact between a run-local copy and the owning authority record.
+Ambiguous classification, persistence, or retrieval authority returns
+`NEEDS_INPUT`.
+
+A repository-hosted consumer commits approved durable authority in the approved
+baseline. When an ignore rule matches an approved authority path, use
+path-scoped `git add -f -- <path>` only if the approved envelope grants staging
+and commit authority. A consumer-local consumer keeps authority
+repository-local and never stages, commits, or force-adds it.
 
 `AGENTS.md` is owned by the Core profile, not by an add-on. The CLI refuses an
 add-on whose manifest overlaps Core or another recorded add-on.

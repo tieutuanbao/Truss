@@ -47,7 +47,7 @@ f441b8d3d82492263b5abd6235247e5ae51b192cd5f00ef3042afb409b3cbeae  distribution/p
 0e0be8760aeb4033f68b0034e792889ce95e978120d6ef24c81d9a40300cae6b  distribution/payload/.agents/skills/plan-product/SKILL.md
 c655dad9c71c1be6a8b3d3767d1116e3897d84e4ab703882ee6f2ecdf73593a5  distribution/payload/.agents/skills/plan-product/agents/openai.yaml
 b89cd0f704bb1986c5fa8a218992fff0dc225ee19a7ca3baeaf77e845a752a7a  distribution/payload/.truss/core/docs/README.md
-0ca003c44d0fb5db8050a9fd10b15c300ae519f2def0e41e980c4586c20ea23f  distribution/payload/.truss/core/docs/WORKFLOW.md
+12f3c8dcf2eabfe19b7371acfe09338179713c28b577df9915d1450437b01a8b  distribution/payload/.truss/core/docs/WORKFLOW.md
 17c9dcd6eca8f1ed876d7c6aa51fdb19c2a716859326685c7b689be28a38d554  distribution/payload/.truss/core/docs/decisions/README.md
 f4e0ecfcd1ae735daf01f472b60e6f6052a2c1e2f151928c0df65d1c3d496178  distribution/payload/.truss/core/docs/patterns/encoding-invariants.md
 712fc97325cbfbdd6da06ccaaf81938035c79ac207f8561526afe1b8efa7fe12  distribution/payload/.truss/core/docs/plans/README.md

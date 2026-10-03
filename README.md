@@ -26,15 +26,6 @@ Truss does not replace the application's README, architecture, tests, CI,
 runbooks, credentials, or product decisions. Its job is to help agents find and
 respect that repository-owned truth.
 
-Every core installation includes the four Karpathy behavioral defaults in
-[the repository workflow](distribution/payload/.truss/core/docs/WORKFLOW.md#karpathy-behavioral-defaults):
-Think Before Coding, Simplicity First, Surgical Changes, and Goal-Driven
-Execution. These are qualified mandatory workflow defaults, not an optional
-skill or add-on; no separate invocation is required. Repository authority,
-authorized scope, safety, and evidence rules remain controlling. The workflow
-contains the adaptation's source provenance and MIT notice. This integration
-makes no demonstrated effectiveness claim; Engineering Wisdom remains an
-independent, optional, explicit-only advisory pack.
 ## ✨ What Truss gives you
 
 | Need | Truss provides |
@@ -630,6 +621,8 @@ Truss takes inspiration from two earlier projects by friends and colleagues:
 - [repository-harness](https://github.com/hoangnb24/repository-harness) — a
   repository protocol and safe updater built around the repository as the
   system of record, the foundation of the Truss core.
+
+Adapted from the [Karpathy Guidelines](https://github.com/forrestchang/andrej-karpathy-skills) by forrestchang (MIT).
 
 ---
 

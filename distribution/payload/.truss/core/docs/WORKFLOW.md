@@ -161,39 +161,6 @@ a parallel task record. Re-run affected proof after further mutation. Work
 toward verification within authorized scope; stop and report a blocker or proof
 gap instead of widening scope or claiming success without evidence.
 
-### Attribution and license
-
-Adapted for Truss from the Karpathy Guidelines by forrestchang, inspired by
-Andrej Karpathy's observations: https://x.com/karpathy/status/2015883857489522876.
-Requested source: https://github.com/multica-ai/andrej-karpathy-skills.
-Resolved source: https://github.com/forrestchang/andrej-karpathy-skills.
-Upstream commit: 2c606141936f1eeef17fa3043a72095b4765b9c2.
-The upstream skill and plugin metadata declare MIT. This is a qualified Truss
-adaptation, not an unmodified upstream policy or a claim of endorsement.
-No separate copyright notice was supplied in the vendored source; no copyright
-year or ownership assertion is inferred here. The MIT permission and warranty
-text below accompanies the adapted material. No effectiveness improvement has
-been demonstrated by this integration.
-
-MIT License
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
 ## Select The Work Shape
 
 ### Does The Work Need Durable Memory?

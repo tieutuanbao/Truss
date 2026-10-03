@@ -7,6 +7,9 @@ validation material.
 
 - Answers, explanations, reviews, diagnoses, plans, and status reports are
   read-only. Inspect only what is needed; change nothing.
+- Apply the four Karpathy behavioral defaults in `.truss/core/docs/WORKFLOW.md`
+  when writing, reviewing, or refactoring code; their scope and authority
+  qualifications apply, and no separate invocation is required.
 - For a bounded change, inspect affected behavior and proof, implement, and
   validate. No control-plane operation is required.
 - Use one `.truss/authority/plans/active/` file when work spans sessions, coordinates

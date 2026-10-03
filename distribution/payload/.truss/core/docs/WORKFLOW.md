@@ -113,6 +113,87 @@ and a next step):**
 
 Use `.truss/core/docs/README.md` for the complete map.
 
+## Karpathy Behavioral Defaults
+
+These four principles are mandatory core workflow defaults when writing,
+reviewing, or refactoring code. They require no separate skill invocation or
+optional add-on. Apply their qualifications together: repository-owned authority,
+authorized scope, safety, and behavior-appropriate proof remain controlling.
+They do not authorize edits during a read-only request. Engineering Wisdom,
+when explicitly invoked, remains contextual advice rather than new authority.
+
+### Think Before Coding
+
+State material assumptions and trade-offs before implementation. If materially
+different interpretations remain, present them and ask for the smallest missing
+decision instead of choosing silently. Keep explanation proportional to the
+risk; do not bury a small, reversible task in exhaustive caveats.
+
+### Simplicity First
+
+Make the smallest coherent change that satisfies the authorized outcome and
+its proof. Do not add speculative features, configurability, or abstractions.
+A single implementation is not by itself a reason to prohibit an abstraction:
+a repository-supported volatile boundary, testing need, or stable shared concept
+may justify one. Explain the concrete need and preserve required validation,
+error handling, and safety behavior rather than minimizing line count.
+
+### Surgical Changes
+
+Keep every changed line attributable to the authorized outcome, its necessary
+proof, or explicitly authorized preparatory work. Do not perform unrelated
+cleanup or refactoring. Requested refactoring and justified behavior-preserving
+preparation are permitted within authorized scope even when the existing code
+is not broken; keep their purpose and preservation proof explicit. Follow
+repository conventions unless an authorized change requires otherwise; existing
+style alone does not establish product policy. Remove artifacts made unused by
+your change only within authorized scope; report unrelated dead code rather
+than deleting it without permission.
+
+### Goal-Driven Execution
+
+Define observable success criteria before implementation and match proof to
+the claim. For a bug, reproduce the failure before the fix; for refactoring,
+check preserved behavior before and after; for new behavior, check the intended
+outcome and relevant rejection cases. Use a brief plan when multiple steps need
+coordination, following the existing durable-memory rules rather than creating
+a parallel task record. Re-run affected proof after further mutation. Work
+toward verification within authorized scope; stop and report a blocker or proof
+gap instead of widening scope or claiming success without evidence.
+
+### Attribution and license
+
+Adapted for Truss from the Karpathy Guidelines by forrestchang, inspired by
+Andrej Karpathy's observations: https://x.com/karpathy/status/2015883857489522876.
+Requested source: https://github.com/multica-ai/andrej-karpathy-skills.
+Resolved source: https://github.com/forrestchang/andrej-karpathy-skills.
+Upstream commit: 2c606141936f1eeef17fa3043a72095b4765b9c2.
+The upstream skill and plugin metadata declare MIT. This is a qualified Truss
+adaptation, not an unmodified upstream policy or a claim of endorsement.
+No separate copyright notice was supplied in the vendored source; no copyright
+year or ownership assertion is inferred here. The MIT permission and warranty
+text below accompanies the adapted material. No effectiveness improvement has
+been demonstrated by this integration.
+
+MIT License
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 ## Select The Work Shape
 
 ### Does The Work Need Durable Memory?

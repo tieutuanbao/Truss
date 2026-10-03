@@ -37,6 +37,14 @@ planner never implements or accepts, an implementer never accepts its own
 candidate, and code review is an activity inside acceptance, never an eighth
 role.
 
+Delivery setup configures role pins only. Durable business analysis, decisions,
+architecture/design, durable plans, and communication choice belong under
+`.truss/authority/`; dispatch prompts, role communication, handoffs, approval
+binding, and ephemeral run state belong under `.truss/delivery/`. Filename alone
+does not classify an artifact. A mixed-purpose artifact is split between a
+run-local artifact and the owning authority record, and missing or ambiguous
+classification, persistence, or retrieval authority returns `NEEDS_INPUT`.
+
 ## Two paths
 
 **Quick.** Use the current truss for every dispatched role. Use that truss's

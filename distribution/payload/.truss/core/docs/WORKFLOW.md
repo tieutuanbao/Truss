@@ -228,16 +228,37 @@ tester-debugger acceptance, and release on the Orca execution plane.
 Delivery is explicit-only. Ordinary bounded work never requires it, and a
 delivered change still obeys this workflow: authority gates, durable plans
 when the work needs them, and revision-bound proof. Delivery's own transient
-plan is a per-run control artifact; anything that must outlive the run moves
-into the durable decision record or an execution plan under
-`.truss/authority/plans/active/`.
+plan is a per-run control artifact, not repository authority. Classify every
+Delivery artifact by purpose and lifecycle: content required after run closure
+is authority; content used only to dispatch, communicate, hand off, bind an
+approval, or track ephemeral run state is run coordination. Filename alone is
+not decisive. A mixed-purpose artifact is split between a run-local artifact and
+the owning authority record, and missing or ambiguous classification returns
+`NEEDS_INPUT`.
 
-For an approved consumer-local run, the delivery control artifacts are private
-and are never committed: the approved envelope and the transient plan live under
-`.truss/delivery/runs/<run-key>/`, and the approval receipt lives at
-`.truss/delivery/approvals/<run-key>.md`. Nothing durable may be left only
-there; it moves into this repository's decision record or an execution plan
-before the run closes, exactly as for a repository-hosted run.
+Business analysis belongs under `.truss/authority/product/`, decisions under
+`.truss/authority/decisions/`, architecture/design under the repository
+authority map, durable plans under `.truss/authority/plans/`, and communication
+choice at `.truss/authority/communication.md`. The transient plan, approved
+envelope, prompts, handoffs, run state, gate output, and maintenance evidence
+belong under `.truss/delivery/runs/<run-key>/`, with the approval receipt at
+`.truss/delivery/approvals/<run-key>.md`. Nothing durable may be left only in
+run coordination; move its content to the owning authority record before closure
+without retaining a second canonical run copy.
+
+For a repository-hosted run, commit approved durable authority in the baseline.
+If an ignore rule matches an approved authority path, use explicit path-scoped
+`git add -f -- <path>` only when the approved envelope grants staging and
+commit authority. For an approved consumer-local run, durable authority stays
+repository-local and is never staged, committed, or force-added.
+
+Repository-hosted acceptance checks authority availability with
+`git cat-file -e <approved-baseline-commit>:<authority-path>` and identity with
+`git show <approved-baseline-commit>:<authority-path> | sha256sum`. Consumer-local
+acceptance receives each absolute candidate-local path and SHA-256 through an
+authorized Orca handoff, then runs `test -r <absolute-path>` and
+`sha256sum <absolute-path>`. A missing path, unreadable bytes, digest mismatch,
+wrong root, or absent authorization returns `NEEDS_INPUT` and blocks acceptance.
 
 ### Operate The Application
 

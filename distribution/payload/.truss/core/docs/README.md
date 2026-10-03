@@ -26,6 +26,15 @@ and its recorded communication selection — lives under `.truss/authority/`.
 `.truss/core/**` is the installed Truss payload: read it, never write project
 content into it.
 
+Placement is separate from Git tracking. In a repository-hosted project,
+approved durable authority is committed in the approved baseline; if an ignore
+rule matches an approved path, use path-scoped `git add -f -- <path>` only when
+the envelope grants that authority. In a consumer-local project, authority
+stays repository-local and is never staged, committed, or force-added, while an
+authorized private handoff carries its absolute candidate-local path and
+SHA-256. Ambiguous placement, persistence, or retrieval authority returns
+`NEEDS_INPUT`.
+
 ## Source Repository
 
 An installed consumer holds none of this section. These paths exist only in a

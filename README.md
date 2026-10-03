@@ -412,12 +412,17 @@ project/
     │   │   └── truss
     │   ├── manifest.json
     │   └── base/
-    ├── delivery/             # local-only: per-run working memory
+    ├── delivery/             # run coordination (local-only in consumer-local)
     │   ├── runs/<run-key>/
     │   └── approvals/<run-key>.md
-    └── authority/            # this project's own authority (local-only)
+    └── authority/            # this project's durable authority
+        ├── product/
         ├── architecture/
         └── decisions/
+        ├── plans/
+        │   ├── active/
+        │   └── completed/
+        └── communication.md
 ```
 
 Your source code, tests, CI, and any existing `docs/` or `scripts/` folders
@@ -428,14 +433,31 @@ local-only, ignore those paths in `.gitignore` or `.git/info/exclude`.
 
 `.truss/` holds three namespaces with three owners. `core/` is the installed
 payload and the installation state the CLI owns; the CLI never reads or writes
-the other two. `delivery/` holds one delivery run's working memory — its plan,
-its approved envelope, its dispatch artifacts, and its approval receipt — and is
-written by the delivery skill, never committed. `authority/` holds that
-project's own durable authority — architecture notes, decision records, plans,
-and product documents — and is never committed either. A consumer that keeps
-Truss in version control commits `.truss/core/` and ignores `.truss/delivery/`
-and `.truss/authority/`; a consumer running Truss local-only ignores `.truss/`
-with a single rule.
+the other two. `delivery/` holds one delivery run's coordination — its transient
+plan, approved envelope, dispatch artifacts, handoffs, run state, and approval
+receipt. `authority/` holds that project's durable authority — business analysis,
+architecture and design records, decision records, durable execution plans,
+product documents, and communication choice. Classify artifacts by purpose and
+lifecycle, not filename; mixed or ambiguous classification returns
+`NEEDS_INPUT`.
+
+Persistence and retrieval are profile-specific. A repository-hosted consumer
+commits `.truss/core/` and approved durable authority in the baseline, ignores
+`.truss/delivery/`, and removes a transient Delivery plan only in the release
+commit after durable content has moved to its authority owner. If an ignore rule
+matches an approved authority path, use path-scoped `git add -f -- <path>` only
+when the approved envelope grants staging and commit authority. A consumer-local
+consumer ignores `.truss/` with one rule: durable authority and run coordination
+both stay repository-local, and authority is never staged, committed, or
+force-added.
+
+Repository-hosted acceptance checks an authority artifact with
+`git cat-file -e <approved-baseline-commit>:<authority-path>` and
+`git show <approved-baseline-commit>:<authority-path> | sha256sum`. Consumer-local
+acceptance receives each absolute candidate-local path and SHA-256 through an
+authorized Orca handoff, then runs `test -r <absolute-path>` and
+`sha256sum <absolute-path>`. A missing path, unreadable bytes, digest mismatch,
+wrong root, or absent authorization returns `NEEDS_INPUT` and blocks acceptance.
 
 Optional profiles add their own skills under `.agents/skills/`. Exact payloads
 are declared by the manifests in [`scripts/`](#scripts-reference).

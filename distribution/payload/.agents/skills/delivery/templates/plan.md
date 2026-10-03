@@ -1,11 +1,13 @@
 # Plan template
 
-Transient. For a repository-hosted run it is deleted in the release commit,
-before the release-binding review, after anything durable has moved into the
-decision record or the documents that own the changed paths. For an approved
-consumer-local run it is never committed: it lives at
-`.truss/delivery/runs/<run-key>/plan.md`, its immutable counterpart is
-`approved-envelope.md` in the same directory, and delivery does not delete it.
+Transient run coordination. Its path is
+`.truss/delivery/runs/<run-key>/plan.md` in both profiles, beside the immutable
+`approved-envelope.md`; filename alone does not make it durable. For a
+repository-hosted run, commit it only where the approved Delivery contract
+requires it in the baseline and delete it in the release commit, before the
+release-binding review, after durable content has moved to its authority owner.
+For an approved consumer-local run, it is never committed and delivery does not
+delete it. It is not a durable execution plan and is never duplicated as one.
 
 One coherent contract. One acceptance table. Split tasks only when each has
 its own test cycle and can be reviewed independently; batch same-shaped
@@ -18,9 +20,10 @@ No status duplicated anywhere else.
 
 Decision record: `<path>`
 
-**Baseline:** for a repository-hosted run, the SHA of the commit carrying the
-decision record and this plan; leave it empty until that commit exists rather
-than guessing it. For an approved consumer-local run, the exact
+**Baseline:** for a repository-hosted run, the SHA of the approved baseline
+commit carrying durable authority and, where the Delivery contract requires it,
+this transient plan; leave it empty until that commit exists rather than
+guessing it. For an approved consumer-local run, the exact
 pre-implementation commit of the candidate, whose approval identity lives in the
 local receipt `.truss/delivery/approvals/<run-key>.md` instead of in a commit.
 

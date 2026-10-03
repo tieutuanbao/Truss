@@ -142,26 +142,52 @@ commit, before the release-binding integration acceptance). For a
 repository-hosted run, commit them before implementation begins — that commit is
 the acceptance baseline.
 
+Classify every Delivery artifact by purpose and lifecycle: content required
+after run closure is repository authority; content used only to dispatch,
+communicate, hand off, bind an approval, or track ephemeral run state is run
+coordination. Filename alone is not decisive. Business analysis belongs under
+`.truss/authority/product/`; decision records under
+`.truss/authority/decisions/`; architecture/design under the repository
+authority map; durable execution plans under `.truss/authority/plans/active/`,
+then `.truss/authority/plans/completed/`; and communication choice at
+`.truss/authority/communication.md`. The transient plan, approved envelope,
+approval receipt, dispatch prompts, worker handoffs, run state, gate output,
+and operational maintenance evidence belong under `.truss/delivery/`. A
+mixed-purpose artifact is split between a run-local artifact and the owning
+authority record; missing or ambiguous classification, persistence, or
+retrieval authority returns `NEEDS_INPUT`.
+
+For a repository-hosted run, commit approved durable authority in the baseline
+before implementation. If an ignore rule matches an approved authority path, use
+explicit path-scoped `git add -f -- <path>` only when the approved envelope
+grants staging and commit authority. Run coordination uses
+`.truss/delivery/runs/<run-key>/` and
+`.truss/delivery/approvals/<run-key>.md`; a transient plan is committed only
+where the approved baseline requires it and is removed before release after
+durable content has moved to its authority owner.
+
 For an approved consumer-local run (decision `0006`), the code baseline is the
-exact pre-implementation commit, and business analysis, the approved decision
-record, the approved execution envelope, and the transient plan are private
-artifacts that must not be staged: they live under
-`.truss/delivery/runs/<run-key>/`, with the approved envelope as an immutable
-`approved-envelope.md` snapshot separate from mutable `plan.md` progress.
-Mutable progress never changes the approved digest, and a change to scope or
-envelope produces a new snapshot, a new receipt, and a new approval. Gate 1
-approval binds the candidate root, the baseline commit, the snapshot path, and
-its SHA-256, recorded in the local-only receipt
-`.truss/delivery/approvals/<run-key>.md`, which carries the run-key, the
-candidate root, the baseline commit, the approved-envelope path and its
-SHA-256, the owner's approval note, and the approval date. The receipt is never
-committed, and a one-line echo of the digest goes to the Orca run record as a
-secondary copy only — the local receipt stays authoritative. An independent
-accepting session obtains the snapshot and the receipt through an authorized
-private handoff, recomputes the digest, and binds its verdict to the final
-candidate HEAD and the approved envelope identity; a missing, unreadable,
-mismatched, or unapproved snapshot or receipt blocks acceptance. Delivery never
-deletes these artifacts on its own.
+exact pre-implementation commit. Durable authority stays repository-local under
+`.truss/authority/` and is never staged, committed, or force-added. Run
+coordination stays private under `.truss/delivery/runs/<run-key>/`, with the
+approved envelope as an immutable `approved-envelope.md` snapshot separate from
+mutable `plan.md`, and the approval receipt at
+`.truss/delivery/approvals/<run-key>.md`. Mutable progress never changes the
+approved digest; a scope or envelope change produces a new snapshot, a new
+receipt, and a new approval. The local receipt stays authoritative, and a
+one-line digest echo in the Orca run record is secondary evidence only.
+
+Repository-hosted acceptance checks each authority artifact with
+`git cat-file -e <approved-baseline-commit>:<authority-path>` and
+`git show <approved-baseline-commit>:<authority-path> | sha256sum`. Consumer-local
+acceptance receives each absolute candidate-local authority path and SHA-256
+through an authorized Orca handoff, then runs `test -r <absolute-path>` and
+`sha256sum <absolute-path>`. A missing path, unreadable bytes, digest mismatch,
+wrong candidate root, or absent authorization returns `NEEDS_INPUT` and blocks
+acceptance. The approval envelope and receipt follow the private handoff route
+required by decision `0006`; a missing, unreadable, mismatched, or unapproved
+snapshot or receipt also blocks acceptance. Delivery never deletes these run
+artifacts on its own.
 
 Before dispatching any work in a consumer-local run, Control verifies that the
 candidate excludes `.truss/`, `.truss/core/`, the installed skill directories,
@@ -170,13 +196,13 @@ the envelope prerequisites. A local-only candidate that cannot establish those
 rules stops instead of mutating the candidate.
 
 The transient delivery plan is a per-run control artifact, not a durable
-repository record. It does not live in `.truss/authority/plans/active/`. When the work
-also needs memory that outlives the run — multi-session recovery, decisions
+repository record. It does not live in `.truss/authority/plans/active/`. When the
+work also needs memory that outlives the run — multi-session recovery, decisions
 future work must inherit — that memory belongs in the durable decision record
 and, for cross-session working memory, one execution plan under
-`.truss/authority/plans/active/` owned by the repository workflow. Never keep the same
-progress in both places: the transient plan holds per-run task state, the
-durable record holds what survives the run.
+`.truss/authority/plans/active/` owned by the repository workflow. Never keep
+the same canonical content in both places: the transient plan holds per-run task
+state, the durable record holds what survives the run.
 
 ### Acceptance
 
@@ -288,10 +314,11 @@ Shape changes representation and acceptance depth, not safeguards:
 - Bounded: approved in-chat design and compact envelope; no Architectural
   transient plan or separate task acceptance; one whole-change independent
   acceptance.
-- Architectural: committed business analysis, decision record, and transient
-  plan carrying the envelope, or — for an approved consumer-local run — the same
-  envelope as private artifacts bound by an approval receipt; task acceptance
-  per task, then integration acceptance.
+- Architectural: durable business analysis and decision record at their
+  authority routes plus a transient plan carrying the envelope; those authority
+  artifacts are committed for a repository-hosted run and repository-local for an
+  approved consumer-local run; task acceptance per task, then integration
+  acceptance.
 
 The repository workflow's durable-memory requirement still applies when
 work spans sessions or needs recovery; neither shape duplicates progress.
@@ -683,9 +710,11 @@ requires pausing the wider run.
 Before the run closes, the `project-manager` records one disposition for every
 backlog item: moved to the repository's existing backlog; promoted to a durable
 plan or owning record; dismissed with a reason; or escalated to the repository
-owner because no durable destination exists. An unresolved item may remain
-outside the current task, but it may not disappear when the transient plan is
-deleted.
+owner because no durable destination exists. A finding that must survive closure
+moves to exactly one owning authority record; the transient plan may retain a
+noncanonical pointer or run evidence, never a second canonical copy. An
+unresolved item may remain outside the current task, but it may not disappear
+when the transient plan is deleted.
 
 Review and acceptance independence are candidate independence: the reviewing
 or accepting session did not author, fix, plan, analyse, decide, advise, or
@@ -759,10 +788,11 @@ no LLM worker and makes no post-acceptance candidate edit.
 
 1. Complete implementation and independent review and, for Architectural work,
    its task acceptance.
-2. Reconcile owning documentation, move anything durable out of the transient
-   plan, and commit the complete candidate. For a consumer-local run, nothing
-   private is committed and no run artifact is deleted here: the transient plan
-   stays on disk, because delivery does not delete run artifacts on its own.
+2. Reconcile owning documentation, move anything durable to its one authority
+   owner without retaining a second canonical run copy, and commit the complete
+   candidate. For a consumer-local run, nothing private is committed and no run
+   artifact is deleted here: the transient plan stays on disk, because delivery
+   does not delete run artifacts on its own.
 3. Run the focused instruments and project closure gates on exact HEAD.
 4. If the envelope authorises publishing: push the feature branch and create
    or update a draft pull request, and run the applicable integration

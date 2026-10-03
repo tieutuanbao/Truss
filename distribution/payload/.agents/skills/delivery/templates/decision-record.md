@@ -8,10 +8,15 @@ If the project has a frontmatter convention for decision documents, follow it â€
 never write the SHA of the commit that will carry the field, because a commit
 cannot record its own SHA before it exists.
 
-For an approved consumer-local run this decision record is a private artifact:
-it is never committed and never staged. Write it under
-`.truss/delivery/runs/<run-key>/` and obtain approval through the local receipt
-`.truss/delivery/approvals/<run-key>.md` instead of through a baseline commit.
+Write it to the exact repository-authority path named by the approved envelope,
+normally `.truss/authority/decisions/<number>-<slug>.md`.
+
+For a repository-hosted run, the approved baseline commit carries the exact
+authority path and SHA-256. For an approved consumer-local run, the decision
+stays repository-local at that authority path: it is never staged, committed, or
+force-added, and the accepting dispatch carries its absolute candidate-local
+path and SHA-256. If placement, persistence, or retrieval authority is missing
+or ambiguous, return `NEEDS_INPUT` before writing the decision.
 
 ---
 

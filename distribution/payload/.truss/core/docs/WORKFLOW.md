@@ -275,24 +275,28 @@ tester-debugger acceptance, and release on the Orca execution plane.
 
 Delivery is explicit-only. Ordinary bounded work never requires it, and a
 delivered change still obeys this workflow: authority gates, durable plans
-when the work needs them, and revision-bound proof. Delivery's own transient
-plan is a per-run control artifact, not repository authority. Classify every
-Delivery artifact by purpose and lifecycle: content required after run closure
-is authority; content used only to dispatch, communicate, hand off, bind an
-approval, or track ephemeral run state is run coordination. Filename alone is
-not decisive. A mixed-purpose artifact is split between a run-local artifact and
-the owning authority record, and missing or ambiguous classification returns
-`NEEDS_INPUT`.
+when the work needs them, and revision-bound proof. Architectural work
+requires a fresh `detailed-designer` dispatch after architecture and before
+planning; the `architect` decides high-level contracts, the `detailed-designer`
+decides structure and audits it, and `planner` decomposes tasks. Delivery's own
+transient plan is a per-run control artifact, not repository authority. Classify
+every Delivery artifact by purpose and lifecycle: content required after run
+closure is authority; content used only to dispatch, communicate, hand off,
+bind an approval, or track ephemeral run state is run coordination. Filename
+alone is not decisive. A mixed-purpose artifact is split between a run-local
+artifact and the owning authority record, and missing or ambiguous
+classification returns `NEEDS_INPUT`.
 
 Business analysis belongs under `.truss/authority/product/`, decisions under
-`.truss/authority/decisions/`, architecture/design under the repository
-authority map, durable plans under `.truss/authority/plans/`, and communication
-choice at `.truss/authority/communication.md`. The transient plan, approved
-envelope, prompts, handoffs, run state, gate output, and maintenance evidence
-belong under `.truss/delivery/runs/<run-key>/`, with the approval receipt at
-`.truss/delivery/approvals/<run-key>.md`. Nothing durable may be left only in
-run coordination; move its content to the owning authority record before closure
-without retaining a second canonical run copy.
+`.truss/authority/decisions/`, detailed design and its separate design audit
+under `.truss/authority/design/<design-key>/`, other architecture/design under
+the repository authority map, durable plans under `.truss/authority/plans/`,
+and communication choice at `.truss/authority/communication.md`. The transient
+plan, approved envelope, prompts, handoffs, run state, gate output, and
+maintenance evidence belong under `.truss/delivery/runs/<run-key>/`, with the
+approval receipt at `.truss/delivery/approvals/<run-key>.md`. Nothing durable
+may be left only in run coordination; move its content to the owning authority
+record before closure without retaining a second canonical run copy.
 
 For a repository-hosted run, commit approved durable authority in the baseline.
 If an ignore rule matches an approved authority path, use explicit path-scoped

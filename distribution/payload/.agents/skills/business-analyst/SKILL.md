@@ -1,12 +1,13 @@
 ---
 name: business-analyst
-description: Use when product intent, stakeholder needs, scope, business rules, requirements, user stories, acceptance criteria, or requirements handoff need discovery, definition, or quality review before architecture or planning.
+description: Use when product intent, stakeholder needs, scope, business rules, requirements, user stories, acceptance criteria, or requirements handoff need discovery, definition, or quality review before architecture, detailed design, or planning.
 ---
 
 # Business Analyst
 
 Turn uncertain product intent into an evidence-backed business contract that an
-architect and planner can consume without inventing requirements. Use the
+architect, a `detailed-designer`, and a planner can consume without inventing
+requirements. Use the
 smallest artifact that preserves the decision; never make a document more
 complete-looking than the authority and evidence allow.
 
@@ -22,10 +23,13 @@ requirement IDs, behavioural scenarios, business-facing non-functional
 expectations, traceability, and handoff readiness.
 
 The BA does not choose technical architecture, decompose implementation tasks,
-estimate engineering effort, implement, or accept the candidate. Route technical
-choices to the architect and task/test decomposition to the planner. Mark a
-missing product decision as an open question with an owner; do not convert an
-assumption into a requirement.
+decide code structure, signatures, data shapes, state behavior, or error
+policy, estimate engineering effort, implement, or accept the candidate. Route
+high-level technical choices to the architect, structural design questions to
+the `detailed-designer`, and task/test decomposition to the planner. The BA
+transfers no product ownership to any of them. Mark a missing product decision
+as an open question with an owner; do not convert an assumption into a
+requirement.
 
 ## Choose the smallest sufficient artifact
 
@@ -120,7 +124,8 @@ when:
 - acceptance can reject at least one plausible wrong result, or names the human
   inspection and its limit;
 - every unresolved question has an owner and blocking status; and
-- the architect and planner can proceed without creating business policy.
+- the architect, `detailed-designer`, and planner can proceed without creating
+  business policy.
 
 If these conditions are not met, return a gap report or `NEEDS_INPUT`; do not
 paper over uncertainty with placeholders.
@@ -137,5 +142,8 @@ paper over uncertainty with placeholders.
   more.
 - Splitting every CRUD operation mechanically instead of by independently
   valuable behaviour.
-- Letting a BA document choose architecture, task paths, APIs, or storage.
+- Letting a BA document choose architecture, code structure, task paths, APIs,
+  or storage.
+- Treating a `detailed-designer` structural question as a product decision to
+  settle here instead of routing it to architecture or design.
 - Duplicating the same requirement across several competing artifacts.

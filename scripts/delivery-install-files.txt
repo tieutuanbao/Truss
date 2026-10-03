@@ -24,6 +24,7 @@
 .agents/skills/delivery/references/trusses/zcode.md
 .agents/skills/delivery/templates/business-analysis.md
 .agents/skills/delivery/templates/decision-record.md
+.agents/skills/delivery/templates/detailed-design.md
 .agents/skills/delivery/templates/plan.md
 .agents/skills/delivery-setup/SKILL.md
 .agents/skills/delivery-setup/agents/openai.yaml

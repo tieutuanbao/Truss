@@ -1,6 +1,6 @@
 ---
 name: delivery-setup
-description: Configure a project's AGENTS.md with one managed delivery block — per-role truss, model and effort for the six dispatched roles (ba, architect, planner, implement, visual-engineering, tester-debugger) plus the current project-manager row, discovered from the live truss surface. Use at the start of a Control Session, when the project has no managed block, or when those pins need rewriting from the installed trusses. Not for installing skills, trusting hooks, or delivering a change; that is delivery.
+description: Configure a project's AGENTS.md with one managed delivery block — per-role truss, model and effort for the seven dispatched roles (ba, architect, detailed-designer, planner, implement, visual-engineering, tester-debugger) plus the current project-manager row, discovered from the live truss surface. Use at the start of a Control Session, when the project has no managed block, or when those pins need rewriting from the installed trusses. Not for installing skills, trusting hooks, or delivering a change; that is delivery.
 ---
 
 # Delivery Setup
@@ -12,17 +12,18 @@ not install, trust, or enumerate anything.
 Read `AGENTS.md` first. Replace only the region between this skill's own
 markers. Prose outside the block is not read, merged, moved, or deleted.
 
-## Seven roles
+## Eight roles
 
-The managed block configures delivery preferences for exactly seven roles —
+The managed block configures delivery preferences for exactly eight roles —
 `project-manager` is the current interactive session and is never dispatched;
-the other six are dispatched per task:
+the other seven are dispatched per task:
 
 | Role | Owns | Dispatched |
 | --- | --- | --- |
 | `project-manager` | Project coordination, required dev/ops preflight, approvals, dispatch, integration, recovery and authorized release | no — the current interactive session |
 | `ba` | Evidence-backed discovery and business analysis: goals, actors, flows, rules, exceptions, scope, stable requirement IDs, behavioural scenarios, non-functional expectations, acceptance, traceability and architect/planner handoff | yes |
 | `architect` | Technical contracts, interfaces, boundaries, dependencies, risks, and the decision record mapping choices to business requirements | yes |
+| `detailed-designer` | The detailed design package: modules and files, API signatures, inputs/outputs, data structures, enums, state machines, interfaces, dependency order and sequence, error handling and error codes; a compile-ready placeholder-body skeleton; and the pre-implementation completeness and ambiguity audit | yes |
 | `planner` | The detailed task plan: inputs, outputs, exact path ownership, dependency DAG, commands, waves, integration and recovery | yes |
 | `implement` | Task-scoped code and documentation, tests, evidence, and commits | yes |
 | `visual-engineering` | UI/UX/visual advice and authorized UI implementation, including relevant code, docs, and tests | yes, when the task needs it |
@@ -33,9 +34,9 @@ constant, required execution plane and the `project-manager` row already
 records the current interactive session, which is never dispatched and always
 owns the two human gates. There is no release row, because release has no LLM
 worker and stays with `project-manager`. One session holds one role per run: a
-planner never implements or accepts, an implementer never accepts its own
-candidate, and code review is an activity inside acceptance, never an eighth
-role.
+detailed-designer or planner never implements or accepts, an implementer never
+accepts its own candidate, and code review is an activity inside acceptance,
+never a ninth role.
 
 Delivery setup configures role pins only. Durable business analysis, decisions,
 architecture/design, durable plans, and communication choice belong under
@@ -68,15 +69,16 @@ Exactly one block, and nothing else:
 Architectural work and explicitly requested deliveries invoke
 `$delivery`; ordinary bounded work does not. Spike starts no delivery run.
 
-Seven roles share the run. `project-manager` is the current interactive
-session and is never dispatched; the other six rows are dispatched with these
-preferences.
+Eight roles share the run. `project-manager` is the current interactive
+session and is never dispatched; the other seven rows are dispatched with
+these preferences.
 
 | Role | Truss | Model | Effort |
 | --- | --- | --- | --- |
 | `project-manager` | current | current | current |
 | `ba` | … | … | … |
 | `architect` | … | … | … |
+| `detailed-designer` | … | … | … |
 | `planner` | … | … | … |
 | `implement` | … | … | … |
 | `visual-engineering` | … | … | … |
@@ -169,10 +171,10 @@ rather than guessing.
 
 ## Migrating a legacy block
 
-A block that still names the retired five-role set is migrated in place, never
-replaced wholesale. The retired roles were `plan`, `plan-review`, `implement`,
-`review`, and `consult`; they are not delivered roles and must not remain in
-the rewritten block.
+A block that still names the retired five-role or legacy seven-role set is
+migrated in place, never replaced wholesale. The retired roles were `plan`,
+`plan-review`, `implement`, `review`, and `consult`; they are not delivered
+roles and must not remain in the rewritten block.
 
 1. Validate marker integrity first, as under § Refusals. A broken block is
    reported, not repaired.
@@ -181,7 +183,10 @@ the rewritten block.
    truss default.
 3. Map with the table below. `project-manager` has no legacy row: write
    `current` in all three cells.
-4. Replace only the managed block. Unrelated prose outside it stays
+4. Recognize the exact legacy seven-role block. Preserve every existing role's
+   Truss, Model and Effort cell byte-for-byte; insert `detailed-designer`
+   between `architect` and `planner` after explicit setup resolution.
+5. Replace only the managed block. Unrelated prose outside it stays
    byte-identical, and the procedure is stable when run again.
 
 | Retired role | Migrated to | Pins |
@@ -193,11 +198,33 @@ the rewritten block.
 | `consult` | `ba` | preserve that row's truss, model and effort |
 | (no legacy row) | `project-manager` | write `current` in all three cells |
 
-A block that already has the seven roles is preserved unchanged unless the
-human explicitly asks to reconfigure it. A block with missing, mixed, or
-ambiguous legacy rows is reported for focused resolution; do not guess a
-mapping, silently drop a row, or lose a custom pin. No human question is
-needed for the known five-role mapping above when the block is complete.
+A block that already has the eight roles is preserved byte-identical unless
+the human explicitly asks to reconfigure it; an ordinary rerun performs no
+tuple rediscovery or remigration. A block with missing, mixed, or ambiguous
+legacy rows is reported for focused resolution; do not guess a mapping,
+silently drop a row, or lose a custom pin. No human question is needed for the
+known five-role mapping above when the block is complete; the
+`detailed-designer` tuple is always explicitly resolved separately through
+the existing setup paths — it is never inferred from `architect` or any other
+role.
+
+Migration is a validated, in-memory transformation followed by one replacement
+of exactly that block. It is not a global role-name replacement or a table
+reconstruction from defaults, and every byte outside the block is preserved.
+Recognize exactly one complete supported role set, with one row per role and
+unambiguous Truss/Model/Effort cells. Validate markers, duplicate rows, table
+integrity, empty/missing tuples, and contradictory legacy tables before
+resolving any new choice or writing.
+
+The `detailed-designer` tuple is explicitly accepted through the existing
+setup paths: the human may explicitly choose current-harness defaults for the
+new role, or choose its Truss, Model and Effort through live discovery. An
+older tuple for another role, including `architect`, is never implicit
+authorization. If setup cannot ask or cannot resolve the choice, it writes
+nothing and reports the missing decision. Ordinary dispatch on a legacy block
+stops and routes to setup; it never migrates as a dispatch fallback. Retain the
+existing availability preflight and the distinction between a configured
+`default` and an unset cell.
 
 ## Pinning
 
@@ -217,8 +244,9 @@ observed model and effort.
 Before every dispatch, `delivery` requires exactly one managed block and
 exactly one matching tuple for the target role; any absence, defect, or
 mismatch stops that dispatch without adopting another value. Missing BA,
-architect, or planner pins never move those duties into `project-manager`.
-Delivery setup is the sole writer of that block, not a convenience fallback.
+architect, detailed-designer, or planner pins never move those duties into
+`project-manager`. Delivery setup is the sole writer of that block, not a
+convenience fallback.
 
 ## When a choice cannot be offered
 
@@ -240,7 +268,8 @@ Stop and report to the human, unchanged, when:
   before its `begin`)
 - more than one `<!-- delivery:begin -->` is present
 - a legacy phase table outside the block contradicts the block
-- the block's roles are neither the known five-role set nor the seven-role set
+- the block's roles are neither the known five-role set, the seven-role set,
+  nor the eight-role set
 
 Do not merge two tables, delete a legacy table, or guess which is
 authoritative.

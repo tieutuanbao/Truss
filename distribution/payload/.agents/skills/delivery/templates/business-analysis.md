@@ -4,7 +4,8 @@ Durable. The `ba` role produces this document from approved product authority
 and real project evidence. It records what the business needs and how anyone
 can tell whether a later implementation meets it. Use `$business-analyst` for
 discovery, requirement quality, user-story and scenario guidance, and handoff
-review; this template remains Delivery's canonical business artifact.
+review; this template remains Delivery's canonical business artifact. Its
+handoff goes to architecture, then to detailed design, then to planning.
 
 Write it to the exact repository-authority path named by the approved envelope,
 normally `.truss/authority/product/<feature>.md`. A copy of this template with
@@ -139,14 +140,24 @@ Enumerate gaps; do not sample. The architect extends this mapping to technical
 decisions and boundaries, and the planner extends it to task criteria and mapped
 test cases.
 
-## Architect and planner handoff
+## Architect, detailed-design, and planner handoff
 
 For the architect: approved requirements, priorities, flows, states, rules,
 constraints, business-facing non-functional expectations, protected public
 behaviour, assumptions, open questions, and choices deliberately left to
 technical architecture.
 
+For the detailed-designer: the same approved requirements, priorities, flows,
+states, rules, exceptions, protected public behaviour, business-facing
+non-functional expectations, assumptions, and open questions, plus the
+architect's decided high-level contracts that the structural design must
+realize. The BA transfers no product ownership: the detailed-designer decides
+structure from these inputs and returns product ambiguity to the architect or
+`ba`, never an invented requirement.
+
 For the planner: stable requirement and scenario IDs, dependencies, priorities,
 acceptance rows and evidence, scope and non-goals, forbidden interpretations,
-and unresolved blockers. The BA does not choose implementation paths, task DAGs,
-commands, or mapped test cases.
+and unresolved blockers, together with the `READY_FOR_PLANNING` detailed design
+and audit identities the planner consumes. The BA does not choose
+implementation paths, code structure, task DAGs, commands, or mapped test
+cases.

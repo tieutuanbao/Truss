@@ -1,6 +1,6 @@
 ---
 name: delivery
-description: Approved design, isolated seven-role implementation, independent tester-debugger acceptance, and exact-HEAD release via Orca. For Architectural work, public-contract changes, or explicitly requested deliveries. Ordinary bounded work uses repository workflow without delivery. Spikes investigate without starting a delivery run.
+description: Approved design, audited detailed design, isolated eight-role implementation, independent tester-debugger acceptance, and exact-HEAD release via Orca. For Architectural work, public-contract changes, or explicitly requested deliveries. Ordinary bounded work uses repository workflow without delivery. Spikes investigate without starting a delivery run.
 ---
 
 # Delivery
@@ -44,10 +44,11 @@ The current interactive session is the `project-manager`. It owns the approval
 invariant, task boundaries, exception handling, dispatch supervision,
 integration, recovery, and authorized release. It does not implement or fix
 the candidate, and it does not accept a candidate it integrated or changed.
-When the `ba`, `architect`, and `planner` roles are pinned it does not draft
-the business analysis, the technical decisions, or the task plan either — it
-supervises those dispatches and still owns the human gates. Delegation never
-moves an approval: every gate stays with the project-manager.
+When the `ba`, `architect`, `detailed-designer`, and `planner` roles are pinned
+it does not draft the business analysis, the technical decisions, the detailed
+design package, or the task plan either — it supervises those dispatches and
+still owns the human gates. Delegation never moves an approval: every gate
+stays with the project-manager.
 
 Control does not prescribe question count, order, format, or skill-selection
 precedence. Delivery owns the design outcome and approval boundary, not a
@@ -83,7 +84,7 @@ permission, or public-compatibility risk.
 | --- | --- | --- | --- |
 | Spike | Investigation only; no candidate is delivered | Approved probe and recommendation; no delivery run | none |
 | Bounded | Small change, clear behaviour and ownership | Approved in-chat design and short execution envelope | one whole-change independent acceptance |
-| Architectural | Multiple behaviours, public-contract change, architecture decision, or promoted risk | Approved decision record, task plan, execution envelope | task acceptance per task, then one integration acceptance |
+| Architectural | Multiple behaviours, public-contract change, architecture decision, or promoted risk | Approved decision record, audited detailed design, task plan, execution envelope | task acceptance per task, then one integration acceptance |
 
 An approved design contract states intent and success criteria; scope and
 authority; affected public contract or architecture; consequential risks and
@@ -94,20 +95,21 @@ manual inspection and its limit.
 
 ### Roles
 
-One session holds one role per run: a business analyst never implements or
-accepts, an architect or planner never implements, an implementer never
-accepts, and so on. `project-manager` is the current interactive session and is
-never dispatched.
-
 | Role | Owns | Dispatch |
 | --- | --- | --- |
 | `project-manager` | Coordination, required dev/ops preflight, approvals, dispatch, integration, recovery, authorized release | current session |
 | `ba` | Evidence-backed discovery and business analysis: problem and goals, stakeholders and actors, current/target flows, rules and exceptions, scope and priorities, stable requirement IDs, user stories and behavioural scenarios, business-facing non-functional expectations, acceptance, traceability, and architect/planner handoff | fresh dispatched worker |
 | `architect` | Technical contracts, interfaces, boundaries, dependencies, risks, and the decision record mapping choices to business requirements | fresh dispatched worker |
+| `detailed-designer` | The detailed design package: modules and files, API signatures, inputs/outputs, data structures, enums, state machines, interfaces, dependency order and sequence, error handling and error codes; a compile-ready placeholder-body skeleton; and the pre-implementation completeness and ambiguity audit | fresh dispatched worker |
 | `planner` | The detailed task plan: inputs, outputs, exact path ownership, dependency DAG, commands, waves, integration and recovery, plus explicit acceptance criteria and mapped test cases for every task | fresh dispatched worker |
 | `implement` | Task-scoped code and documentation, tests, evidence, and commits | fresh dispatched worker |
 | `visual-engineering` | UI/UX/visual advice and authorized UI implementation, including relevant code, docs, and tests | fresh dispatched worker when the task needs it |
 | `tester-debugger` | Testing and diagnosis, authorized fixes, or independent acceptance in a separate fresh read-only session | fresh dispatched worker |
+
+`project-manager` is never dispatched and `visual-engineering` remains
+conditional. One session holds one role per run: a business analyst never
+implements or accepts, an architect, detailed-designer, or planner never
+implements, an implementer never accepts, and so on.
 
 The `ba` chooses the smallest sufficient artifact under `$business-analyst`:
 a focused review, a product brief when intent still needs alignment, or
@@ -116,14 +118,18 @@ returns `NEEDS_INPUT` rather than inventing a material product decision, and it
 does not choose architecture, implementation tasks, engineering estimates, or
 acceptance test decomposition.
 
-When the managed block pins `ba`, `architect`, and `planner`, Architectural work
-is analyzed, decided, and planned by those fresh, separate sessions before
-Control presents the design contract at gate 1. Bounded work may keep its
-in-chat design, but Control may dispatch the same roles for it. Those sessions
-never mutate the candidate: they produce or audit the contract, then their
-dispatches end. Without those pins, Control drafts the contract itself and the
-human gate is the only audit; missing BA, architect, or planner pins never move
-their duties into the project-manager.
+When the managed block pins `ba`, `architect`, `detailed-designer`, and
+`planner`, Architectural work is analyzed, decided, designed, audited, and
+planned by those fresh, separate sessions before Control presents the design
+contract at gate 1. Every Architectural run requires a fresh
+`detailed-designer` dispatch after completed architecture and before planner
+decomposition; missing pins, failed readiness, or a non-UI change are not
+exemptions. Bounded work may keep its in-chat design, but Control may dispatch
+the same roles for it. Those sessions never mutate the candidate: they produce
+or audit the contract, then their dispatches end. Without those pins, Control
+drafts the contract itself and the human gate is the only audit; missing BA,
+architect, detailed-designer, or planner pins never move their duties into the
+project-manager.
 
 Code review uses the existing `tester-debugger` role, never a separate role.
 For each implemented task, Control dispatches one fresh independent
@@ -135,9 +141,82 @@ performs acceptance. A design audit, when one is needed, is another fresh
 non-author `tester-debugger` session assessing acceptance and testability
 without editing.
 
+### Architectural design sequence
+
+Every Architectural run requires a fresh `detailed-designer` dispatch after
+completed architecture and before planner decomposition. A failed, cancelled,
+unavailable, or timed-out detailed-design dispatch follows existing supervised
+recovery. Absence of completion never counts as a successful audit and does not
+authorize planner or implementer to absorb the role. Missing pins, failed
+readiness, or a non-UI change are not exemptions. Bounded work retains its
+existing optional design-dispatch behavior; Spike starts no Delivery run.
+
+The Architectural sequence is `architect` → `detailed-designer` → `planner`.
+The `detailed-designer` owns the detailed design package:
+
+- modules and file structure;
+- API signatures;
+- inputs and outputs;
+- data structures, enums, and state-machine/state behavior;
+- interfaces;
+- dependency order and sequence;
+- error handling and error codes;
+- a compile-ready placeholder-body skeleton; and
+- the pre-implementation completeness and ambiguity audit.
+
+The durable audit's readiness value is exactly `NOT_READY` or
+`READY_FOR_PLANNING`. An absent audit, absent dispatch, partial output, unknown
+state, hash mismatch, or incomplete proof is treated as `NOT_READY`. Delivery
+handoff status and readiness are different fields: `DONE` is not itself
+permission to plan or implement.
+
+`READY_FOR_PLANNING` requires all of the following together:
+
+- A completed architect output precedes a successfully completed fresh
+  `detailed-designer` dispatch for this Architectural change.
+- Modules, files, functions, interfaces, inputs, outputs,
+  dependencies/sequencing, data/enums, error handling/codes and
+  state-machine/state behavior have individually referenced complete audit
+  entries or justified non-applicability. The auditor checks substantive
+  coverage, not headings alone.
+- Structural proof and placeholder-boundary proof passed for the exact indexed
+  skeleton, and the audit is bound to the current package identity.
+- Every material structural ambiguity is resolved; there are no contradictory
+  contracts or unresolved alternatives affecting implementation.
+
+Only then may planner perform task decomposition and finish its plan. Planner
+may request clarification, but cannot supply missing signatures, state, or
+error policy itself. Even a ready audit does not authorize implementation:
+Control still needs the complete planned design contract, human gate 1
+approval, verified envelope identity, prerequisites, and ordinary dispatch
+preflight. Missing conditions block both planner completion and implementation
+start; there is no "ready with material TODOs".
+
+The two skeleton proof results are recorded separately:
+
+1. **Structural proof:** materialize indexed skeleton bytes with only explicitly
+   referenced baseline dependencies in a disposable directory; run the
+   repository's applicable compile/type/syntax instrument. Record versions,
+   construction provenance, commands, exit status, and the exact tested
+   digests. Missing tooling, undeclared dependencies, broken imports or
+   signatures leave the package not ready.
+2. **Placeholder-boundary proof:** inspect all new function/method bodies,
+   initializers, macros, callbacks, and embedded executable fragments. They may
+   declare shape and explicit placeholders, but must not implement business
+   behavior. Compilation alone, keyword presence, and unverified worker
+   assertions cannot satisfy this result.
+
+For this Rust repository, canonical new Rust callable bodies are exactly
+`todo!("detailed-design placeholder")`; declarations without bodies are allowed
+where the language requires them. Shape-defining fields, variants and type
+relationships are real; domain algorithms, default-valued returns pretending to
+be placeholders, I/O, state changes and domain-computing initializers are not.
+A `todo!` somewhere in a behavior-filled function is insufficient.
+
 Architectural work uses `templates/decision-record.md` (durable, with the
 requirements-traceability mapping), `templates/business-analysis.md` (durable
-product analysis), and `templates/plan.md` (transient, deleted in the release
+product analysis), `templates/detailed-design.md` (durable detailed design and
+audit authority), and `templates/plan.md` (transient, deleted in the release
 commit, before the release-binding integration acceptance). For a
 repository-hosted run, commit them before implementation begins — that commit is
 the acceptance baseline.
@@ -147,15 +226,15 @@ after run closure is repository authority; content used only to dispatch,
 communicate, hand off, bind an approval, or track ephemeral run state is run
 coordination. Filename alone is not decisive. Business analysis belongs under
 `.truss/authority/product/`; decision records under
-`.truss/authority/decisions/`; architecture/design under the repository
-authority map; durable execution plans under `.truss/authority/plans/active/`,
-then `.truss/authority/plans/completed/`; and communication choice at
-`.truss/authority/communication.md`. The transient plan, approved envelope,
-approval receipt, dispatch prompts, worker handoffs, run state, gate output,
-and operational maintenance evidence belong under `.truss/delivery/`. A
-mixed-purpose artifact is split between a run-local artifact and the owning
-authority record; missing or ambiguous classification, persistence, or
-retrieval authority returns `NEEDS_INPUT`.
+`.truss/authority/decisions/`; detailed design and its audit under
+`.truss/authority/design/<design-key>/`; durable execution plans under
+`.truss/authority/plans/active/`, then `.truss/authority/plans/completed/`; and
+communication choice at `.truss/authority/communication.md`. The transient plan,
+approved envelope, approval receipt, dispatch prompts, worker handoffs, run
+state, gate output, and operational maintenance evidence belong under
+`.truss/delivery/`. A mixed-purpose artifact is split between a run-local
+artifact and the owning authority record; missing or ambiguous classification,
+persistence, or retrieval authority returns `NEEDS_INPUT`.
 
 For a repository-hosted run, commit approved durable authority in the baseline
 before implementation. If an ignore rule matches an approved authority path, use
@@ -443,7 +522,7 @@ A read performed only at run start does not satisfy this check.
 | Malformed table, header, or row | stop and report |
 | Target role row missing | stop and report |
 | Target role row duplicated | stop and report |
-| Role not in Delivery's seven-role set | stop and report |
+| Role not in Delivery's eight-role set | stop and report |
 | Unresolvable value in any cell | stop and report |
 
 The run is never silently continued on a stale value or switched to the new one.
@@ -564,14 +643,15 @@ route by an enumerated vendor dialog; `agent_prompt_blocked` and
 
 There is no consultation role. When a question — a domain judgement, a design
 input, or a blocker — is better answered by a dedicated read-only dispatch,
-Control routes it to the existing seven-role specialist that holds the relevant
+Control routes it to the existing eight-role specialist that holds the relevant
 expertise, using that specialist's deployment preference: an `architect` for a
-technical judgement, a `ba` for a product-intent question, a `tester-debugger`
-for a read-only diagnosis, or a `visual-engineering` specialist for a visual
-judgement. The specialist may reproduce, inspect, and report a diagnosis or
-expertise packet, but it does not edit the candidate, commit, launch workers,
-or expand scope. This is an exception, not a phase or mandatory round trip.
-Without a suitable specialist, Control may answer from repository evidence.
+technical judgement, a `detailed-designer` for a structural design judgement,
+a `ba` for a product-intent question, a `tester-debugger` for a read-only
+diagnosis, or a `visual-engineering` specialist for a visual judgement. The
+specialist may reproduce, inspect, and report a diagnosis or expertise packet,
+but it does not edit the candidate, commit, launch workers, or expand scope.
+This is an exception, not a phase or mandatory round trip. Without a suitable
+specialist, Control may answer from repository evidence.
 
 ### Escalate rather than guess
 
@@ -591,10 +671,23 @@ Same-shaped mechanical changes are batched. Tightly coupled work stays one task
 and one writer. Each independent task gets a fresh `implement` or
 `visual-engineering` TUI.
 
-An implementer reads the business analysis, the decision record, the plan, and
-the baseline — not the design session's transcript. It owns only its task, runs
-the planner's mapped test cases and focused acceptance instrument, and creates
-one task-scoped commit. For
+For Architectural work, an implementer also reads the current detailed design
+package and its `READY_FOR_PLANNING` audit — never a `NOT_READY`, absent, or
+stale audit — before coding. An implementer encountering structural ambiguity
+pauses the affected work and returns it through Control to
+`detailed-designer` with the conflicting interpretations and evidence; no
+best-judgment structural choice is authorized. The old audit is no longer
+usable for the affected design. `detailed-designer` revises the package and
+re-audits; high-level contract changes return to `architect`, and
+product-policy changes return to `ba`/owner. A material correction follows
+renewed design approval and affected re-planning before coding resumes.
+Control records and supervises the pause/recovery in existing run state; no
+new independent authority is created.
+
+An implementer reads the business analysis, the decision record, the detailed
+design package and audit, the plan, and the baseline — not the design session's
+transcript. It owns only its task, runs the planner's mapped test cases and
+focused acceptance instrument, and creates one task-scoped commit. For
 behaviour with a deterministic executable test it uses TDD; the portable
 invariant is smaller: observe a discriminating failure for the intended reason
 before changing behaviour. A shell probe, parser fixture, or diff inspection
@@ -722,9 +815,9 @@ integrate that candidate, and does not edit it. The task reviewer and accepting
 session are different fresh sessions. The candidate author, fixer, planner,
 advisor, reviewer, and the project-manager that integrated it cannot accept it.
 Review and acceptance get the business analysis, the decision record (or
-Bounded design), the planner's task criteria and test cases, the baseline, and
-the diff. The phase adds no sandbox by default; `AGENTS.md` may pin one for a
-concrete risk.
+Bounded design), the detailed design package and its audit, the planner's task
+criteria and test cases, the baseline, and the diff. The phase adds no sandbox
+by default; `AGENTS.md` may pin one for a concrete risk.
 
 Review and acceptance depth is adaptive: Bounded work gets one independent
 whole-change review followed by one independent whole-change acceptance. Each
@@ -868,7 +961,9 @@ is safe.
 | The candidate location would move out of the consumer checkout | Not a Control decision: present it as a gate 1 decision with the named path, or deliver in the consumer checkout when the envelope authorizes no relocation |
 | Truss fails or evidence is insufficient | Preserve the candidate, report the native outcome and disposition |
 | Dispatch wait times out or receipt is ambiguous | Treat as transport-unknown: re-enter the wait or read the terminal; retry only with `--task` and `--retry-of` and explicit placement when the receipt is `failed` or `stopped` and it is not progressing |
-| Architect rejects the drafted contract | Control routes findings back to `ba`, `architect`, or `planner` when those roles are pinned; only without those pins may Control redraft in-session. Gate 1 is not presented until the contract is settled |
+| Implementer encounters structural ambiguity | Pause the affected work and return it through Control to `detailed-designer` with the conflicting interpretations and evidence; no best-judgment structural choice. The old audit is no longer usable for the affected design. `detailed-designer` revises the package and re-audits; high-level contract changes return to `architect`, and product-policy changes return to `ba`/owner. A material correction follows renewed design approval and affected re-planning before coding resumes |
+| Detailed-design dispatch fails, is cancelled, unavailable, or times out | Follow existing supervised recovery. Absence of completion never counts as a successful audit and does not authorize planner or implementer to absorb the role |
+| Architect rejects the drafted contract | Control routes findings back to `ba`, `architect`, `detailed-designer`, or `planner` when those roles are pinned; only without those pins may Control redraft in-session. Gate 1 is not presented until the contract is settled |
 | Control session is interrupted | Resume from Git state, the durable decision record or execution plan, and Orca run records; re-verify a live dispatch before re-engaging it; never start a competing implementer or accepting session for work already in flight |
 | Idempotent release step is interrupted | Verify Git and pull-request state, then resume |
 

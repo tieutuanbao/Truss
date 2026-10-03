@@ -1,7 +1,12 @@
 # Decision record template
 
 Durable. It records what was decided and why, and changes only when the decision
-changes. It is not a task tracker and not a test log.
+changes. It is not a task tracker and not a test log. It is high-level
+authority: the `detailed-designer` consumes it to produce the structural
+detailed design, and `planner` consumes it to decompose tasks. It is not an
+execution plan, and neither the detailed design nor the task plan is derived
+from it by copying its structure into module, file, or signature detail that
+this record never decided.
 
 If the project has a frontmatter convention for decision documents, follow it —
 `AGENTS.md` names it. Where a field asks for a commit SHA, resolve it with `git`;
@@ -41,6 +46,13 @@ Map each technical choice to the business requirement it serves. Use the stable
 requirement IDs the approved business analysis defines (see
 `business-analysis.md`); do not invent a second numbering system. A requirement
 with no technical decision is deferred explicitly, not silently dropped.
+
+Name the decisions this record deliberately leaves to the `detailed-designer`:
+module and file structure, API signatures, inputs/outputs, data structures,
+enums, state machines, interfaces, dependency order and sequence, and detailed
+error handling and error codes. Those are the detailed designer's decisions, not
+this record's, and stating them as decided here would remove structural
+ambiguity that the design audit exists to resolve.
 
 | Requirement ID | Technical decision | Interface or boundary |
 | --- | --- | --- |

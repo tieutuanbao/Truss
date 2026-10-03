@@ -29,17 +29,24 @@ From the installed repository, ask your coding agent:
 $delivery-setup configure the delivery roles for this repository.
 ```
 
-Choose the current harness defaults or customize the dispatched roles:
+Choose the current harness defaults or customize the seven dispatched roles.
+The current interactive session is `project-manager`; it keeps approval and
+release authority and is never dispatched, for eight roles in total:
 
 - `ba` — business analysis and requirement quality;
 - `architect` — technical contracts and boundaries;
+- `detailed-designer` — the detailed design package, placeholder-body
+  skeleton, and pre-implementation design audit;
 - `planner` — tasks, dependencies, and acceptance instruments;
 - `implement` — scoped changes and proof;
 - `visual-engineering` — UI and visual work when needed;
 - `tester-debugger` — independent review, diagnosis, and acceptance.
 
-The current interactive session is `project-manager`; it keeps approval and
-release authority and is never dispatched.
+Delivery Setup migrates a legacy five-role or seven-role managed block into
+the eight-role set. It preserves every existing role's Truss, Model, and Effort
+cell byte-for-byte, asks you to resolve the new `detailed-designer` tuple
+explicitly, refuses malformed, mixed, duplicate, or ambiguous blocks without
+writing, and leaves an ordinary eight-role rerun unchanged.
 
 ## Start a delivered change
 
@@ -51,9 +58,21 @@ The focused check must reject <plausible wrong result>, and an independent
 session must accept the exact final revision.
 ```
 
-Delivery prepares a design contract before changing the candidate. After your
-approval, Orca runs isolated roles, the repository's own checks, and independent
-acceptance. Release actions are limited to what you explicitly authorize.
+Delivery prepares a design contract before changing the candidate. For
+Architectural work, the sequence is architect → detailed-designer → planner:
+after the architect completes, a fresh `detailed-designer` dispatch authors the
+detailed design package — modules and files, API signatures, inputs/outputs,
+data structures, enums, state machines, interfaces, dependency order and
+sequence, error handling and error codes — plus a compile-ready placeholder-body
+skeleton and a pre-implementation completeness and ambiguity audit. The audit's
+readiness value is exactly `READY_FOR_PLANNING` or `NOT_READY`; only a
+`READY_FOR_PLANNING` audit bound to the current package identity permits
+planner decomposition. A failed or missing design dispatch never lets the
+planner or implementer absorb the role.
+
+After your approval, Orca runs isolated roles, the repository's own checks, and
+independent acceptance. Release actions are limited to what you explicitly
+authorize.
 
 ## Example
 
@@ -96,9 +115,10 @@ falling back to an untracked worker.
   output, and run state.
 - The approval receipt, at `.truss/delivery/approvals/<run-key>.md`.
 - Durable content, under `.truss/authority/`: business analysis under
-  `product/`, decisions under `decisions/`, architecture and design under the
-  repository authority map, durable plans under `plans/`, and the communication
-  choice at `communication.md`.
+  `product/`, decisions under `decisions/`, detailed design and its separate
+  design audit under `design/<design-key>/`, other architecture and design
+  under the repository authority map, durable plans under `plans/`, and the
+  communication choice at `communication.md`.
 
 Classify every artifact by purpose and lifecycle, not filename. Anything that
 must outlive the run moves to its authority owner before the run closes, and the

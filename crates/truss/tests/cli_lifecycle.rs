@@ -774,7 +774,7 @@ fn cli_addon_continue_is_payload_free_and_mutable_refs_are_rejected() {
 // ---------------------------------------------------------------------------
 // S4b4 — the real delivery add-on at its real location.
 //
-// The payload is the repository's own 18 delivery paths, staged from
+// The payload is the repository's own 28 delivery paths, staged from
 // `scripts/delivery-install-files.txt`, and every workspace is built by the
 // shipped `truss install`, so the scan-root rule is exercised against the real
 // installed shape that made `.agents` an over-broad root.
@@ -966,8 +966,8 @@ fn cli_addon_real_delivery_cycle_installs_updates_resolves_and_aborts() {
     // update this count deliberately rather than silently widening the add-on.
     assert_eq!(
         paths.len(),
-        27,
-        "the real delivery manifest is 27 paths; update this reviewed count when the manifest changes"
+        28,
+        "the real delivery manifest is 28 paths; update this reviewed count when the manifest changes"
     );
     fixture.core_state(&mut transcript);
 
@@ -1009,7 +1009,7 @@ fn cli_addon_real_delivery_cycle_installs_updates_resolves_and_aborts() {
         .join(".agents/skills/delivery-setup/SKILL.md")
         .is_file());
 
-    // 3. Status reports the ref and all 18 payload digests.
+    // 3. Status reports the ref and all 28 payload digests.
     let recorded = fixture.status(&mut transcript);
     assert_eq!(recorded["record"]["source_ref"], DELIVERY_REF_A);
     assert_eq!(
@@ -1211,7 +1211,7 @@ fn cli_addon_real_delivery_cycle_installs_updates_resolves_and_aborts() {
     evidence_s4b4(
         "s4b4-row1-cycle.txt",
         &format!(
-            "install_source_ref={DELIVERY_REF_A}\nstatus_paths=18 status_ref={DELIVERY_REF_A}\ndry_run_updates=1 dry_run_mutated=false\nupdate_applied=true ref={DELIVERY_REF_B}\nconflict_exit=2 conflicts=1 staged=true applied=false\ncontinue_applied=true source_ref=null\nstatus_after_continue_ref={DELIVERY_REF_C} digests_are_payload=true\nabort_after_continue=removed:false,false\nrestaged_abort=removed:true,false\nagents_md_untouched=true\ncore_session_untouched=true\ncore_session_sha256={}\n",
+            "install_source_ref={DELIVERY_REF_A}\nstatus_paths=28 status_ref={DELIVERY_REF_A}\ndry_run_updates=1 dry_run_mutated=false\nupdate_applied=true ref={DELIVERY_REF_B}\nconflict_exit=2 conflicts=1 staged=true applied=false\ncontinue_applied=true source_ref=null\nstatus_after_continue_ref={DELIVERY_REF_C} digests_are_payload=true\nabort_after_continue=removed:false,false\nrestaged_abort=removed:true,false\nagents_md_untouched=true\ncore_session_untouched=true\ncore_session_sha256={}\n",
             sha256_hex(CORE_SESSION),
         ),
     );

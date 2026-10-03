@@ -20,6 +20,15 @@ No status duplicated anywhere else.
 
 Decision record: `<path>`
 
+Detailed design and audit (Architectural work only): `<design-key>` with
+`design.md`, `audit.md`, and `skeleton/` under `.truss/authority/design/`, and
+their SHA-256 identities. Record the readiness value exactly as
+`READY_FOR_PLANNING` or `NOT_READY`. Planner consumes that package as a
+prerequisite; planner owns task decomposition and mapped proof, not code
+structure, signatures, data shapes, state behavior, or error policy. A
+`NOT_READY`, absent, or stale audit blocks planner completion and blocks
+implementation start.
+
 **Baseline:** for a repository-hosted run, the SHA of the approved baseline
 commit carrying durable authority and, where the Delivery contract requires it,
 this transient plan; leave it empty until that commit exists rather than
@@ -60,6 +69,13 @@ evidence that it exists and is valid, and the permitted interaction
 (`validate` or `consume`). If implementation discovers that it must create or
 repair that artifact, move it into approved owned scope or return
 `NEEDS_REPLAN`.
+
+For Architectural work the detailed design package and its audit are
+prerequisites: a completed architect output must precede a successfully
+completed fresh `detailed-designer` dispatch, and planner decomposition follows
+that dispatch. Planner maps requirement IDs, categories, and proof obligations
+into tasks and exact commands without weakening them, and never supplies a
+missing signature, state machine, data shape, or error policy itself.
 
 Protected dirty paths: name pre-existing changes and their ownership, or
 record that the worktree was clean at baseline.

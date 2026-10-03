@@ -113,6 +113,54 @@ and a next step):**
 
 Use `.truss/core/docs/README.md` for the complete map.
 
+## Karpathy Behavioral Defaults
+
+These four principles are mandatory core workflow defaults when writing,
+reviewing, or refactoring code. They require no separate skill invocation or
+optional add-on. Apply their qualifications together: repository-owned authority,
+authorized scope, safety, and behavior-appropriate proof remain controlling.
+They do not authorize edits during a read-only request. Engineering Wisdom,
+when explicitly invoked, remains contextual advice rather than new authority.
+
+### Think Before Coding
+
+State material assumptions and trade-offs before implementation. If materially
+different interpretations remain, present them and ask for the smallest missing
+decision instead of choosing silently. Keep explanation proportional to the
+risk; do not bury a small, reversible task in exhaustive caveats.
+
+### Simplicity First
+
+Make the smallest coherent change that satisfies the authorized outcome and
+its proof. Do not add speculative features, configurability, or abstractions.
+A single implementation is not by itself a reason to prohibit an abstraction:
+a repository-supported volatile boundary, testing need, or stable shared concept
+may justify one. Explain the concrete need and preserve required validation,
+error handling, and safety behavior rather than minimizing line count.
+
+### Surgical Changes
+
+Keep every changed line attributable to the authorized outcome, its necessary
+proof, or explicitly authorized preparatory work. Do not perform unrelated
+cleanup or refactoring. Requested refactoring and justified behavior-preserving
+preparation are permitted within authorized scope even when the existing code
+is not broken; keep their purpose and preservation proof explicit. Follow
+repository conventions unless an authorized change requires otherwise; existing
+style alone does not establish product policy. Remove artifacts made unused by
+your change only within authorized scope; report unrelated dead code rather
+than deleting it without permission.
+
+### Goal-Driven Execution
+
+Define observable success criteria before implementation and match proof to
+the claim. For a bug, reproduce the failure before the fix; for refactoring,
+check preserved behavior before and after; for new behavior, check the intended
+outcome and relevant rejection cases. Use a brief plan when multiple steps need
+coordination, following the existing durable-memory rules rather than creating
+a parallel task record. Re-run affected proof after further mutation. Work
+toward verification within authorized scope; stop and report a blocker or proof
+gap instead of widening scope or claiming success without evidence.
+
 ## Select The Work Shape
 
 ### Does The Work Need Durable Memory?

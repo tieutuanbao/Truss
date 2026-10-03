@@ -644,6 +644,8 @@ Truss takes inspiration from two earlier projects by friends and colleagues:
   repository protocol and safe updater built around the repository as the
   system of record, the foundation of the Truss core.
 
+Adapted from the [Karpathy Guidelines](https://github.com/forrestchang/andrej-karpathy-skills) by forrestchang (MIT).
+
 ---
 
 <div align="center">

@@ -380,9 +380,12 @@ Every delivered shape freezes the same safeguards in its approved envelope:
   approved envelope explicitly authorizes a separate, Orca-managed checkout.
   State each concurrent writer's worktree, branch, and base when parallel work
   is authorized.
-- Deployment: the complete role-keyed tuple (`role + truss + model + effort`)
-  for each dispatched role, frozen from the managed block in the approved
-  envelope.
+- Deployment: the complete role-keyed tuple (`role + truss + model + effort`),
+  launch classification and exact adapter recipe, frozen from the managed
+  block in the approved envelope. Record execution mode (`worker-start`
+  supervised or low-level unsupervised Dispatch). Low-level unsupervised mode
+  requires an explicit owner-approved envelope decision; otherwise it is
+  forbidden.
 - Authority: granted branch, owned-path commit, gate, push, and pull-request
   actions; local delivery explicitly excludes push and pull-request authority.
 - Never authorized: merge, force-push, stash, reset, clean or other cleanup,
@@ -539,9 +542,14 @@ strict consumer.
 
 ### Launching a worker
 
-Write the prompt to an untracked file **inside the worktree**. Never inline
-it in a shell argument: prompts carry backticks, quotes and newlines, and a
-shell argument mangles them. A path outside the workspace can trigger a
+Write the complete prompt to an untracked file **inside the worktree**.
+Never place prompt bytes in a shell command string or interpolate file content
+through shell syntax. When Orca exposes only `--spec <text>`, the coordinator
+may read the file and pass its bytes as one structured argv element through a
+process API (for example Python `subprocess.run`), after validating the
+self-contained Task fields; do not replace the Task spec with a pointer-only
+instruction. If the prompt exceeds OS argument limits and no structured
+file/stdin transport exists, stop with `UNSUPPORTED_PROMPT_TRANSPORT`. A path outside the workspace can trigger a
 second permission surface some trusses still prompt for even when tool
 approval is skipped. Do not stage that file. In a repository-hosted run, delete
 it after the worker returns: Control owns that dispatch artifact, not `git
@@ -550,17 +558,19 @@ under `.truss/delivery/runs/<run-key>/` beside the approved envelope and the
 plan, and Control retains them until the owner deletes them explicitly: delivery
 deletes no run artifact on its own. The handoff is likewise a file in the
 worktree; its path travels as `payload.reportPath` and the message body stays
-short. `--spec` and `--body` are shell arguments, which this skill already
-forbids for prompts. This transport rule is Delivery safety policy stricter
-than Orca's accepted grammar.
+short. Prompt bytes are never interpolated into a shell command. When an Orca
+command exposes only `--spec <text>`, use the structured-process transport in
+`references/command-recipes.md`; the Task spec remains self-contained and
+contains Target, Change, Constraints, Ownership, and Observable acceptance.
+This forbids shell interpolation, not a single process argv element.
 
 Before every launch, retry, or low-level dispatch, complete § Pre-dispatch
 role-tuple check against the current bytes on disk.
 
-The dispatch prompt carries the task, its scope and the evidence required.
-It does not define the role dispositions or the conditions for reaching
-one — those belong to this skill, and a prompt that restates them
-narrows or contradicts them. Where the design contract states an
+The dispatch prompt carries the approved task, its scope, and required
+evidence as a self-contained Task spec. It does not define the role
+dispositions or the conditions for reaching one — those belong to this skill,
+and a prompt that restates them narrows or contradicts them. Where the design contract states an
 acceptance row — its instrument, its counterexample, and what was
 observed — the prompt carries that row as written rather than a
 restatement of it.

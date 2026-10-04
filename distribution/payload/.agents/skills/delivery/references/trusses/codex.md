@@ -3,13 +3,13 @@
 Orca agent ID: `codex`.
 CLI executable: `codex`.
 Launch classification: native — live `worker-start --help` names this agent under native `--model` support.
-Permission default on the Orca-composed launch: `--dangerously-bypass-approvals-and-sandbox`.
+Permission posture: native launch uses the Orca-registered agent preference; `--dangerously-bypass-approvals-and-sandbox` applies only to a separately authorized composed CLI launch.
 Forbidden headless form: `codex exec`.
 
 ## Launch
 
 ```bash
-"$DELIVERY_ORCA_CLI" orchestration worker-start --task "$DELIVERY_TASK_ID" --worktree "$DELIVERY_WORKTREE_SELECTOR" --agent codex --model "$DELIVERY_MODEL" --effort "$DELIVERY_EFFORT" --task-title "$DELIVERY_TASK_TITLE" --run "$DELIVERY_RUN_ID" --json
+"$DELIVERY_ORCA_CLI" orchestration worker-start --task "$DELIVERY_TASK_ID" --worktree "$DELIVERY_WORKTREE_SELECTOR" --agent codex "${DELIVERY_MODEL_ARGS[@]}" "${DELIVERY_EFFORT_ARGS[@]}" --task-title "$DELIVERY_TASK_TITLE" --run "$DELIVERY_RUN_ID" --json
 ```
 
 Omit `--effort` when the tuple's Effort is `default`. `--effort` requires

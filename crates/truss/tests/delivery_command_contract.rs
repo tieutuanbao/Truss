@@ -186,6 +186,8 @@ fn command_cookbook_exists_and_covers_the_lifecycle() {
     let recipes = read("references/command-recipes.md");
     for needle in [
         "$DELIVERY_ORCA_CLI",
+        "ORCA_CLI_COMMAND",
+        "ORCA_DEV_REPO_ROOT",
         "run_",
         "task_",
         "ctx_",
@@ -205,6 +207,17 @@ fn command_cookbook_exists_and_covers_the_lifecycle() {
         "worker-list",
         "--terminal-state reclaimable",
         "orchestrationRequestId",
+        "DELIVERY_AGENT_ID",
+        "DELIVERY_COMPOSED_ARGV",
+        "DELIVERY_RECEIPT_FILE",
+        "Observable acceptance",
+        "subprocess.run",
+        "permission default/source",
+        "shell-quoted",
+        "pipefail",
+        "outside managed terminals",
+        "Only then ack",
+        "exactly one** ownership action",
     ] {
         assert_contains(&recipes, needle, "references/command-recipes.md");
     }
@@ -222,7 +235,7 @@ fn command_cookbook_exists_and_covers_the_lifecycle() {
         "command-recipes.md: an --ack recipe names a msg_ id; ack consumes the \
          delivery id: {ack_lines:?}"
     );
-    // The prompt travels as an in-worktree file, never as interpolated shell.
+    // Prompt bytes are not interpolated into shell syntax.
     assert!(
         !recipes.contains("\"$(cat"),
         "command-recipes.md: a recipe interpolates a file into a shell argument, \
@@ -232,6 +245,16 @@ fn command_cookbook_exists_and_covers_the_lifecycle() {
     assert_contains(
         &recipes,
         "$DELIVERY_ROOT/.agents/skills/business-analyst/SKILL.md",
+        "references/command-recipes.md",
+    );
+    assert_contains(
+        &recipes,
+        "pointer-only instruction",
+        "references/command-recipes.md",
+    );
+    assert_contains(
+        &recipes,
+        "UNSUPPORTED_PROMPT_TRANSPORT",
         "references/command-recipes.md",
     );
 }
@@ -251,6 +274,59 @@ fn policy_and_index_point_readers_at_the_cookbook() {
         assert_contains(&index, truss, "references/trusses.md");
     }
     assert_contains(&index, "agent ID", "references/trusses.md");
+}
+
+#[test]
+fn opencode_prompt_is_not_sent_before_supervised_injection() {
+    let recipes = read("references/command-recipes.md");
+    assert_contains(&recipes, "Never send the task", "command-recipes.md");
+    let opencode = read("references/trusses/opencode.md");
+    assert_contains(
+        &opencode,
+        "Never launch Delivery work with `--prompt`",
+        "opencode.md",
+    );
+    let launch = opencode.split("## Readiness").next().unwrap();
+    assert!(!launch
+        .lines()
+        .any(|line| line.contains("terminal create") && line.contains("--prompt")));
+}
+
+#[test]
+fn pi_approve_is_described_as_project_trust_not_tool_permission() {
+    let pi = read("references/trusses/pi.md");
+    assert_contains(&pi, "Project-local trust flag", "pi.md");
+    assert!(!pi.contains("Permission default on the composed argv: `--approve`"));
+    assert_contains(&pi, "omits each flag independently", "pi.md");
+}
+
+#[test]
+fn native_and_composed_default_mappings_omit_unrequested_flags() {
+    let recipes = read("references/command-recipes.md");
+    assert_contains(
+        &recipes,
+        "native; empty for Model=default",
+        "command-recipes.md",
+    );
+    assert_contains(
+        &recipes,
+        "native effort requires a pinned model",
+        "command-recipes.md",
+    );
+    let cursor = read("references/trusses/cursor.md");
+    assert!(!cursor
+        .lines()
+        .any(|line| line.contains("worker-start") && line.contains("--effort")));
+    let opencode = read("references/trusses/opencode.md");
+    assert_contains(&opencode, "`Effort` must be `default`", "opencode.md");
+}
+
+#[test]
+fn zcode_low_level_fallback_discloses_unsupervised_ownership() {
+    let zcode = read("references/trusses/zcode.md");
+    assert_contains(&zcode, "unsupervised low-level Dispatch", "zcode.md");
+    assert_contains(&zcode, "--inject", "zcode.md");
+    assert_contains(&zcode, "UNSUPPORTED_LAUNCH", "zcode.md");
 }
 
 fn read(rel: &str) -> String {

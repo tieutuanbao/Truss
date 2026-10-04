@@ -3,7 +3,7 @@
 Orca agent ID: resolve from live `orchestration worker-start --help` before launch.
 CLI executable: resolve a standalone terminal client as below.
 Launch classification: native when live help advertises the `zcode` agent ID; otherwise the low-level path below. No other launch may be improvised.
-Permission default on the composed argv: `--mode yolo`.
+Permission posture: native launch uses the Orca-registered agent preference; the standalone composed TUI uses `--mode yolo`.
 Forbidden headless forms: `--prompt`, `-p`, and `--print`.
 
 ## Zcode CLI resolution
@@ -46,13 +46,25 @@ coverage for this agent and the tuple is non-default. Compare
 
 ## Launch (low-level, only on a live-guide expressiveness gap)
 
-1. Create the task with `orchestration task-create`.
-2. Dispatch it to the ready terminal without `--inject`, requesting the
-   returned preamble: `orchestration dispatch --task "$DELIVERY_TASK_ID" --to "$DELIVERY_TERMINAL_HANDLE" --return-preamble --json`.
-3. Send that exact preamble as one text payload to the terminal and submit it.
-   Pass it as a structured process argument; never interpolate it into a shell
-   command.
-4. Supervise the returned dispatch ID and require its `worker_done` outcome.
+This is an **unsupervised low-level Dispatch**, not a supervised worker
+resource. Use it only if the live orchestration guide documents this exact
+gap and the approved envelope allows the weaker lifecycle. It creates no
+worker resource row; worker stop/abandon cannot stop its terminal. If Delivery
+requires supervised worker ownership, stop with `UNSUPPORTED_LAUNCH` until
+normal `worker-start` supports this Zcode launch.
+
+1. Create the Task using the self-contained Task recipe in
+   `../command-recipes.md`.
+2. On a ready terminal, use the documented low-level topology recipe:
+
+   ```bash
+   "$DELIVERY_ORCA_CLI" orchestration dispatch --task "$DELIVERY_TASK_ID" --to "$DELIVERY_TERMINAL_HANDLE" --inject --run "$DELIVERY_RUN_ID" --json
+   ```
+
+3. `--inject` delivers the authoritative preamble; do not duplicate it with a
+   manual terminal send. Capture the returned Dispatch ID and follow the live
+   orchestration worker contract for messages, `worker_done`, and outcome.
+   Record the lane's unsupervised ownership/recovery limits in the envelope.
 
 Shared readiness and retry rules remain in `../../SKILL.md`; commands live in
 `../../references/command-recipes.md`.

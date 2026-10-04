@@ -9,15 +9,19 @@ Check live `orchestration worker-start --help` for native model coverage. When
 coverage is absent, compose the interactive pin on the minimal TUI:
 
 ```bash
-"$DELIVERY_ORCA_CLI" terminal create --worktree "$DELIVERY_WORKTREE_SELECTOR" --title "$DELIVERY_TERMINAL_TITLE" --command "opencode mini --model '$DELIVERY_MODEL'" --json
+DELIVERY_AGENT_ARGV=(opencode mini)
+[ "$DELIVERY_MODEL" = default ] || DELIVERY_AGENT_ARGV+=(--model "$DELIVERY_MODEL")
+DELIVERY_COMPOSED_ARGV="$(shell_quote_argv "${DELIVERY_AGENT_ARGV[@]}")"
+"$DELIVERY_ORCA_CLI" terminal create --worktree "$DELIVERY_WORKTREE_SELECTOR" --title "$DELIVERY_TERMINAL_TITLE" --command "$DELIVERY_COMPOSED_ARGV" --json
 ```
 
 `DELIVERY_MODEL` is the tuple's Model cell, `provider/model` with an optional
 `#variant` (for example `openai/gpt-5.2#high`); a chosen variant travels inside
-that selector, never as a separate effort flag. When the tuple's Model is
-`default`, launch `opencode mini` with no model flag. Take the handle from
-`.result.terminal.handle`. Appending `--prompt <first message>` sends that
-message at launch; without it the launch waits for the usual dispatch input.
+that selector, never as a separate effort flag. `Effort` must be `default`;
+otherwise stop with `UNSUPPORTED_TUPLE` because this agent has no effort flag.
+The argv builder omits `--model` for `Model=default`, never passing the literal
+word. Never launch Delivery work with `--prompt`: the supervised
+`worker-start` injection supplies the authoritative Task and preamble.
 
 The default `opencode` TUI takes no model flag (observed v2.0.22: passing one
 prints help and exits), so the pin rides `mini`. The variant is part of the

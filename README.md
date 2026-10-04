@@ -4,7 +4,7 @@
 
 **A clear, durable workspace for coding agents — owned by your repository.**
 
-[![Release](https://img.shields.io/badge/release-v0.2.16-2563eb)](scripts/truss-release-tag)
+[![Release](https://img.shields.io/badge/release-v0.2.17-2563eb)](scripts/truss-release-tag)
 [![License](https://img.shields.io/badge/license-MIT-16a34a)](LICENSE)
 
 Repository-owned guidance · Safe updates · Optional multi-agent delivery
@@ -32,7 +32,7 @@ Delivery** from the pinned release.
 
 ```bash
 cd /path/to/project
-version=truss-v0.2.16
+version=truss-v0.2.17
 base="https://raw.githubusercontent.com/tieutuanbao/Truss/$version"
 export TRUSS_SOURCE_BASE_URL="$base" TRUSS_CORE_SOURCE_BASE_URL="$base"
 export TRUSS_RELEASE_REPO=tieutuanbao/Truss
@@ -44,7 +44,7 @@ curl -fsSL "$base/scripts/install-truss.sh" \
 
 ```powershell
 Set-Location C:\path\to\project
-$version = "truss-v0.2.16"
+$version = "truss-v0.2.17"
 $base = "https://raw.githubusercontent.com/tieutuanbao/Truss/$version"
 $env:TRUSS_SOURCE_BASE_URL = $base
 $env:TRUSS_CORE_SOURCE_BASE_URL = $base

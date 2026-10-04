@@ -11,7 +11,19 @@ use std::path::{Path, PathBuf};
 
 use sha2::{Digest, Sha256};
 
-const CURRENT_ROLES: [&str; 8] = [
+const CURRENT_ROLES: [&str; 9] = [
+    "project-manager",
+    "ba",
+    "architect",
+    "detailed-designer",
+    "planner",
+    "implement",
+    "visual-engineering",
+    "tester",
+    "debugger",
+];
+
+const LEGACY_EIGHT_ROLES: [&str; 8] = [
     "project-manager",
     "ba",
     "architect",
@@ -219,6 +231,15 @@ fn migrated_block(source: &str, new_designer: &NewDesignerTuple) -> SuiteResult<
         && require_rows_complete(&rows, &CURRENT_ROLES, "managed block").is_ok()
     {
         return Ok(source.to_string());
+    } else if roles == LEGACY_EIGHT_ROLES {
+        require_rows_complete(&rows, &LEGACY_EIGHT_ROLES, "legacy eight-role block")?;
+        let mut output = rows.clone();
+        let review = output
+            .remove("tester-debugger")
+            .expect("legacy reviewer tuple was validated");
+        output.insert("tester".to_string(), review.clone());
+        output.insert("debugger".to_string(), review);
+        output
     } else if roles == LEGACY_SEVEN_ROLES {
         require_rows_complete(&rows, &LEGACY_SEVEN_ROLES, "legacy seven-role block")?;
         let cells = match new_designer {
@@ -231,7 +252,12 @@ fn migrated_block(source: &str, new_designer: &NewDesignerTuple) -> SuiteResult<
             }
         };
         let mut output = rows.clone();
+        let review = output
+            .remove("tester-debugger")
+            .expect("legacy reviewer tuple was validated");
         output.insert("detailed-designer".to_string(), cells);
+        output.insert("tester".to_string(), review.clone());
+        output.insert("debugger".to_string(), review);
         output
     } else if roles == LEGACY_FIVE_ROLES {
         require_rows_complete(&rows, &LEGACY_FIVE_ROLES, "legacy five-role block")?;
@@ -263,7 +289,8 @@ fn migrated_block(source: &str, new_designer: &NewDesignerTuple) -> SuiteResult<
             ("planner", rows["plan"].clone()),
             ("implement", rows["implement"].clone()),
             ("visual-engineering", rows["implement"].clone()),
-            ("tester-debugger", rows["review"].clone()),
+            ("tester", rows["review"].clone()),
+            ("debugger", rows["review"].clone()),
         ];
         mappings
             .into_iter()
@@ -671,10 +698,15 @@ fn markdown_skeleton_defect(source: &str) -> SuiteResult<()> {
 
 fn authority_policy(source: &str) -> SuiteResult<()> {
     delivery_policy(source)?;
-    if !source.contains("independent review/acceptance")
-        && !source.contains("Code review uses the existing `tester-debugger` role")
-    {
-        return Err("independent review/acceptance authority is missing".to_string());
+    for required in [
+        "`SELF_VERIFIED`",
+        "`risk-review`",
+        "`integration-acceptance`",
+        "explicit user authorization",
+    ] {
+        if !source.contains(required) {
+            return Err(format!("role authority is missing `{required}`"));
+        }
     }
     for required in ["## Two human gates", "consumer-local"] {
         if !source.contains(required) {
@@ -689,14 +721,76 @@ fn authority_policy(source: &str) -> SuiteResult<()> {
     Ok(())
 }
 
+fn adaptive_testing_policy(source: &str) -> SuiteResult<()> {
+    for required in [
+        "`risk.level: low | medium | high`",
+        "`tester_task_gate: required | not_required`",
+        "High-risk tasks always require",
+        "Low-risk tasks default to no Tester",
+        "Medium-risk tasks require an explicit",
+        "ordinary task does not dispatch Tester",
+        "`IMPLEMENTED_NOT_INTEGRATION_ACCEPTED`",
+        "merge into the default branch",
+        "mark a pull request ready to merge",
+        "create a tag or release",
+        "draft pull request",
+        "critical data loss/corruption",
+    ] {
+        if !source.contains(required) {
+            return Err(format!("adaptive testing policy is missing `{required}`"));
+        }
+    }
+    Ok(())
+}
+
+fn blind_testing_policy(source: &str) -> SuiteResult<()> {
+    for required in [
+        "## Blind-test protocol",
+        "before seeing implementation",
+        "blind test manifest",
+        "implementation diff",
+        "`POST_DISCLOSURE_TEST_CHANGE`",
+        "never edits production code or existing tests",
+        "Tester handoff records the mode",
+    ] {
+        if !source.contains(required) {
+            return Err(format!("blind testing policy is missing `{required}`"));
+        }
+    }
+    Ok(())
+}
+
+fn debugger_policy(source: &str) -> SuiteResult<()> {
+    for required in [
+        "Debugger is outside the automatic Delivery pipeline",
+        "explicit user authorization",
+        "`diagnose-only`",
+        "`diagnose-and-fix`",
+        "must not dispatch Debugger automatically",
+        "never routes to Debugger",
+        "never changes, deletes, skips, or weakens an existing test",
+        "does not accept its own fix",
+        "Existing tests changed: none",
+    ] {
+        if !source.contains(required) {
+            return Err(format!("debugger policy is missing `{required}`"));
+        }
+    }
+    Ok(())
+}
+
 fn validate_stale_surfaces(delivery: &str, setup: &str, docs: &str) -> SuiteResult<()> {
     let delivery_roles = table_roles(delivery);
     require_exact_roles(&delivery_roles, &CURRENT_ROLES, "delivery")?;
     delivery_policy(delivery)?;
     architectural_pipeline(delivery)?;
 
+    adaptive_testing_policy(delivery)?;
+    blind_testing_policy(delivery)?;
+    debugger_policy(delivery)?;
+
     let setup_start = setup
-        .find("## Eight roles\n")
+        .find("## Nine roles\n")
         .ok_or("setup role section is missing")?;
     let setup_end = setup[setup_start..]
         .find("## Two paths")
@@ -705,8 +799,9 @@ fn validate_stale_surfaces(delivery: &str, setup: &str, docs: &str) -> SuiteResu
     let setup_roles = table_roles(&setup[setup_start..setup_end]);
     require_exact_roles(&setup_roles, &CURRENT_ROLES, "setup")?;
     for phrase in [
-        "A block that already has the eight roles is preserved byte-identical unless",
+        "A block that already has the nine roles is preserved byte-identical unless",
         "`detailed-designer` tuple is always explicitly resolved separately",
+        "copy the retired `tester-debugger` tuple to both `tester` and `debugger`",
         "Replace only the managed block",
     ] {
         if !setup.contains(phrase) {
@@ -722,16 +817,19 @@ fn validate_stale_surfaces(delivery: &str, setup: &str, docs: &str) -> SuiteResu
         .map(|line| line[..line.find('`').expect("closing role quote")].to_string())
         .collect();
     require_exact_roles(&docs_roles, &CURRENT_ROLES[1..], "docs role list")?;
-    if !docs.contains("for eight roles in total") {
+    if !docs.contains("for nine roles in total") {
         return Err("docs are stale: role count is wrong".to_string());
     }
     if !docs.contains("architect → detailed-designer → planner") {
         return Err("docs are stale: architectural pipeline is wrong".to_string());
     }
     for phrase in [
-        "preserves every existing role's Truss, Model, and Effort\ncell byte-for-byte",
+        "preserves every existing role's Truss, Model, and\nEffort cell byte-for-byte",
         "asks you to resolve the new `detailed-designer` tuple",
-        "ordinary eight-role rerun unchanged",
+        "ordinary nine-role rerun unchanged",
+        "risk-review",
+        "integration-acceptance",
+        "explicit user authorization",
     ] {
         if !docs.contains(phrase) {
             return Err(format!(
@@ -1032,6 +1130,9 @@ fn tc09_managed_block_migration_is_complete_preserving_and_fail_closed() {
         migrated_five.contains("| `visual-engineering` | shared-truss | shared-model | medium |")
     );
     assert!(migrated_five.contains("| `detailed-designer` | design-truss | design-model | high |"));
+    assert!(migrated_five.contains("| `tester` | review-truss | review-model | high |"));
+    assert!(migrated_five.contains("| `debugger` | review-truss | review-model | high |"));
+    assert!(!migrated_five.contains("| `tester-debugger` |"));
     assert_eq!(
         migrated_block(&migrated_five, &explicit).unwrap(),
         migrated_five
@@ -1047,10 +1148,16 @@ fn tc09_managed_block_migration_is_complete_preserving_and_fail_closed() {
         ("tester-debugger", "tester", "tester", "high"),
     ]);
     let migrated_seven = migrated_block(&seven, &explicit).unwrap();
-    for row in seven.lines().filter(|line| line.starts_with("| `")) {
+    for row in seven
+        .lines()
+        .filter(|line| line.starts_with("| `") && !line.contains("`tester-debugger`"))
+    {
         assert!(migrated_seven.contains(row));
     }
     assert!(migrated_seven.contains("| `detailed-designer` | design-truss | design-model | high |"));
+    assert!(migrated_seven.contains("| `tester` | tester | tester | high |"));
+    assert!(migrated_seven.contains("| `debugger` | tester | tester | high |"));
+    assert!(!migrated_seven.contains("| `tester-debugger` |"));
     let eight = legacy_block(&[
         ("project-manager", "pm", "pm", "current"),
         ("ba", "ba", "ba", "high"),
@@ -1061,9 +1168,13 @@ fn tc09_managed_block_migration_is_complete_preserving_and_fail_closed() {
         ("visual-engineering", "visual", "visual", "high"),
         ("tester-debugger", "tester", "tester", "high"),
     ]);
+    let migrated_eight = migrated_block(&eight, &NewDesignerTuple::Unresolved).unwrap();
+    assert!(migrated_eight.contains("| `tester` | tester | tester | high |"));
+    assert!(migrated_eight.contains("| `debugger` | tester | tester | high |"));
+    assert!(!migrated_eight.contains("| `tester-debugger` |"));
     assert_eq!(
-        migrated_block(&eight, &NewDesignerTuple::Unresolved).unwrap(),
-        eight
+        migrated_block(&migrated_eight, &NewDesignerTuple::Unresolved).unwrap(),
+        migrated_eight
     );
 
     let fixture_directory = tempfile::tempdir().unwrap();
@@ -1143,7 +1254,36 @@ fn tc09_managed_block_migration_is_complete_preserving_and_fail_closed() {
 }
 
 #[test]
-fn tc10_source_surfaces_agree_and_stale_copies_fail() {
+fn tc10_risk_routing_blind_testing_and_debugger_authority_are_explicit() {
+    let delivery = shipped(".agents/skills/delivery/SKILL.md");
+    adaptive_testing_policy(&delivery).unwrap();
+    blind_testing_policy(&delivery).unwrap();
+    debugger_policy(&delivery).unwrap();
+
+    let automatic_debugger = mutate(
+        &delivery,
+        "must not dispatch Debugger automatically",
+        "may dispatch Debugger automatically",
+    );
+    assert!(debugger_policy(&automatic_debugger).is_err());
+
+    let task_tester = mutate(
+        &delivery,
+        "ordinary task does not dispatch Tester",
+        "ordinary task dispatches Tester",
+    );
+    assert!(adaptive_testing_policy(&task_tester).is_err());
+
+    let disclosed_first = mutate(
+        &delivery,
+        "before seeing implementation",
+        "after seeing implementation",
+    );
+    assert!(blind_testing_policy(&disclosed_first).is_err());
+}
+
+#[test]
+fn tc11_source_surfaces_agree_and_stale_copies_fail() {
     let delivery = shipped(".agents/skills/delivery/SKILL.md");
     let setup = shipped(".agents/skills/delivery-setup/SKILL.md");
     let docs = repository_file("docs/delivery.md");
@@ -1179,7 +1319,7 @@ fn tc10_source_surfaces_agree_and_stale_copies_fail() {
 }
 
 #[test]
-fn tc11_unsupported_skeleton_grammar_fails_closed() {
+fn tc12_unsupported_skeleton_grammar_fails_closed() {
     let template = shipped(".agents/skills/delivery/templates/detailed-design.md");
     markdown_skeleton_defect(&template).unwrap();
 

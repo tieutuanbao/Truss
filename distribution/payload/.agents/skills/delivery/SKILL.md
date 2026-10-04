@@ -1,13 +1,13 @@
 ---
 name: delivery
-description: Approved design, audited detailed design, isolated eight-role implementation, independent tester-debugger acceptance, and exact-HEAD release via Orca. For Architectural work, public-contract changes, or explicitly requested deliveries. Ordinary bounded work uses repository workflow without delivery. Spikes investigate without starting a delivery run.
+description: Approved design, audited detailed design, isolated nine-role implementation, Architect-routed testing, user-authorized debugging, and exact-HEAD release acceptance via Orca. For Architectural work, public-contract changes, or explicitly requested deliveries. Ordinary bounded work uses repository workflow without delivery. Spikes investigate without starting a delivery run.
 ---
 
 # Delivery
 
 Delivery accepts a request that may still be vague, brings it to an approved
-design contract, then runs isolated implementation, independent acceptance,
-and release preparation on the Orca execution plane. It is a thin control
+design contract, then runs isolated implementation, risk-routed testing, and
+release preparation on the Orca execution plane. It is a thin control
 protocol, not an orchestrator, SDLC framework, or second source of Git state.
 
 Read `AGENTS.md` for repository instructions and per-role truss/model/effort
@@ -31,9 +31,9 @@ inspection does not waive an existing required gate.
 ## Two human gates
 
 1. Approve the design contract before candidate mutation.
-2. Accept the completed, independently accepted candidate: merge or publish a
-   prepared pull request, or accept a local completion when the envelope
-   authorizes no publish.
+2. Accept the completed candidate: merge or publish only after release-triggered
+   integration acceptance, or accept a local `IMPLEMENTED_NOT_INTEGRATION_ACCEPTED`
+   completion when the envelope authorizes no release action.
 
 Delivery pauses outside those gates only for a scope or architecture change, a
 destructive action, new authority, replan, or an unavailable required runtime.
@@ -83,8 +83,8 @@ permission, or public-compatibility risk.
 | Shape | Use | Artifact | Acceptance |
 | --- | --- | --- | --- |
 | Spike | Investigation only; no candidate is delivered | Approved probe and recommendation; no delivery run | none |
-| Bounded | Small change, clear behaviour and ownership | Approved in-chat design and short execution envelope | one whole-change independent acceptance |
-| Architectural | Multiple behaviours, public-contract change, architecture decision, or promoted risk | Approved decision record, audited detailed design, task plan, execution envelope | task acceptance per task, then one integration acceptance |
+| Bounded | Small change, clear behaviour and ownership | Approved in-chat design and short execution envelope | implementer self-verification; risk review only when Architect requires it |
+| Architectural | Multiple behaviours, public-contract change, architecture decision, or promoted risk | Approved decision record, audited detailed design, task plan, execution envelope | implementer self-verification; risk-routed task review; release-triggered integration acceptance |
 
 An approved design contract states intent and success criteria; scope and
 authority; affected public contract or architecture; consequential risks and
@@ -99,17 +99,20 @@ manual inspection and its limit.
 | --- | --- | --- |
 | `project-manager` | Coordination, required dev/ops preflight, approvals, dispatch, integration, recovery, authorized release | current session |
 | `ba` | Evidence-backed discovery and business analysis: problem and goals, stakeholders and actors, current/target flows, rules and exceptions, scope and priorities, stable requirement IDs, user stories and behavioural scenarios, business-facing non-functional expectations, acceptance, traceability, and architect/planner handoff | fresh dispatched worker |
-| `architect` | Technical contracts, interfaces, boundaries, dependencies, risks, and the decision record mapping choices to business requirements | fresh dispatched worker |
+| `architect` | Technical contracts, interfaces, boundaries, dependencies, risk routing, and the decision record mapping choices to business requirements | fresh dispatched worker |
 | `detailed-designer` | The detailed design package: modules and files, API signatures, inputs/outputs, data structures, enums, state machines, interfaces, dependency order and sequence, error handling and error codes; a compile-ready placeholder-body skeleton; and the pre-implementation completeness and ambiguity audit | fresh dispatched worker |
 | `planner` | The detailed task plan: inputs, outputs, exact path ownership, dependency DAG, commands, waves, integration and recovery, plus explicit acceptance criteria and mapped test cases for every task | fresh dispatched worker |
-| `implement` | Task-scoped code and documentation, tests, evidence, and commits | fresh dispatched worker |
+| `implement` | Task-scoped code and documentation, unit/focused tests, self-verification evidence, and commits | fresh dispatched worker |
 | `visual-engineering` | UI/UX/visual advice and authorized UI implementation, including relevant code, docs, and tests | fresh dispatched worker when the task needs it |
-| `tester-debugger` | Testing and diagnosis, authorized fixes, or independent acceptance in a separate fresh read-only session | fresh dispatched worker |
+| `tester` | Spec-first risk review and release-triggered integration/E2E/exploratory acceptance in a fresh read-only session | fresh dispatched worker only when risk routing or a release action requires it |
+| `debugger` | Narrow diagnosis or an explicitly authorized fix; never acceptance | fresh dispatched worker only after explicit user authorization |
 
 `project-manager` is never dispatched and `visual-engineering` remains
-conditional. One session holds one role per run: a business analyst never
-implements or accepts, an architect, detailed-designer, or planner never
-implements, an implementer never accepts, and so on.
+conditional. Debugger is outside the automatic Delivery pipeline. One session
+holds one role per run: a business analyst never implements or accepts, an
+architect, detailed-designer, or planner never implements, an implementer never
+accepts, Tester never edits the candidate, and Debugger does not accept its own
+fix.
 
 The `ba` chooses the smallest sufficient artifact under `$business-analyst`:
 a focused review, a product brief when intent still needs alignment, or
@@ -124,22 +127,29 @@ planned by those fresh, separate sessions before Control presents the design
 contract at gate 1. Every Architectural run requires a fresh
 `detailed-designer` dispatch after completed architecture and before planner
 decomposition; missing pins, failed readiness, or a non-UI change are not
-exemptions. Bounded work may keep its in-chat design, but Control may dispatch
-the same roles for it. Those sessions never mutate the candidate: they produce
-or audit the contract, then their dispatches end. Without those pins, Control
+exemptions. Bounded work may keep its in-chat design, but a fresh Architect must
+still record its risk routing before planning or implementation; the other
+design roles remain optional for Bounded work. Those sessions never mutate the
+candidate: they produce or audit the contract, then their dispatches end. Without those pins, Control
 drafts the contract itself and the human gate is the only audit; missing BA,
 architect, detailed-designer, or planner pins never move their duties into the
 project-manager.
 
-Code review uses the existing `tester-debugger` role, never a separate role.
-For each implemented task, Control dispatches one fresh independent
-`tester-debugger` session in `review` mode before acceptance. That reviewer
-checks only the planner's approved acceptance criteria and mapped test cases;
-it does not invent requirements or turn an outside-contract concern into a
-reason to reject the current task. A different fresh `tester-debugger` session
-performs acceptance. A design audit, when one is needed, is another fresh
-non-author `tester-debugger` session assessing acceptance and testability
-without editing.
+Architect records risk routing before Planner decomposes work. The record uses
+`risk.level: low | medium | high` and
+`tester_task_gate: required | not_required`, with evidence-backed reasons,
+affected surfaces, required Tester coverage, deferred release coverage, and
+residual risk. High-risk tasks always require a Tester gate. Low-risk tasks default to no Tester.
+Medium-risk tasks require an explicit choice and reason.
+Missing, contradictory, or high-risk `not_required` routing returns to Architect;
+Planner and Control never lower it. Architect never routes to Debugger.
+
+After coding, Implementer runs the mapped unit/focused instruments and returns
+`SELF_VERIFIED`, not independent acceptance. An ordinary task does not dispatch
+Tester. A task whose approved routing requires Tester gets exactly one fresh
+`risk-review`. A release-triggering action gets one fresh
+`integration-acceptance` at the exact final HEAD. These are complete gates for
+their scopes, not separate review and acceptance sessions.
 
 ### Architectural design sequence
 
@@ -393,14 +403,13 @@ Every delivered shape freezes the same safeguards in its approved envelope:
 
 Shape changes representation and acceptance depth, not safeguards:
 
-- Bounded: approved in-chat design and compact envelope; no Architectural
-  transient plan or separate task acceptance; one whole-change independent
-  acceptance.
+- Bounded: approved in-chat design and compact envelope; Implementer
+  self-verification, plus a risk review only when Architect requires it.
 - Architectural: durable business analysis and decision record at their
   authority routes plus a transient plan carrying the envelope; those authority
   artifacts are committed for a repository-hosted run and repository-local for an
-  approved consumer-local run; task acceptance per task, then integration
-  acceptance.
+  approved consumer-local run; Implementer self-verification, risk-routed task
+  review, and release-triggered integration acceptance.
 
 The repository workflow's durable-memory requirement still applies when
 work spans sessions or needs recovery; neither shape duplicates progress.
@@ -530,7 +539,8 @@ A read performed only at run start does not satisfy this check.
 | Malformed table, header, or row | stop and report |
 | Target role row missing | stop and report |
 | Target role row duplicated | stop and report |
-| Role not in Delivery's eight-role set | stop and report |
+| Role not in Delivery's nine-role set | stop and report |
+| Managed block still contains retired `tester-debugger` | stop with `DELIVERY_ROLE_CONFIG_MIGRATION_REQUIRED` and route to `$delivery-setup` |
 | Unresolvable value in any cell | stop and report |
 
 The run is never silently continued on a stale value or switched to the new one.
@@ -672,11 +682,12 @@ route by an enumerated vendor dialog; `agent_prompt_blocked` and
 
 There is no consultation role. When a question — a domain judgement, a design
 input, or a blocker — is better answered by a dedicated read-only dispatch,
-Control routes it to the existing eight-role specialist that holds the relevant
+Control routes it to the existing nine-role specialist that holds the relevant
 expertise, using that specialist's deployment preference: an `architect` for a
 technical judgement, a `detailed-designer` for a structural design judgement,
-a `ba` for a product-intent question, a `tester-debugger` for a read-only
-diagnosis, or a `visual-engineering` specialist for a visual judgement. The
+a `ba` for a product-intent question, a `tester` for a read-only testability
+judgement, or a `visual-engineering` specialist for a visual judgement. Debugger
+is excluded from this route because it requires explicit user authorization. The
 specialist may reproduce, inspect, and report a diagnosis or expertise packet,
 but it does not edit the candidate, commit, launch workers, or expand scope.
 This is an exception, not a phase or mandatory round trip. Without a suitable
@@ -690,7 +701,10 @@ result, an exhausted quota, an authentication error — which is not `BLOCKED`
 and must not be treated as one; Orca is unavailable or a required capability
 is absent; an action needs authority policy reserves to the human; or the
 same worker fails twice on the same input. Say what you know, what you tried,
-and what the options are. Do not pick one.
+and what the options are. Do not pick one. When Implementer exhausts one or two
+approved remediation attempts on the same failing test, Control may recommend
+Debugger, replan, another explicitly authorized repair, or stopping, but must not
+dispatch Debugger automatically.
 
 ## Implementation
 
@@ -715,8 +729,10 @@ new independent authority is created.
 
 An implementer reads the business analysis, the decision record, the detailed
 design package and audit, the plan, and the baseline — not the design session's
-transcript. It owns only its task, runs the planner's mapped test cases and
-focused acceptance instrument, and creates one task-scoped commit. For
+transcript. It owns only its task, runs the planner's mapped unit/focused test
+cases and acceptance instrument, and creates one task-scoped commit. Its result
+is self-verification labelled `SELF_VERIFIED`; it never returns `ACCEPT` for its
+own candidate. For
 behaviour with a deterministic executable test it uses TDD; the portable
 invariant is smaller: observe a discriminating failure for the intended reason
 before changing behaviour. A shell probe, parser fixture, or diff inspection
@@ -747,8 +763,9 @@ replan.
 
 ```text
 Status:              DONE | BLOCKED | NEEDS_REPLAN
-Session mode:        implementation | diagnose/fix | review | acceptance
-Disposition:         ACCEPT | CHANGES_REQUESTED | BLOCKED (review or acceptance only)
+Session mode:        implementation | risk-review | integration-acceptance | diagnose-only | diagnose-and-fix
+Verification type:   SELF_VERIFIED (implementation only)
+Disposition:         ACCEPT | CHANGES_REQUESTED | BLOCKED (Tester only; Debugger has no acceptance disposition)
 Task:                approved task identifier or exact task heading
 Truss:               name, model, effort, sandbox
 Dispatch:            dispatch id
@@ -797,35 +814,60 @@ Under `Residue`, a claim of nothing left names the check that returned empty.
 `Git state` distinguishes task changes from protected baseline changes;
 a clean HEAD identity alone does not establish a clean working tree.
 
-## Review and acceptance
+An implementation handoff additionally records `Verification type:
+SELF_VERIFIED`, its unit/focused evidence, the approved risk route, and whether
+a Tester task gate is required. A Tester handoff records the mode, blind
+manifest identity when applicable, candidate HEAD, risk and integration/E2E
+coverage, design deviations, security and out-of-scope findings, and
+observability limits. A Debugger handoff records its exact user authorization,
+mode, failure, reproduction, root-cause evidence, changed paths and commit when
+allowed, `Existing tests changed: none`, and out-of-scope observations; it has
+no acceptance disposition.
 
-Review and acceptance are separate read-only activities performed through the
-existing `tester-debugger` role. They use different fresh sessions for the same
-candidate. The design contract was already audited earlier — by the `architect`
-when pinned, otherwise by the human at gate 1.
+## Risk review and integration acceptance
 
-A `tester-debugger` task declares exactly one session mode:
+Tester is independent of the candidate author and declares exactly one mode:
 
-- **diagnose/fix** reproduces a failure, finds the root cause, and makes an
-  authorized fix. It owns a task-scoped commit like an implementer and returns
-  the implementation handoff above, never `ACCEPT`. Any candidate edit
-  invalidates every earlier review and acceptance and requires new fresh sessions
-  at the new HEAD.
-- **review** is a fresh, read-only session that checks only the planner's
-  approved acceptance criteria and mapped test cases. It returns `ACCEPT` when
-  those criteria pass and `CHANGES_REQUESTED` when one fails. It never edits the
-  candidate, adds a criterion, or broadens the contract.
-- **acceptance** is a different fresh, read-only session that reproduces the
-  required instruments and returns the release-relevant verdict. It never edits
-  the candidate.
+- **`risk-review`** runs only for a task whose approved Architect routing says
+  `tester_task_gate: required`. It performs spec-derived tests plus scoped code,
+  convention, regression, security, and design-deviation review. It returns one
+  disposition: `ACCEPT`, `CHANGES_REQUESTED`, or `BLOCKED`.
+- **`integration-acceptance`** runs once at a release-triggering action on the
+  exact final HEAD. It performs integration, E2E, exploratory, whole-change,
+  interaction, deferred-risk, convention, regression, security, design, and
+  release-readiness checks and returns the same dispositions.
 
-A review finding outside the planner's acceptance criteria never changes the
-review disposition and never blocks the current task. The reviewer records it
+Tester never edits production code or existing tests, never authors a candidate
+commit in the verdict session, and never invents a product requirement. Task
+review is not automatic: an ordinary task does not dispatch Tester.
+
+### Blind-test protocol
+
+For `risk-review`, Tester derives its test design before seeing implementation.
+It initially receives only the approved requirements and design, public
+interfaces, acceptance criteria, Architect risk record, pre-implementation
+baseline, and allowed environment and commands. It does not receive the
+implementation diff, task commit, Implementer tests or handoff, or transcript.
+
+Tester writes a run-local, digest-bound blind test manifest containing baseline,
+spec, and risk identities; spec-derived cases; expected results; plausible wrong
+implementations; and the review checklist. Only after that identity is recorded
+does Control disclose the exact candidate HEAD, diff, handoff, and unit evidence.
+Mechanical corrections to command paths, fixture locators, setup, or executable
+names are recorded. A semantic change to an oracle, expected result, failure
+scenario, security property, or acceptance boundary is labelled
+`POST_DISCLOSURE_TEST_CHANGE` and is not claimed as blind evidence.
+
+A Tester finding outside the planner's acceptance criteria never changes the
+Tester disposition and never blocks the current task, except that concrete
+evidence of critical data loss/corruption, privilege escalation, secret
+exposure, or an unintended destructive operation pauses release for Control to
+escalate to Architect and the user. This safety pause grants no scope to fix or
+invent a requirement. Tester records it
 under `Out-of-scope review backlog` in the transient plan with: a concise title;
 exact path and location when available; observed behaviour; concrete impact;
 evidence or reproduction details; why it is outside the approved criteria; and
-a recommended next step. The reviewer does not fix, absorb, or silently discard
-it. This routing rule applies even when the concern appears important or
+a recommended next step. Tester does not fix, absorb, or silently discard it. This routing rule applies even when the concern appears important or
 security-related; Control separately decides whether authority or safety
 requires pausing the wider run.
 
@@ -838,36 +880,21 @@ noncanonical pointer or run evidence, never a second canonical copy. An
 unresolved item may remain outside the current task, but it may not disappear
 when the transient plan is deleted.
 
-Review and acceptance independence are candidate independence: the reviewing
-or accepting session did not author, fix, plan, analyse, decide, advise, or
-integrate that candidate, and does not edit it. The task reviewer and accepting
-session are different fresh sessions. The candidate author, fixer, planner,
-advisor, reviewer, and the project-manager that integrated it cannot accept it.
-Review and acceptance get the business analysis, the decision record (or
-Bounded design), the detailed design package and its audit, the planner's task
-criteria and test cases, the baseline, and the diff. The phase adds no sandbox
-by default; `AGENTS.md` may pin one for a concrete risk.
+Tester independence is candidate independence: the session did not author, fix,
+plan, analyse, decide, advise, or integrate the candidate and does not edit it.
+The candidate author, fixer, planner, advisor, and the project-manager that
+integrated it cannot act as Tester. Tester gets the approved authority artifacts,
+criteria, risk record, baseline, and then the candidate inputs in the blind
+protocol order. The phase adds no sandbox by default; `AGENTS.md` may pin one
+for a concrete risk.
 
-Review and acceptance depth is adaptive: Bounded work gets one independent
-whole-change review followed by one independent whole-change acceptance. Each
-Architectural task gets an independent review followed by an independent
-acceptance. After all tasks are integrated, a different fresh
-`tester-debugger` session performs one integration acceptance of task
-interactions, complete-contract coverage, deferred findings, candidate identity,
-and release readiness at the exact
-final HEAD. Architectural task acceptance and final integration acceptance are
-separate sessions. Only that final integration acceptance is release-binding
-for Architectural work; Bounded work has no earlier task acceptance and no
-duplicate integration acceptance.
-
-No worker runs while acceptance of the same working tree runs. The working
-tree and its gate surface are shared mutable state, and an accepting session
-reproduces gates in that tree, so a concurrent edit makes another task's work
+No worker runs while testing the same working tree runs. The working
+tree and its gate surface are shared mutable state, and Tester reproduces gates
+in that tree, so a concurrent edit makes another task's work
 look like this one's result.
 
 **Reproduce, do not accept.** Run the gates yourself. A claim you did not
-reproduce is not evidence. The accepting session observes the counterexample
-discriminate for itself — an implementation that is present, runs, returns a
+reproduce is not evidence. Tester observes the counterexample discriminate for itself — an implementation that is present, runs, returns a
 pass, and is wrong. An instrument red only because the behaviour was
 absent is not that observation. For a row using the permitted manual
 exception under § Acceptance, verify that the named human's inspection was
@@ -879,52 +906,79 @@ reconciliation. **Minor** — useful, does not block. **Out of scope** —
 recorded, not absorbed.
 
 Return exactly one disposition: `ACCEPT`, `CHANGES_REQUESTED`, or `BLOCKED`.
-State what acceptance did not verify — what it did not reproduce or read. A
+State what Tester did not verify — what it did not reproduce or read. A
 contradiction you cannot resolve is `CHANGES_REQUESTED`. Do not open
 remediation over wording when deterministic checks already prove the contract.
 
 ### Remediation
 
 One pass is one remediation pass per finding, not per acceptance. For an
-in-contract `CHANGES_REQUESTED` finding, the **original implementer**, or the
-`tester-debugger` fix session that authored the change, verifies it, fixes the
-root cause, reruns the affected instruments and closure gates, and writes a
-separate remediation commit — this is the single original-party remediation.
-A fix session never accepts its own fix. Control owns the plan and the decision
-record for the whole run, including remediating findings inside them.
-Amending them is not implementing the candidate. The fixed candidate is
-accepted only by a **different fresh acceptance session at the new exact
-HEAD**; the earlier verdict does not carry across the mutation. If that scoped
-acceptance does not accept, Control routes to `REPLAN_OR_SPLIT` — it does not
-start another repair loop. `BLOCKED` preserves the candidate and escalates the
-unresolved dependency or authority question to Control separately from a
-failed worker process; it is not remediated by the original implementer. A
-fresh replacement acceptance session is used only when the original accepting
-session is unavailable or contested, and for the Architectural integration
-acceptance.
+in-contract `CHANGES_REQUESTED` finding, the **original implementer** verifies
+it, fixes the root cause, reruns the affected instruments and closure gates, and
+writes a separate remediation commit — this is the single original-party
+remediation. Tester never fixes its own finding. Control owns the plan and the decision
+record for the whole run, including remediating findings inside them. Amending
+them is not implementing the candidate. The fixed candidate is checked only by
+a **fresh Tester session at the new exact HEAD** when its risk route or release
+action requires one; the earlier verdict
+does not carry across the mutation. If that scoped check does not accept,
+Control routes to `NEEDS_USER_DECISION` — it does not start another repair loop
+or dispatch Debugger automatically. `BLOCKED` preserves the candidate and
+escalates the unresolved dependency or authority question to Control separately
+from a failed worker process; it is not remediated by the original Implementer.
+A fresh replacement Tester session is used only when the original Tester is
+unavailable or contested.
+
+## Debugger
+
+Debugger is outside the automatic Delivery pipeline. Architect never routes to
+Debugger, and Control must not dispatch Debugger automatically. Control may
+recommend it only after the user-visible conditions are met: one or two failed
+Implementer repair attempts, a hard-to-reproduce or multi-module fault, a race
+or performance failure, production/staging log or trace investigation, or a
+regression requiring history or bisect. Every dispatch requires explicit user
+authorization naming the fault, scope, evidence inputs, prohibited paths, and
+whether mutation is allowed.
+
+- **`diagnose-only`** reproduces and investigates, then reports evidence and
+  ranked root-cause hypotheses without candidate mutation.
+- **`diagnose-and-fix`** makes only the narrowest explicitly authorized fix and
+  a separate commit. Debugger never changes, deletes, skips, or weakens an existing test,
+  never broadens scope to another fault, and does not accept its own fix. Any
+  fix returns to Implementer self-verification and any applicable fresh Tester
+  gate.
+
+If Debugger believes a test is wrong, it reports a test-contract dispute; it
+does not edit the test. Control routes criterion mapping to Planner, technical
+design or risk to Architect, product intent to BA or the user, and a test
+implementation defect to Tester. A material contract correction requires
+renewed approval.
 
 ## Release
 
 Control performs release with native Git and forge tools; release dispatches
-no LLM worker and makes no post-acceptance candidate edit.
+no release worker and makes no post-acceptance candidate edit.
 
-1. Complete implementation and independent review and, for Architectural work,
-   its task acceptance.
+1. Complete implementation self-verification and every required risk review.
 2. Reconcile owning documentation, move anything durable to its one authority
    owner without retaining a second canonical run copy, and commit the complete
    candidate. For a consumer-local run, nothing private is committed and no run
    artifact is deleted here: the transient plan stays on disk, because delivery
    does not delete run artifacts on its own.
 3. Run the focused instruments and project closure gates on exact HEAD.
-4. If the envelope authorises publishing: push the feature branch and create
-   or update a draft pull request, and run the applicable integration
-   acceptance while remote checks run on that same HEAD.
-5. Require the applicable integration acceptance's `ACCEPT` — plus required
-   remote checks green when the envelope authorises publishing — bound to that
-   exact HEAD.
+4. Trigger one fresh Tester `integration-acceptance` only when the user asks to
+   merge into the default branch, mark a pull request ready to merge, create a tag or release,
+   or perform a repository-policy release publish/deploy. A task
+   commit, backup push, draft pull request, or ordinary local completion does
+   not trigger integration/E2E.
+5. Require that Tester session's `ACCEPT` — plus required remote checks green —
+   bound to the exact final HEAD.
 6. Report for the second human gate: mark the pull request ready for human
-   merge, or present the locally completed, accepted candidate for human
-   acceptance.
+   merge, or perform only the separately authorized tag/release action.
+
+Without a release-triggering request, the local result is
+`IMPLEMENTED_NOT_INTEGRATION_ACCEPTED`: focused gates are green, but the
+candidate is not represented as release-ready.
 
 Evidence is revision-bound: a verdict earned on one HEAD validates only that
 HEAD. Any candidate mutation after the applicable integration acceptance
@@ -932,8 +986,8 @@ invalidates that verdict; Control reruns the affected gates and acceptance on
 the new exact HEAD. Affected gates are those that can observe the change class;
 a project may name that subset.
 
-A local delivery ends at step 6 with the candidate committed on its branch,
-gates green, and the integration acceptance accepted on that exact HEAD.
+A release-triggered delivery ends at step 6 with the candidate committed on its
+branch, gates green, and integration acceptance accepted on that exact HEAD.
 Publishing later repeats steps 4–6 on the current HEAD; it never reuses a
 verdict from an earlier revision.
 
@@ -981,8 +1035,8 @@ is safe.
 
 | Failure | Disposition |
 | --- | --- |
-| In-contract implementation defect | Original implementer or fix session remediates; a different fresh session accepts the new HEAD |
-| Scoped remediation acceptance does not accept | `REPLAN_OR_SPLIT` |
+| In-contract implementation defect | Original Implementer gets one scoped remediation; a fresh Tester checks the new HEAD only when risk routing or release requires it |
+| Scoped remediation does not accept | `NEEDS_USER_DECISION`; do not loop or auto-dispatch Debugger |
 | Scope or architecture must change | Return to the design gate |
 | New authority or destructive action is required | Ask the human |
 | Orca or a required capability is unavailable | Stop; no headless fallback |

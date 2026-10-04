@@ -1,7 +1,7 @@
 # Delivery with Orca
 
-Use Delivery when a change needs design approval, separate implementation, and
-independent acceptance. Ordinary questions, reviews, and small changes use the
+Use Delivery when a change needs design approval, separate implementation,
+risk-routed testing, and release-triggered independent acceptance. Ordinary questions, reviews, and small changes use the
 Core workflow without Delivery.
 
 ## Requirements
@@ -29,24 +29,26 @@ From the installed repository, ask your coding agent:
 $delivery-setup configure the delivery roles for this repository.
 ```
 
-Choose the current harness defaults or customize the seven dispatched roles.
-The current interactive session is `project-manager`; it keeps approval and
-release authority and is never dispatched, for eight roles in total:
+Choose the current harness defaults or customize the eight configurable
+worker roles. The current interactive session is `project-manager`; it keeps
+approval and release authority and is never dispatched, for nine roles in total:
 
 - `ba` — business analysis and requirement quality;
-- `architect` — technical contracts and boundaries;
+- `architect` — technical contracts, boundaries, and task risk routing;
 - `detailed-designer` — the detailed design package, placeholder-body
   skeleton, and pre-implementation design audit;
 - `planner` — tasks, dependencies, and acceptance instruments;
-- `implement` — scoped changes and proof;
+- `implement` — scoped changes plus unit/focused self-verification;
 - `visual-engineering` — UI and visual work when needed;
-- `tester-debugger` — independent review, diagnosis, and acceptance.
+- `tester` — risk-review and release-triggered integration-acceptance;
+- `debugger` — user-authorized diagnosis or narrow fixes only.
 
-Delivery Setup migrates a legacy five-role or seven-role managed block into
-the eight-role set. It preserves every existing role's Truss, Model, and Effort
-cell byte-for-byte, asks you to resolve the new `detailed-designer` tuple
-explicitly, refuses malformed, mixed, duplicate, or ambiguous blocks without
-writing, and leaves an ordinary eight-role rerun unchanged.
+Delivery Setup migrates a legacy five-, seven-, or eight-role managed block
+into the nine-role set. It preserves every existing role's Truss, Model, and
+Effort cell byte-for-byte, asks you to resolve the new `detailed-designer` tuple
+when it is absent, and copies the retired review/`tester-debugger` tuple to both
+`tester` and `debugger`. It refuses malformed, mixed, duplicate, or ambiguous
+blocks without writing and leaves an ordinary nine-role rerun unchanged.
 
 ## Start a delivered change
 
@@ -70,9 +72,13 @@ readiness value is exactly `READY_FOR_PLANNING` or `NOT_READY`; only a
 planner decomposition. A failed or missing design dispatch never lets the
 planner or implementer absorb the role.
 
-After your approval, Orca runs isolated roles, the repository's own checks, and
-independent acceptance. Release actions are limited to what you explicitly
-authorize.
+After your approval, Orca runs isolated implementation and the repository's
+own checks. The implementer performs unit/focused tests from approved acceptance
+criteria. Architect requires a Tester risk-review only for selected risky tasks;
+ordinary tasks do not dispatch Tester. A single Tester integration-acceptance
+runs at the exact final HEAD only when you request merge into the default branch,
+marking a pull request ready, a tag, a release, or a policy-defined publish.
+Release actions remain limited to what you explicitly authorize.
 
 ## Example
 
@@ -81,13 +87,37 @@ Suppose an API must reject an invalid state already documented in the project:
 ```text
 $delivery change the order API to reject the invalid state documented in
 .truss/authority/product/orders.md. Preserve the public error contract. The
-focused test must reject the old behavior, and an independent tester-debugger
-must accept the exact final revision.
+focused test must reject the old behavior. Architect must record its risk route;
+Tester accepts the exact final revision if this delivery proceeds to merge or
+release.
 ```
 
 Delivery should produce an approved contract, separate analysis and planning,
-a scoped implementation, repository proof, and independent exact-revision
-acceptance. It performs only the release action you approve.
+a scoped implementation and repository proof. Risky tasks receive one Tester
+risk-review; merge or release receives one independent exact-revision
+integration-acceptance. It performs only the release action you approve.
+
+## Testing and debugging policy
+
+Architect records `risk.level: low | medium | high` and
+`tester_task_gate: required | not_required` before planning. High-risk tasks
+always require `risk-review`; low-risk tasks default to no Tester; medium-risk
+tasks require an explicit decision and reason. Tester prepares its task test
+manifest from the approved spec before seeing implementation, then performs the
+risk-focused review without editing production code or existing tests.
+
+A local completion without a release request is
+`IMPLEMENTED_NOT_INTEGRATION_ACCEPTED`: implementation and focused checks are
+complete, but the candidate is not represented as release-ready. Integration,
+E2E, exploratory, and whole-change review run in one `integration-acceptance`
+session only for the release-triggering actions above.
+
+Debugger is outside the automatic pipeline. Truss may recommend it after one or
+two failed Implementer repair attempts or for hard-to-reproduce, multi-module,
+race, performance, production/staging, or historical regression investigation,
+but every Debugger dispatch needs explicit user authorization. Debugger may be
+`diagnose-only` or explicitly authorized to diagnose and fix; it never weakens
+existing tests, expands beyond the investigated fault, or accepts its own fix.
 
 ## When to use it
 

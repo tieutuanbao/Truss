@@ -1,6 +1,6 @@
 ---
 name: delivery-setup
-description: Configure a project's AGENTS.md with one managed delivery block — per-role truss, model and effort for the seven dispatched roles (ba, architect, detailed-designer, planner, implement, visual-engineering, tester-debugger) plus the current project-manager row, discovered from the live truss surface. Use at the start of a Control Session, when the project has no managed block, or when those pins need rewriting from the installed trusses. Not for installing skills, trusting hooks, or delivering a change; that is delivery.
+description: Configure a project's AGENTS.md with one managed delivery block — per-role truss, model and effort for the eight configurable dispatched roles (ba, architect, detailed-designer, planner, implement, visual-engineering, tester, debugger) plus the current project-manager row, discovered from the live truss surface. Use at the start of a Control Session, when the project has no managed block, or when those pins need rewriting from the installed trusses. Not for installing skills, trusting hooks, or delivering a change; that is delivery.
 ---
 
 # Delivery Setup
@@ -12,22 +12,23 @@ not install, trust, or enumerate anything.
 Read `AGENTS.md` first. Replace only the region between this skill's own
 markers. Prose outside the block is not read, merged, moved, or deleted.
 
-## Eight roles
+## Nine roles
 
-The managed block configures delivery preferences for exactly eight roles —
+The managed block configures delivery preferences for exactly nine roles —
 `project-manager` is the current interactive session and is never dispatched;
-the other seven are dispatched per task:
+the other eight are configurable for conditional dispatch:
 
 | Role | Owns | Dispatched |
 | --- | --- | --- |
 | `project-manager` | Project coordination, required dev/ops preflight, approvals, dispatch, integration, recovery and authorized release | no — the current interactive session |
 | `ba` | Evidence-backed discovery and business analysis: goals, actors, flows, rules, exceptions, scope, stable requirement IDs, behavioural scenarios, non-functional expectations, acceptance, traceability and architect/planner handoff | yes |
-| `architect` | Technical contracts, interfaces, boundaries, dependencies, risks, and the decision record mapping choices to business requirements | yes |
+| `architect` | Technical contracts, interfaces, boundaries, dependencies, risk routing, and the decision record mapping choices to business requirements | yes |
 | `detailed-designer` | The detailed design package: modules and files, API signatures, inputs/outputs, data structures, enums, state machines, interfaces, dependency order and sequence, error handling and error codes; a compile-ready placeholder-body skeleton; and the pre-implementation completeness and ambiguity audit | yes |
 | `planner` | The detailed task plan: inputs, outputs, exact path ownership, dependency DAG, commands, waves, integration and recovery | yes |
-| `implement` | Task-scoped code and documentation, tests, evidence, and commits | yes |
+| `implement` | Task-scoped code and documentation, unit/focused tests, self-verification evidence, and commits | yes |
 | `visual-engineering` | UI/UX/visual advice and authorized UI implementation, including relevant code, docs, and tests | yes, when the task needs it |
-| `tester-debugger` | Testing and diagnosis, authorized fixes, or independent acceptance in a separate fresh read-only session | yes |
+| `tester` | Risk-routed review and release-triggered integration/E2E/exploratory acceptance | yes, only when routing or release requires it |
+| `debugger` | User-authorized diagnosis or narrow fix; never acceptance | yes, only after explicit user authorization |
 
 There is no separate coordinator or orchestrator field, because Orca is the
 constant, required execution plane and the `project-manager` row already
@@ -35,8 +36,8 @@ records the current interactive session, which is never dispatched and always
 owns the two human gates. There is no release row, because release has no LLM
 worker and stays with `project-manager`. One session holds one role per run: a
 detailed-designer or planner never implements or accepts, an implementer never
-accepts its own candidate, and code review is an activity inside acceptance,
-never a ninth role.
+accepts its own candidate, Tester stays read-only, and Debugger never accepts
+its own fix.
 
 Delivery setup configures role pins only. Durable business analysis, decisions,
 architecture/design, durable plans, and communication choice belong under
@@ -69,9 +70,10 @@ Exactly one block, and nothing else:
 Architectural work and explicitly requested deliveries invoke
 `$delivery`; ordinary bounded work does not. Spike starts no delivery run.
 
-Eight roles share the run. `project-manager` is the current interactive
-session and is never dispatched; the other seven rows are dispatched with
-these preferences.
+Nine roles share the run. `project-manager` is the current interactive
+session and is never dispatched; the other eight rows are configured with
+these preferences. `tester` is risk/release-routed and `debugger` requires
+explicit user authorization.
 
 | Role | Truss | Model | Effort |
 | --- | --- | --- | --- |
@@ -82,7 +84,8 @@ these preferences.
 | `planner` | … | … | … |
 | `implement` | … | … | … |
 | `visual-engineering` | … | … | … |
-| `tester-debugger` | … | … | … |
+| `tester` | … | … | … |
+| `debugger` | … | … | … |
 <!-- delivery:end -->
 ```
 
@@ -173,8 +176,8 @@ rather than guessing.
 
 ## Migrating a legacy block
 
-A block that still names the retired five-role or legacy seven-role set is
-migrated in place, never replaced wholesale. The retired roles were `plan`,
+A block that still names the retired five-role, legacy seven-role, or legacy
+eight-role set is migrated in place, never replaced wholesale. The retired roles were `plan`,
 `plan-review`, `implement`, `review`, and `consult`; they are not delivered
 roles and must not remain in the rewritten block.
 
@@ -188,7 +191,9 @@ roles and must not remain in the rewritten block.
 4. Recognize the exact legacy seven-role block. Preserve every existing role's
    Truss, Model and Effort cell byte-for-byte; insert `detailed-designer`
    between `architect` and `planner` after explicit setup resolution.
-5. Replace only the managed block. Unrelated prose outside it stays
+5. Recognize the exact legacy eight-role block containing `tester-debugger`.
+   Preserve every other row byte-for-byte and copy the retired `tester-debugger` tuple to both `tester` and `debugger`.
+6. Replace only the managed block. Unrelated prose outside it stays
    byte-identical, and the procedure is stable when run again.
 
 | Retired role | Migrated to | Pins |
@@ -196,11 +201,12 @@ roles and must not remain in the rewritten block.
 | `plan` | `planner` | preserve that row's truss, model and effort |
 | `plan-review` | `architect` | preserve that row's truss, model and effort |
 | `implement` | `implement` and `visual-engineering` | preserve that row's truss, model and effort for both |
-| `review` | `tester-debugger` | preserve that row's truss, model and effort |
+| `review` | `tester` and `debugger` | preserve that row's truss, model and effort for both |
+| `tester-debugger` | `tester` and `debugger` | copy the retired tuple byte-for-byte to both rows |
 | `consult` | `ba` | preserve that row's truss, model and effort |
 | (no legacy row) | `project-manager` | write `current` in all three cells |
 
-A block that already has the eight roles is preserved byte-identical unless
+A block that already has the nine roles is preserved byte-identical unless
 the human explicitly asks to reconfigure it; an ordinary rerun performs no
 tuple rediscovery or remigration. A block with missing, mixed, or ambiguous
 legacy rows is reported for focused resolution; do not guess a mapping,
@@ -271,7 +277,7 @@ Stop and report to the human, unchanged, when:
 - more than one `<!-- delivery:begin -->` is present
 - a legacy phase table outside the block contradicts the block
 - the block's roles are neither the known five-role set, the seven-role set,
-  nor the eight-role set
+  the legacy eight-role set, nor the current nine-role set
 
 Do not merge two tables, delete a legacy table, or guess which is
 authoritative.

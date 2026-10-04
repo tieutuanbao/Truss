@@ -21,7 +21,7 @@ Truss gives agents one entry point and an evidence-based workflow while your rep
 | --- | --- |
 | The agent guesses how the repository works | One entry point routes it to repository-owned instructions, commands, and decisions. |
 | Changes grow beyond the request or finish without proof | Core requires a bounded change and observable evidence before completion. |
-| Work spans sessions or needs independent acceptance | Durable plans preserve context; Delivery separates implementation from review and acceptance. |
+| Work spans sessions or needs risk-based acceptance | Durable plans preserve context; Delivery adds Architect-routed task testing and exact-HEAD release acceptance. |
 
 ## Install
 
@@ -97,8 +97,8 @@ orca-ide orchestration run-list --json
 $delivery implement <outcome> under <scope and acceptance criteria>.
 ```
 
-Use Delivery for work that needs approved design and independent acceptance;
-use Core directly for ordinary questions and small changes. See
+Use Delivery for work that needs approved design, risk-routed testing, or
+release acceptance; use Core directly for ordinary questions and small changes. See
 [Delivery](docs/delivery.md).
 
 ## Options

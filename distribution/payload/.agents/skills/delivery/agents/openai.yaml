@@ -1,6 +1,6 @@
 interface:
   display_name: "Delivery"
-  short_description: "Deliver a change through an approved contract, audited detailed design, eight-role implementation, independent acceptance, and release"
-  default_prompt: "Use $delivery to take the requested change through design approval, audited detailed design, eight-role implementation, independent tester-debugger acceptance, and release."
+  short_description: "Deliver a change through approved design, risk-routed testing, user-authorized debugging, and exact-HEAD release acceptance"
+  default_prompt: "Use $delivery to take the requested change through design approval, audited detailed design, nine-role implementation, risk-routed testing, and release-triggered integration acceptance."
 policy:
   allow_implicit_invocation: false

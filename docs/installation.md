@@ -32,7 +32,7 @@ below when a newer release is available.
 ### Linux and macOS
 
 ```bash
-version=truss-v0.2.15
+version=truss-v0.2.16
 base="https://raw.githubusercontent.com/tieutuanbao/Truss/$version"
 export TRUSS_SOURCE_BASE_URL="$base"
 export TRUSS_CORE_SOURCE_BASE_URL="$base"
@@ -44,7 +44,7 @@ curl -fsSL "$base/scripts/install-truss.sh" \
 ### Windows PowerShell
 
 ```powershell
-$version = "truss-v0.2.15"
+$version = "truss-v0.2.16"
 $base = "https://raw.githubusercontent.com/tieutuanbao/Truss/$version"
 $env:TRUSS_SOURCE_BASE_URL = $base
 $env:TRUSS_CORE_SOURCE_BASE_URL = $base

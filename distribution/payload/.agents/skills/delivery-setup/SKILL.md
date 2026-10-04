@@ -101,11 +101,13 @@ package, from memory, or from `.truss/core/docs/`.
 - Antigravity CLI models: `agy models` (offer the slug column of its TSV output)
 - Pi models: `pi --list-models` (offer the `provider/model` pair)
 - OpenCode models: `opencode models` (offer each `provider/model` pair).
-  OpenCode's interactive command has no effort flag: `--variant` exists only on
-  `opencode run`, which is not a dispatch. Write `default` for Effort and let
-  the resolved model or its configured variant carry the reasoning effort. Check
-  live `worker-start --help` for native model coverage; where coverage is
-  absent, the composed dispatch argv carries the pin. A model that refuses a
+  OpenCode v2 carries reasoning effort inside the model selector as
+  `provider/model#variant`; there is no separate `--variant` or `--effort`
+  flag anywhere. Write the chosen variant inside the Model cell and `default`
+  for Effort. Observed v2.0.22: the default `opencode` TUI takes no
+  `--model`; the composed interactive pin rides `opencode mini --model ...`.
+  Check live `worker-start --help` for native model coverage; where coverage
+  is absent, that composed mini argv carries the pin. A model that refuses a
   request reports the error in the TUI and leaves the dispatch unsettled.
 - Zcode: run the resolved standalone terminal client's `version` and
   `doctor --json`. The doctor must identify process name `zcode-cli`; final

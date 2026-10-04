@@ -18,9 +18,15 @@ inside the TUI and the dispatch stays unsettled, so read the terminal rather
 than assuming a stuck worker. `--prompt` sends its message at launch; a
 launch without `--prompt` waits for the usual dispatch input.
 
-Permission posture comes from opencode's own configuration (`permission` in
-`opencode debug config`); never add `--auto`, which auto-approves permissions
-that are not explicitly denied. `mini` requires a TTY: piped stdout exits
+Permission posture comes from opencode's own `permissions` rules, shown
+resolved by `opencode debug config`; the default base policy allows shell
+and edits and asks for external-directory and `.env` reads. A matching
+`ask` stalls an unattended worker at a TUI dialog, and the pass is
+configuration, not keystrokes: give shell and edit `allow` rules in
+opencode's project or user configuration before launch, and verify before
+dispatch that neither asks. `mini` takes no permission flag: `--auto`
+exists only on the default TUI, and a flag `mini` does not accept makes it
+print help and exit. `mini` requires a TTY: piped stdout exits
 with `opencode mini requires a TTY stdout` before any TUI appears.
 
 Prove the composed TUI is ready before dispatch with `--terminal`, and prove

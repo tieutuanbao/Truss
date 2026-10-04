@@ -10,6 +10,7 @@
 .agents/skills/business-analyst/templates/requirements-review.md
 .agents/skills/delivery/SKILL.md
 .agents/skills/delivery/agents/openai.yaml
+.agents/skills/delivery/references/command-recipes.md
 .agents/skills/delivery/references/maintenance-log.md
 .agents/skills/delivery/references/trusses.md
 .agents/skills/delivery/references/trusses/antigravity.md

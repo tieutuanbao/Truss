@@ -445,6 +445,11 @@ DELIVERY_ROOT="$(git rev-parse --show-toplevel)"
 DELIVERY_HEAD="$(git -C "$DELIVERY_ROOT" rev-parse HEAD)"
 ```
 
+The co-installed `$business-analyst` skill resolves from the consumer root,
+not from the execution plane: `"$DELIVERY_ROOT/.agents/skills/business-analyst/SKILL.md"`
+must be readable, and its cited references resolve relative to that skill
+directory. It is not an `orca skills get` topic.
+
 A delivery requires a valid `HEAD`. If the consumer repository is an unborn
 branch, stop before dispatch and ask for a baseline commit; do not stage
 Truss-managed files, nested repositories, or unrelated user files. Resolve
@@ -566,18 +571,32 @@ cannot. Launch a real interactive truss TUI for the role, with the model
 and effort pinned from `AGENTS.md`. A visible shell running a headless
 truss is not a TUI;
 use `references/trusses.md` to select and read only the resolved truss's
-launch reference before composing its argv.
+launch reference before composing its argv. The reference states exactly one
+launch classification, and that classification picks the recipe: `native`
+dispatches through `worker-start --agent` with the model pin; `composed`
+creates the pinned terminal from the reference's exact argv, proves readiness,
+and dispatches with `--terminal` only; `unresolved` stops before dispatch with
+`UNSUPPORTED_LAUNCH`. Every dispatch, wait, acknowledgement, and recovery
+command is copied from `references/command-recipes.md` with placeholders
+filled from receipts — argv is never composed from memory or from live help
+alone.
 
 Use low-level task, dispatch, injection, and returned-preamble actions only
 where the live guide says the normal supervised start cannot express the
 launch; follow that guide for the current task, dispatch, injection, preamble,
 and supervision semantics.
 
-**Name the model and effort on every dispatch.** A worker left on a truss
-default is an unpinned environment: it lives in the truss's own config, it
-changes without announcing itself, and the dispatch that relies on it looks
-identical to one that pinned the same value deliberately. `--effort` on a
-launch argv requires `--model`.
+**The tuple is named and provable on every dispatch.** A worker left on a
+truss default is an unpinned environment: it lives in the truss's own config,
+it changes without announcing itself, and the dispatch that relies on it
+looks identical to one that pinned the same value deliberately. The pin
+travels exactly once per launch, where the truss's classification puts it: a
+native start carries `--model` and `--effort` on `worker-start`; a composed
+start carries them on the terminal-create argv, and its `worker-start
+--terminal` call carries neither. Every dispatch receipt or handoff then
+records the full tuple (`launch.requested`/`launch.effective`, or the
+composed argv plus its readiness proof). Repeating the flags on a
+`--terminal` dispatch is a launch error, not a stronger pin.
 
 When composing the TUI launch argv yourself, carry the execution plane's
 configured permission default for that agent onto the composed argv;

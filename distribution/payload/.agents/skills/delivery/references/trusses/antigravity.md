@@ -1,19 +1,33 @@
 # Antigravity CLI
 
 Orca agent ID: `antigravity`.
-`worker-start --agent agy` returns `agent_unconfigured` and creates no terminal.
-Permission default: `--dangerously-skip-permissions`.
+CLI executable: `agy`.
+Launch classification: native — live `worker-start --help` names this agent under native `--model` support; a composed fallback exists for a server that cannot pin.
+`worker-start --agent agy` returns `agent_unconfigured` and creates no terminal: the agent id is `antigravity`, never `agy`.
+Permission default on the composed argv: `--dangerously-skip-permissions`.
 Forbidden headless forms: `agy -p` and `agy --print`.
 
-Check live `orchestration worker-start --help` for model coverage. When it
-advertises native coverage, use `worker-start --agent antigravity --model <id>
---effort <level>`, require readiness, and compare `launch.requested` with
-`launch.effective`. Use the composed argv only when the selected server cannot
-pin the native launch:
+## Launch (native)
 
-`agy --model <slug> --effort <level> --dangerously-skip-permissions`
+```bash
+"$DELIVERY_ORCA_CLI" orchestration worker-start --task "$DELIVERY_TASK_ID" --worktree "$DELIVERY_WORKTREE_SELECTOR" --agent antigravity --model "$DELIVERY_MODEL" --effort "$DELIVERY_EFFORT" --task-title "$DELIVERY_TASK_TITLE" --run "$DELIVERY_RUN_ID" --json
+```
 
-For the composed path, prove TUI readiness before dispatch with `--terminal`.
+Omit `--effort` when the tuple's Effort is `default` (`low|medium|high`
+otherwise). Compare `launch.requested` with `launch.effective` on the receipt.
+
+## Launch (composed fallback)
+
+Use the composed path only when the selected server cannot pin the native
+launch. Compose the pinned terminal from the truss argv, prove readiness, then
+dispatch with `--terminal` only — never re-adding the pins:
+
+```bash
+"$DELIVERY_ORCA_CLI" terminal create --worktree "$DELIVERY_WORKTREE_SELECTOR" --title "$DELIVERY_TERMINAL_TITLE" --command "agy --model '$DELIVERY_MODEL' --effort '$DELIVERY_EFFORT' --dangerously-skip-permissions" --json
+"$DELIVERY_ORCA_CLI" terminal wait --terminal "$DELIVERY_TERMINAL_HANDLE" --for tui-idle --timeout-ms 60000 --json
+"$DELIVERY_ORCA_CLI" orchestration worker-start --task "$DELIVERY_TASK_ID" --worktree "$DELIVERY_WORKTREE_SELECTOR" --terminal "$DELIVERY_TERMINAL_HANDLE" --task-title "$DELIVERY_TASK_TITLE" --run "$DELIVERY_RUN_ID" --json
+```
+
 Observed 1.4.217 help says `--model` and `--effort` cannot combine with
 `--terminal`.
 
@@ -25,3 +39,6 @@ launch a fresh pinned terminal. Require `terminal wait --for tui-idle` to pass
 and inspect its banner for the configured model before `worker-start
 --terminal`; this prevents a stale trust classification and an unpinned
 default-model dispatch from entering the Run.
+
+Shared readiness and retry rules remain in `../../SKILL.md`; commands live in
+`../../references/command-recipes.md`.

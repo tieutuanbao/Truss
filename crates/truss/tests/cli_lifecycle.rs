@@ -966,8 +966,8 @@ fn cli_addon_real_delivery_cycle_installs_updates_resolves_and_aborts() {
     // update this count deliberately rather than silently widening the add-on.
     assert_eq!(
         paths.len(),
-        28,
-        "the real delivery manifest is 28 paths; update this reviewed count when the manifest changes"
+        29,
+        "the real delivery manifest is 29 paths; update this reviewed count when the manifest changes"
     );
     fixture.core_state(&mut transcript);
 

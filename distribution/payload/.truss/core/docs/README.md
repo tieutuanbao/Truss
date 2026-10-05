@@ -12,8 +12,8 @@ Start with the smallest authoritative surface.
 - [`patterns/encoding-invariants.md`](patterns/encoding-invariants.md): turn
   accepted architecture, reliability, security, and quality rules into native
   mechanical validation.
-- `templates/`: optional decision, plan, runbook, communication, and
-  Truss-improvement structures.
+- `templates/`: optional decision, plan, runbook, and Truss-improvement
+  structures.
 
 ## Consumer-Owned Truth
 
@@ -21,10 +21,9 @@ The consumer's README, product documents, architecture, code, tests, CI,
 runtime signals, and application behavior remain authoritative. Truss does
 not overwrite those with upstream product assumptions.
 
-A project's own authority — its decisions, execution plans, product documents,
-and its recorded communication selection — lives under `.truss/authority/`.
-`.truss/core/**` is the installed Truss payload: read it, never write project
-content into it.
+A project's own authority — its decisions, execution plans, and product
+documents — lives under `.truss/authority/`. `.truss/core/**` is the installed
+Truss payload: read it, never write project content into it.
 
 Placement is separate from Git tracking. In a repository-hosted project,
 approved durable authority is committed in the approved baseline; if an ignore

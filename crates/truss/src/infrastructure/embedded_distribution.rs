@@ -167,13 +167,6 @@ impl CoreDistributionPort for EmbeddedCoreDistribution {
         )?;
         add(
             &mut files,
-            ".truss/core/docs/templates/communication.md",
-            include_bytes!(
-                "../../../../distribution/payload/.truss/core/docs/templates/communication.md"
-            ),
-        )?;
-        add(
-            &mut files,
             ".truss/core/docs/templates/decision.md",
             include_bytes!(
                 "../../../../distribution/payload/.truss/core/docs/templates/decision.md"

@@ -785,6 +785,5 @@ if ($Force -and $script:Updated -gt 0 -and !$DryRun) {
 }
 if (!$DryRun) {
     Write-Step ""
-    Write-Step "Reply style: copy .truss/core/docs/templates/communication.md to"
-    Write-Step ".truss/authority/communication.md and pick a level."
+    Write-Step "Communication standard: see .truss/core/docs/WORKFLOW.md."
 }

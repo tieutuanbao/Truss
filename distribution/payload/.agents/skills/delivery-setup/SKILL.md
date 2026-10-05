@@ -40,8 +40,8 @@ accepts its own candidate, Tester stays read-only, and Debugger never accepts
 its own fix.
 
 Delivery setup configures role pins only. Durable business analysis, decisions,
-architecture/design, durable plans, and communication choice belong under
-`.truss/authority/`; dispatch prompts, role communication, handoffs, approval
+architecture/design, and durable plans belong under `.truss/authority/`;
+dispatch prompts, role communication, handoffs, approval
 binding, and ephemeral run state belong under `.truss/delivery/`. Filename alone
 does not classify an artifact. A mixed-purpose artifact is split between a
 run-local artifact and the owning authority record, and missing or ambiguous

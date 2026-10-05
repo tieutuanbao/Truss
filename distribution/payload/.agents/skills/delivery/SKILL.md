@@ -237,10 +237,10 @@ communicate, hand off, bind an approval, or track ephemeral run state is run
 coordination. Filename alone is not decisive. Business analysis belongs under
 `.truss/authority/product/`; decision records under
 `.truss/authority/decisions/`; detailed design and its audit under
-`.truss/authority/design/<design-key>/`; durable execution plans under
-`.truss/authority/plans/active/`, then `.truss/authority/plans/completed/`; and
-communication choice at `.truss/authority/communication.md`. The transient plan,
-approved envelope, approval receipt, dispatch prompts, worker handoffs, run
+`.truss/authority/design/<design-key>/`; and durable execution plans under
+`.truss/authority/plans/active/`, then `.truss/authority/plans/completed/`. The
+transient plan, approved envelope, approval receipt, dispatch prompts, worker
+handoffs, run
 state, gate output, and operational maintenance evidence belong under
 `.truss/delivery/`. A mixed-purpose artifact is split between a run-local
 artifact and the owning authority record; missing or ambiguous classification,

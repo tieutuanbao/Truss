@@ -77,7 +77,7 @@ session and leaves managed files unchanged.
 | --- | --- | --- |
 | `.truss/core/` | the Truss CLI | Installed payload, manifest, baselines, and update state |
 | `.truss/delivery/` | the Delivery skill | Run coordination: transient plan, approved envelope, prompts, handoffs, run state, and approval receipts |
-| `.truss/authority/` | the repository | Durable authority: `product/`, `architecture/`, `decisions/`, `plans/active/`, `plans/completed/`, and `communication.md` |
+| `.truss/authority/` | the repository | Durable authority: `product/`, `architecture/`, `decisions/`, `plans/active/`, and `plans/completed/` |
 
 Classify an artifact by purpose and lifecycle, not by filename. Content that
 must survive the run is authority; content used only to dispatch, communicate,

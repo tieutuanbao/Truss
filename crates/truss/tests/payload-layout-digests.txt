@@ -1,4 +1,4 @@
-199b309d1c13e43f2198b4469a8c26dd5f72df21aec5ffa544eaa99c908e2803  distribution/entrypoints/agent-truss-block.md
+51907554f944d5c35a28cfd0679b5c1329d6b056fe4f0fdf6d3f806ce04a54bd  distribution/entrypoints/agent-truss-block.md
 29d36f3bf54a7f652fecb51b83811246c5251c9513dbe8cce412bc5f85239ad2  distribution/entrypoints/claude-truss-block.md
 5e0bb9252a1e02275f2928944cfec18549724b81647910116eb32e3b2e02bfa5  distribution/payload/.agents/skills/audit-onboarding-proposal/SKILL.md
 1f822840d05d627c43e8dcb87a8c54ef28e52c24cba72cf6950c142e360e1a81  distribution/payload/.agents/skills/audit-onboarding-proposal/agents/openai.yaml
@@ -11,9 +11,9 @@ c99646509dac0c37e9dc9d424a7f6b82b8aeebe9d7474da4a388928cd4933e4b  distribution/p
 7e8b3ee89a308355f1d39f87808e2d1f8b3c066f3ceb572fe094c5def88e31f3  distribution/payload/.agents/skills/business-analyst/references/user-stories-and-acceptance.md
 ef5e9200b2f3717b490e6fbca24f9d3c84302b45e27dff8b5b03797cad18c4f5  distribution/payload/.agents/skills/business-analyst/templates/product-brief.md
 387d3d12168d4a0b6d63af4e281288f447f28f0dde4b7288a145dcb0c1085dd3  distribution/payload/.agents/skills/business-analyst/templates/requirements-review.md
-8a082c98ae8fc0e5f6a5139570e988a81efcf0363f8ec461460d4de90fe6d0c5  distribution/payload/.agents/skills/delivery-setup/SKILL.md
+4065ae5509165fbaacb8776eb6de6246c06fb9477f24569a9dbdd7866a69188d  distribution/payload/.agents/skills/delivery-setup/SKILL.md
 8c90d7ef80c638c576bc3e3dd950069788460f8a7934cc6462ef17ec3a08ed55  distribution/payload/.agents/skills/delivery-setup/agents/openai.yaml
-38738325bf278dbd656657431186fa4396c256094a0440e3ff639549ec342d68  distribution/payload/.agents/skills/delivery/SKILL.md
+d40c57b36790ae3470b1cb804acd51e4ca2d1f6c6329cfc0b10117d910bee2b5  distribution/payload/.agents/skills/delivery/SKILL.md
 977b839102851982c09ff24560360290989678b6bea6271490a3c0051b548764  distribution/payload/.agents/skills/delivery/agents/openai.yaml
 2b0fd63daf1587da7072e5d8600a57f1610c90cfc0dcda3f4a0396176f8818d3  distribution/payload/.agents/skills/delivery/references/command-recipes.md
 d164839f59056cf45d95f146bda8bd5f1d6e334f333b60c6e07ecfb7ea54fa73  distribution/payload/.agents/skills/delivery/references/maintenance-log.md
@@ -48,8 +48,8 @@ f441b8d3d82492263b5abd6235247e5ae51b192cd5f00ef3042afb409b3cbeae  distribution/p
 7608071754aa05c955bc9ab1a2df60101d8690d5b8c6a5b0cd60960327164019  distribution/payload/.agents/skills/onboard-repository/scripts/render_patch.py
 0e0be8760aeb4033f68b0034e792889ce95e978120d6ef24c81d9a40300cae6b  distribution/payload/.agents/skills/plan-product/SKILL.md
 c655dad9c71c1be6a8b3d3767d1116e3897d84e4ab703882ee6f2ecdf73593a5  distribution/payload/.agents/skills/plan-product/agents/openai.yaml
-fcb9bd1e9f311063bc6be7f8ca59d42613f7ae937f10bae060d896924b118f5c  distribution/payload/.truss/core/docs/README.md
-96f96a86c50776835de51b4b599e991d049f2d91671a2d1cf67c7f36d86d3be5  distribution/payload/.truss/core/docs/WORKFLOW.md
+ccf55da1ea6f0b4332bf161c9fd7f0638875d7531e082528f4d8884b0548aaaa  distribution/payload/.truss/core/docs/README.md
+6d053226ef3fa53943fbed2ad02ad8b8aac2e08c638cb4ca14f6e744ed1ca486  distribution/payload/.truss/core/docs/WORKFLOW.md
 17c9dcd6eca8f1ed876d7c6aa51fdb19c2a716859326685c7b689be28a38d554  distribution/payload/.truss/core/docs/decisions/README.md
 f4e0ecfcd1ae735daf01f472b60e6f6052a2c1e2f151928c0df65d1c3d496178  distribution/payload/.truss/core/docs/patterns/encoding-invariants.md
 61c8fa3a7b8203f4e00fd0edfea56fb061b92ffdd7a2fb0570c83b5d62e5c4c7  distribution/payload/.truss/core/docs/plans/README.md
@@ -57,7 +57,6 @@ b852f7e08229688175cc61b1cf0adf1ede793278a3d3269e71169a01efca2d7c  distribution/p
 16db0e87716887570263883129a802b9b6c6fc73c2cfdc49ad8bb7c1aec94285  distribution/payload/.truss/core/docs/plans/completed/README.md
 9b7157eb10aa7b3b14d2e9cfc1189b0a53136193a9c957e3765b619d37817ef7  distribution/payload/.truss/core/docs/product/README.md
 1e87f2189066dd0469555406c9ef63c3939e53adfcb23494d2f13f0b9552a72d  distribution/payload/.truss/core/docs/templates/application-runbook.md
-c603305b10ac20e0385c0c09196661b0e4dd89c102cdd9fdc3ad49abc8aba9dd  distribution/payload/.truss/core/docs/templates/communication.md
 e92ba7a5b7bc10ce6c213af75a191619fc305c3945cdd55d4dc6bac72dcd42c1  distribution/payload/.truss/core/docs/templates/decision.md
 a50e40b48939b2390afd491a3abf6cbf8992af62e029bac44349945245c53780  distribution/payload/.truss/core/docs/templates/exec-plan.md
 271a7ebe400ed8e08cf90c3a347fb2ca6cf17cfcc24094c1a6addc0a1db9fd2c  distribution/payload/.truss/core/docs/templates/truss-improvement.md

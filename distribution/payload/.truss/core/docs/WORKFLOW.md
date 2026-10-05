@@ -5,103 +5,99 @@ runtime signals are the system of record.
 
 ## Communication
 
-Every user-facing reply — answers, questions, progress updates, and completion
-reports — follows the reply-style level recorded in
-`.truss/authority/communication.md`. The level belongs to the project, so it
-lives under `.truss/authority/`; `.truss/core/` is never a write target.
+Apply one standard to every user-facing reply: answers, questions, progress
+updates, reviews, plans, and completion reports.
 
-### Levels
+- Reply in the language of the person's own words, not the language of pasted
+  material.
+- Never translate code, commands, paths, flags, or identifiers.
+- If rules conflict, this order wins: required facts, then safety warnings,
+  then brevity and format.
 
-- `expert` — precise terminology and abbreviations without expansion; minimal
-  background; evidence, risks, and exact commands preserved. Lead with the
-  result; skip motivation the reader already has.
-- `intermediate` — terminology allowed, explained on first use; enough
-  background for an informed reader; outcome, effect, and next step stated.
-  May be organized around the work performed.
-- `layperson` — plain language, no unexplained term or abbreviation;
-  analogies welcome; explicit cause, effect, and next step. Must also satisfy
-  *What `layperson` requires* below.
+### Plain language
 
-### Resolution order
+- Write for a reader without specialist knowledge, unless the person states
+  their expertise or asks for a technical answer. Then follow that instead.
+- Keep sentences under about 20 words. Put one idea in each sentence.
+- Use common words before technical words.
 
-1. An explicit style request in the current conversation (not persisted).
-2. Constraints in the `Notes` of `communication.md` (language, length).
-3. The configured level.
-4. Otherwise: `intermediate`, in the language the person is writing in. A
-   missing, unconfigured, or invalid record never blocks work.
+### Terms and abbreviations
 
-When the record exists but its level cannot be read — absent, misspelled, or an
-unrecognised value — say once in the reply that the level could not be read and
-which level is being used instead, then continue. Never fall through silently:
-an unreadable level is a defect the owner can only fix if it is named.
+- Use a technical term or abbreviation only when the reply needs it.
+- These need no explanation: `AI`, `URL`, `OK`, `PDF`, `email`, `Wi-Fi`.
+  Explain every other term on first use, in parentheses, with one short
+  sentence. Skip this when the person has stated their expertise.
+- Never use an unfamiliar abbreviation before explaining it.
+- With three or more terms, collect them in one terms line at the end.
 
-Unless 1 or 2 says otherwise, reply in the language the person writes in.
-Code, commands, paths, flags, and identifiers are never translated.
+For example, write "CI (an automated check run by the repository)" before
+using `CI` alone.
 
-### Invariants at every level
+### Conclusion first
 
-Adapting explanation never drops: risks, uncertainty, safety instructions,
-what was verified and what was not, and exact commands and identifiers.
+- Open with one or two sentences that answer the question directly.
+- Do not repeat the question. Do not begin with a disclaimer or throat-clearing.
+- Exception: a safety or data-loss warning comes before the conclusion.
+- If the whole reply is a question to the person, open with that question.
 
-### Do not infer
+### Prefer tables and diagrams
+
+Choose the form that carries the information most compactly:
+
+| Information | Preferred form |
+| --- | --- |
+| Comparisons, choices, or specifications | Table |
+| A process or processing flow | Mermaid `flowchart` |
+| Communication among several participants | Mermaid `sequenceDiagram` |
+| Steps the reader should follow | Numbered list |
+| A short explanation | Prose |
+
+- Keep a table to about four columns with short cells, so it stays readable on
+  a small screen.
+- Casual conversation, an emotional topic, and any reply under about three
+  sentences use prose.
+
+For example, compare two deployment choices in a table instead of hiding the
+differences in two paragraphs.
+
+### Mermaid rules
+
+- Keep a diagram to about eight blocks or fewer.
+- Make each diagram communicate only one idea.
+- Use short labels in the person's language. Put a label in double quotes
+  whenever it carries punctuation, as in `A["Gửi yêu cầu (HTTP)"]`.
+- If the interface cannot display Mermaid, use a table or list instead.
+
+For example, a flowchart can show how a request moves from a browser to a
+server and then to a database.
+
+### Everyday examples
+
+Give an everyday example when a concept is abstract or the person seems unsure.
+State where the analogy stops matching the real behavior when that limit
+matters.
+
+For example, describe a cache as a nearby cupboard that avoids another trip to
+the store, then explain that cached data can become out of date.
+
+### Length and ending
+
+- Keep replies short by default.
+- Order the end of a reply as: terms line (if any), then the closing question
+  (if any).
+- When a reply was shortened and more depth remains, end with one question
+  asking, in the person's language, which part to explain further. For a
+  Vietnamese reader: "Bạn muốn mình giải thích sâu hơn phần nào?"
+- Skip that question for a one-line answer, a completion report, and a reply
+  that already ends with a question.
+
+### Required facts
+
+Simple wording never removes risks, uncertainty, safety instructions, exact
+commands or identifiers, what was verified, or what was not verified.
 
 Do not infer expertise, identity, or preferences from vocabulary, pasted
-material, or product audience descriptions.
-
-### Initial configuration
-
-When the record is missing or its level is `Not configured`, offer the choice
-once per conversation, at the first reply that goes beyond a one-line answer
-(an explanation, plan, or report). Append the offer after the answer; never
-precede or replace it. Give a one-line description of each level and the key
-point of the pending answer rendered at each level (max 3 sentences each).
-
-- On a choice: create the record from `.truss/core/docs/templates/communication.md`
-  and fill in the level, date, and source.
-- On a decline: do not re-offer in this conversation. If the owner says not to
-  ask again, record `declined` with date and source.
-
-### Changing the level
-
-- The person in the conversation is treated as the owner. A durable change
-  needs an explicit instruction to save or change the project default;
-  one-off style requests are not persisted.
-- Propose a switch only on observed behavior: the same re-explanation requested
-  twice, or an explicit "too long / too basic / too technical". Name the target
-  level and the signal. Propose at most once per conversation; record the change
-  only after the owner chooses.
-
-### What `layperson` requires
-
-**Wording (every reply, including one-liners):** no unexplained term or
-abbreviation; paths, commands, flags, and identifiers stay exact, and may
-appear whenever the reader needs them to act. An analogy must not change the
-facts; say where it stops being accurate.
-
-**Shape (reports and multi-part replies; a short answer needs only wording
-and a next step):**
-
-1. Organize around the reader's problems, not the work performed. Section
-   count follows problems, not work items.
-2. Open each section on a problem in the reader's terms; headings state a plain
-   claim about their situation, not a process label.
-3. Report work as before/after: the symptom the reader would notice, then what
-   happens now.
-4. Internal work vocabulary (session, phase, gate, dispatch, checkpoint) is
-   never the subject of a sentence; translate it into an observable effect.
-   Do not narrate who did what, in which file, in what order.
-5. State why each item matters.
-6. State limits plainly: what was not checked, and any author's error that
-   affects trust.
-7. End with the reader's next action and its exact command, or say that
-   nothing is needed.
-
-**Contrast**
-
-- ✗ "Phase 2 complete: auth middleware refactored across 3 sessions; gate passed."
-- ✓ "Before: typing a wrong password blanked the page, so people thought the
-  site was down. Now: a message says the password is wrong. Not checked: the
-  phone layout. Next: run `npm test` to confirm on your machine."
+material, or the kind of people the product is meant for.
 
 ## Repository Map
 
@@ -290,11 +286,11 @@ classification returns `NEEDS_INPUT`.
 Business analysis belongs under `.truss/authority/product/`, decisions under
 `.truss/authority/decisions/`, detailed design and its separate design audit
 under `.truss/authority/design/<design-key>/`, other architecture/design under
-the repository authority map, durable plans under `.truss/authority/plans/`,
-and communication choice at `.truss/authority/communication.md`. The transient
-plan, approved envelope, prompts, handoffs, run state, gate output, and
-maintenance evidence belong under `.truss/delivery/runs/<run-key>/`, with the
-approval receipt at `.truss/delivery/approvals/<run-key>.md`. Nothing durable
+the repository authority map, and durable plans under
+`.truss/authority/plans/`. The transient plan, approved envelope, prompts,
+handoffs, run state, gate output, and maintenance evidence belong under
+`.truss/delivery/runs/<run-key>/`, with the approval receipt at
+`.truss/delivery/approvals/<run-key>.md`. Nothing durable
 may be left only in run coordination; move its content to the owning authority
 record before closure without retaining a second canonical run copy.
 

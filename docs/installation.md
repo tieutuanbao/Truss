@@ -103,7 +103,7 @@ continuous integration, and existing application documentation remain in place.
 | --- | --- | --- |
 | `.truss/core/` | the Truss CLI | Installed payload, manifest, baselines, and update state |
 | `.truss/delivery/` | the Delivery skill | Run coordination: transient plan, approved envelope, prompts, handoffs, run state, and approval receipts |
-| `.truss/authority/` | the repository | Durable authority: `product/`, `architecture/`, `decisions/`, `plans/`, and `communication.md` |
+| `.truss/authority/` | the repository | Durable authority: `product/`, `architecture/`, `decisions/`, and `plans/` |
 
 Placement follows purpose and lifecycle, not filename. A repository-hosted
 consumer commits `.truss/core/` and its approved durable authority. A
@@ -137,16 +137,13 @@ Do not change files. Separate documented facts from observations and gaps.
 This confirms that the agent can retrieve repository instructions without
 permission to invent missing policy.
 
-### Choose how agents explain their work
+### How agents explain their work
 
-```text
-Help me configure how agents explain their work in this repository.
-Show expert, intermediate, and layperson styles using the same example.
-Wait for my choice before saving the repository default.
-```
-
-The saved choice lives under `.truss/authority/`. A conversation can request a
-different style without changing the repository default.
+Replies follow one communication standard from `.truss/core/docs/WORKFLOW.md`:
+plain language, conclusion first, and compact tables or diagrams when they make
+complex information clearer. A shortened reply may offer more detail. Short
+answers and completion reports do not need that offer. There is no reply level
+to choose or store.
 
 ### Onboard an unfamiliar repository
 

@@ -1274,6 +1274,5 @@ fi
 
 if [ "$DRY_RUN" -eq 0 ]; then
   log ""
-  log "Reply style: copy .truss/core/docs/templates/communication.md to"
-  log ".truss/authority/communication.md and pick a level."
+  log "Communication standard: see .truss/core/docs/WORKFLOW.md."
 fi

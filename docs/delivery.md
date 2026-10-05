@@ -147,8 +147,7 @@ falling back to an untracked worker.
 - Durable content, under `.truss/authority/`: business analysis under
   `product/`, decisions under `decisions/`, detailed design and its separate
   design audit under `design/<design-key>/`, other architecture and design
-  under the repository authority map, durable plans under `plans/`, and the
-  communication choice at `communication.md`.
+  under the repository authority map, and durable plans under `plans/`.
 
 Classify every artifact by purpose and lifecycle, not filename. Anything that
 must outlive the run moves to its authority owner before the run closes, and the

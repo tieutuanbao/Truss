@@ -15,9 +15,8 @@ validation material.
 - Use one `.truss/authority/plans/active/` file when work spans sessions, coordinates
   contributors, has dependencies, or needs recovery. Move it to
   `.truss/authority/plans/completed/` only after validation.
-- If `.truss/authority/communication.md` is absent or still says `Not configured`,
-  offer the reply-style choice once and materialize the record as
-  `.truss/core/docs/WORKFLOW.md` describes.
+- Follow the single communication standard in `.truss/core/docs/WORKFLOW.md`
+  for every user-facing reply.
 - Before editing, identify repository authority for each new externally
   observable policy. If materially different choices remain open, stop before
   edits; configurable defaults are not authority.

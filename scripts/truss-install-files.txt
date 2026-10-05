@@ -23,7 +23,6 @@ AGENTS.md
 .truss/core/docs/plans/completed/README.md
 .truss/core/docs/decisions/README.md
 .truss/core/docs/templates/application-runbook.md
-.truss/core/docs/templates/communication.md
 .truss/core/docs/templates/decision.md
 .truss/core/docs/templates/exec-plan.md
 .truss/core/docs/templates/truss-improvement.md

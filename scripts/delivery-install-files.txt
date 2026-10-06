@@ -10,8 +10,17 @@
 .agents/skills/business-analyst/templates/requirements-review.md
 .agents/skills/delivery/SKILL.md
 .agents/skills/delivery/agents/openai.yaml
+.agents/skills/delivery/evals/scenarios.json
+.agents/skills/delivery/references/acceptance.md
+.agents/skills/delivery/references/artifacts.md
 .agents/skills/delivery/references/command-recipes.md
+.agents/skills/delivery/references/design.md
+.agents/skills/delivery/references/evaluation.md
+.agents/skills/delivery/references/examples.md
+.agents/skills/delivery/references/execution.md
+.agents/skills/delivery/references/implementation.md
 .agents/skills/delivery/references/maintenance-log.md
+.agents/skills/delivery/references/release-and-recovery.md
 .agents/skills/delivery/references/trusses.md
 .agents/skills/delivery/references/trusses/antigravity.md
 .agents/skills/delivery/references/trusses/claude.md
@@ -23,6 +32,7 @@
 .agents/skills/delivery/references/trusses/opencode.md
 .agents/skills/delivery/references/trusses/pi.md
 .agents/skills/delivery/references/trusses/zcode.md
+.agents/skills/delivery/scripts/check-role-tuple.py
 .agents/skills/delivery/templates/business-analysis.md
 .agents/skills/delivery/templates/decision-record.md
 .agents/skills/delivery/templates/detailed-design.md

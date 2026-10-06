@@ -1,6 +1,6 @@
 # Delivery command recipes
 
-Executable command layer for `../SKILL.md`. Resolve the Orca executable by
+Executable command layer for [Execution](execution.md). Resolve the Orca executable by
 following the installed `orca-cli` skill exactly; do not use a guessed default
 or silently substitute another binary. Its precedence is `ORCA_CLI_COMMAND`;
 else `orca-dev` when `ORCA_DEV_REPO_ROOT` is set; else `orca-ide` on Linux
@@ -15,6 +15,9 @@ map to omitted flags, never to the literal argv string `default`.
 
 ```bash
 : "${DELIVERY_ORCA_CLI:?resolve using the installed orca-cli skill}"
+DELIVERY_SKILL_DIR=""                # absolute installed Delivery skill directory
+DELIVERY_APPROVED_ENVELOPE=""         # immutable approved envelope path
+DELIVERY_ROLE=""                      # dispatched role from the approved task
 DELIVERY_ROOT="$(git rev-parse --show-toplevel)"
 DELIVERY_HEAD="$(git -C "$DELIVERY_ROOT" rev-parse HEAD)"
 DELIVERY_WORKTREE_SELECTOR="path:$DELIVERY_ROOT"
@@ -156,6 +159,18 @@ PY
 Capture stdout as `DELIVERY_TASK_ID` and require prefix `task_`. Do not stage
 the prompt. Repository-hosted runs remove it after worker return;
 consumer-local runs retain it in the approved private run path.
+
+## Immediate pre-dispatch check
+
+Immediately before every start, retry or low-level dispatch, run:
+
+```bash
+python3 "$DELIVERY_SKILL_DIR/scripts/check-role-tuple.py" --agents "$DELIVERY_ROOT/AGENTS.md" --approved "$DELIVERY_APPROVED_ENVELOPE" --role "$DELIVERY_ROLE"
+```
+
+Continue only on exit 0. JSON records the matched normalized tuple; exit 2 names
+the invalid item, authority and next action. This is read-only, uncached and does
+not prove readiness or substitute for the approval receipt.
 
 ## Native worker launch
 

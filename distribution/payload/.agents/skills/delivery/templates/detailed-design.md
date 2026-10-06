@@ -152,7 +152,7 @@ language-aware check, or record a named expert inspection. There is no universal
 # Design audit — `audit.md`
 
 Role-owned and self-audited. Independent review and acceptance remain separate
-`tester-debugger` sessions and are not replaced by this audit. Every entry
+`tester` sessions when risk routing or release requires them, and are not replaced by this audit. Every entry
 references the exact audited bytes by SHA-256, records the command or method
 used, and reports its result. An audit that is not bound to the current package
 identity is `NOT_READY`.
@@ -168,8 +168,13 @@ The value is exactly one of those two. Record the conjunction that produced it.
 | Output | Path | SHA-256 |
 | --- | --- | --- |
 | `design.md` | | |
-| `audit.md` | | |
 | `skeleton/` per-item | | |
+
+After finalizing `audit.md`, compute its full-file SHA-256 and record its path
+and digest in the existing approval envelope or authorized consuming handoff,
+outside `audit.md`. Do not embed the audit's own digest in its bytes or invent
+an excluded-field hash. Changing the audit invalidates that external identity;
+recompute it and follow the existing approval boundary for material changes.
 
 ## Category coverage
 

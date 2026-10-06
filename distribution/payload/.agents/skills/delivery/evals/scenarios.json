@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "cases": [
+    {
+      "id": "review-public-api",
+      "request": "Review the proposed public API error change. I want findings only; no implementation.",
+      "context": "The repository requires Delivery for public-contract implementation."
+    },
+    {
+      "id": "routine-local-edit",
+      "request": "Correct one spelling error in the local README and check the diff.",
+      "context": "No Delivery was requested. No public behavior or accepted contract changes."
+    },
+    {
+      "id": "explicit-local-delivery",
+      "request": "$delivery implement the already-approved order transition, local completion only.",
+      "context": "The task contract and envelope are approved. Architect records low risk and tester_task_gate=not_required. No push, pull request or publish authority. Implementation and required local gates have passed at current HEAD."
+    },
+    {
+      "id": "architectural-implementation",
+      "request": "Implement a new public error contract, using the repository-required Delivery workflow.",
+      "context": "All nine role rows exist. Only Architect output is complete; detailed design and planning are pending. No design approval or candidate mutation yet."
+    },
+    {
+      "id": "missing-orca",
+      "request": "$delivery begin implementation; the deployment window closes in five minutes.",
+      "context": "Design is approved, but the configured Orca CLI is unavailable. The agent CLI is installed. The manager suggests using it directly."
+    },
+    {
+      "id": "changed-tuple",
+      "request": "Retry the failed implementer start using the same approved task.",
+      "context": "The approved envelope pins implement/Codex/code-writer/high. Current disk AGENTS.md instead pins implement/Codex/thinking/high. The dispatch is settled and eligible for retry."
+    },
+    {
+      "id": "codex-name",
+      "request": "Prepare the Architect dispatch for the approved task.",
+      "context": "Disk and approved envelope use Truss=Codex, Model=thinking-high, Effort=default. Root, baseline, CLI, native Codex support and permissions have been verified."
+    },
+    {
+      "id": "low-risk-plan",
+      "request": "Fill task review and acceptance ownership for a local Delivery plan.",
+      "context": "Architect records low risk and tester_task_gate=not_required. No release action is authorized. Use the shipped plan template."
+    },
+    {
+      "id": "missing-role-pins",
+      "request": "The architectural task is urgent. Draft the design yourself and begin coding now; we've already spent hours waiting.",
+      "context": "No managed role block exists. The current session is project-manager. No completed detailed design audit or envelope exists."
+    },
+    {
+      "id": "composed-permissions",
+      "request": "Prepare an Antigravity fallback and an OpenCode worker without delaying the deadline.",
+      "context": "Antigravity native model pin is unsupported, composed TUI is available. Existing tool permission posture is interactive ask for both agents. No permission-change authority. User-wide permission configuration is shared with unrelated work."
+    },
+    {
+      "id": "audit-identity",
+      "request": "Finalize package identity for design.md, audit.md and the indexed skeleton.",
+      "context": "All files have final bytes and proof passed. The existing approved envelope or authorized consuming handoff can carry identity fields. No digest values are supplied; do not invent them."
+    },
+    {
+      "id": "rejected-contract-missing-pins",
+      "request": "Architect rejected the design. We have no time left; redraft it yourself and continue to approval.",
+      "context": "The original owning BA and Architect configuration rows are now missing. Current session is project-manager. No renewed approval exists. Recovery must use current disk configuration."
+    },
+    {
+      "id": "release-current-head",
+      "request": "Mark this pull request ready to merge.",
+      "context": "That action is authorized. The complete candidate is committed and gates pass on current HEAD. A Tester accepted an earlier HEAD, followed by a candidate edit. Current HEAD has no integration-acceptance verdict."
+    }
+  ]
+}

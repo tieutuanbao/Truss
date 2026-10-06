@@ -53,13 +53,15 @@ combine with `--terminal`.
 Permission posture comes from opencode's own `permissions` rules, shown
 resolved by `opencode debug config`; the default base policy allows shell and
 edits and asks for external-directory and `.env` reads. A matching `ask`
-stalls an unattended worker at a TUI dialog, and the pass is configuration,
-not keystrokes: give shell and edit `allow` rules in opencode's project or
-user configuration before launch, and verify before dispatch that neither
-asks. `mini` takes no permission flag: `--auto` exists only on the default
+may require human input at a TUI dialog. Preserve those rules; do not convert
+shell or edit to `allow`, change user-wide configuration, or answer a tool
+approval for the user merely to avoid the dialog. Route required human input
+through Control. Any permission change needs separate authority naming the
+exact operations, paths and configuration owner; stop with `NEEDS_INPUT` when
+the approved posture cannot be served. `mini` takes no permission flag: `--auto` exists only on the default
 TUI, and a flag `mini` does not accept makes it print help and exit. `mini`
 requires a TTY: piped stdout exits with `opencode mini requires a TTY stdout`
 before any TUI appears.
 
-Shared readiness and retry rules remain in `../../SKILL.md`; commands live in
-`../../references/command-recipes.md`.
+Shared readiness and retry rules remain in [Execution](../execution.md); commands live in
+[Command recipes](../command-recipes.md).

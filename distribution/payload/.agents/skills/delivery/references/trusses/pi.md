@@ -50,5 +50,5 @@ stronger pin.
 Model and effort discovery for setup: `pi --list-models` offers the resolved
 `provider/model` pair; thinking levels come from `pi --help`.
 
-Shared readiness and retry rules remain in `../../SKILL.md`; commands live in
-`../../references/command-recipes.md`.
+Shared readiness and retry rules remain in [Execution](../execution.md); commands live in
+[Command recipes](../command-recipes.md).

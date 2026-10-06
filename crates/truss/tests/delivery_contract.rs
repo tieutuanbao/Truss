@@ -73,6 +73,21 @@ fn shipped(relative_path: &str) -> String {
         .unwrap_or_else(|error| panic!("cannot read shipped {}: {error}", path.display()))
 }
 
+/// Load the routed instruction owners; the entrypoint is intentionally small.
+fn delivery_guidance() -> String {
+    [
+        "SKILL.md",
+        "references/design.md",
+        "references/artifacts.md",
+        "references/execution.md",
+        "references/implementation.md",
+        "references/acceptance.md",
+        "references/release-and-recovery.md",
+    ]
+    .map(|path| shipped(&format!(".agents/skills/delivery/{path}")))
+    .join("\n")
+}
+
 fn repository_file(relative_path: &str) -> String {
     let path = repository_path(relative_path);
     fs::read_to_string(&path)
@@ -454,6 +469,28 @@ fn recovery_policy(source: &str) -> SuiteResult<()> {
     Ok(())
 }
 
+/// The artifact-organization contract: reuse the owning record, and keep naming
+/// and placement separate from retention authority.
+fn artifact_organization_policy(source: &str) -> SuiteResult<()> {
+    let normalized = source.split_whitespace().collect::<Vec<_>>().join(" ");
+    for required in [
+        "Reuse the owning record before creating another file",
+        "identify its purpose, its owning record, and its run or dispatch identity",
+        "a distinct dispatch attempt, or an immutable approval or evidence snapshot",
+        "`<task-key>-<dispatch-key>-<kind>.<ext>`",
+        "do not create a second canonical copy of an authority record",
+        "Naming and placement never grant staging, retention, or deletion authority",
+        "repository's accepted evidence policy returns `NEEDS_INPUT`",
+    ] {
+        if !normalized.contains(required) {
+            return Err(format!(
+                "artifact organization contract is missing `{required}`"
+            ));
+        }
+    }
+    Ok(())
+}
+
 fn design_categories(design: &str) -> SuiteResult<Vec<String>> {
     let start = design
         .find("## Design categories\n")
@@ -784,6 +821,7 @@ fn validate_stale_surfaces(delivery: &str, setup: &str, docs: &str) -> SuiteResu
     require_exact_roles(&delivery_roles, &CURRENT_ROLES, "delivery")?;
     delivery_policy(delivery)?;
     architectural_pipeline(delivery)?;
+    artifact_organization_policy(delivery)?;
 
     adaptive_testing_policy(delivery)?;
     blind_testing_policy(delivery)?;
@@ -842,7 +880,7 @@ fn validate_stale_surfaces(delivery: &str, setup: &str, docs: &str) -> SuiteResu
 
 #[test]
 fn tc01_current_role_table_is_exactly_ordered() {
-    let delivery = shipped(".agents/skills/delivery/SKILL.md");
+    let delivery = delivery_guidance();
     let roles = table_roles(&delivery);
     require_exact_roles(&roles, &CURRENT_ROLES, "delivery role table").unwrap();
     delivery_policy(&delivery).unwrap();
@@ -863,7 +901,7 @@ fn tc01_current_role_table_is_exactly_ordered() {
 
 #[test]
 fn tc02_architectural_pipeline_has_completion_prerequisites() {
-    let delivery = shipped(".agents/skills/delivery/SKILL.md");
+    let delivery = delivery_guidance();
     architectural_pipeline(&delivery).unwrap();
 
     let request_only = mutate(
@@ -1031,7 +1069,7 @@ fn tc05_readiness_is_derived_from_evidence_not_authority_claim() {
 
 #[test]
 fn tc06_structural_ownership_is_not_transferred() {
-    let delivery = shipped(".agents/skills/delivery/SKILL.md");
+    let delivery = delivery_guidance();
     ownership_policy(&delivery).unwrap();
 
     let planner_signature_owner = mutate(
@@ -1055,7 +1093,7 @@ fn tc06_structural_ownership_is_not_transferred() {
 
 #[test]
 fn tc07_structural_recovery_returns_to_design_and_replans() {
-    let delivery = shipped(".agents/skills/delivery/SKILL.md");
+    let delivery = delivery_guidance();
     recovery_policy(&delivery).unwrap();
 
     let best_judgment = mutate(
@@ -1069,7 +1107,7 @@ fn tc07_structural_recovery_returns_to_design_and_replans() {
 
 #[test]
 fn tc08_role_authority_mutations_are_rejected() {
-    let delivery = shipped(".agents/skills/delivery/SKILL.md");
+    let delivery = delivery_guidance();
     authority_policy(&delivery).unwrap();
 
     let dispatched_pm = mutate(
@@ -1089,6 +1127,31 @@ fn tc08_role_authority_mutations_are_rejected() {
     assert!(authority_policy(&mandatory_visual)
         .unwrap_err()
         .contains("visual-engineering is mandatory"));
+}
+
+#[test]
+fn tc13_artifact_organization_prefers_reuse_and_keeps_naming_non_authoritative() {
+    let delivery = delivery_guidance();
+    artifact_organization_policy(&delivery).unwrap();
+
+    let no_reuse = mutate(
+        &delivery,
+        "Reuse the owning record before creating another file: before creating an\nartifact",
+        "Create a new file for every artifact: before creating an\nartifact",
+    );
+    let error = artifact_organization_policy(&no_reuse).unwrap_err();
+    assert!(error.contains("Reuse the owning record"), "{error}");
+
+    let naming_authorizes_deletion = mutate(
+        &delivery,
+        "Naming and placement\nnever grant staging, retention, or deletion authority",
+        "Naming and placement\nauthorize staging, retention, and deletion",
+    );
+    let error = artifact_organization_policy(&naming_authorizes_deletion).unwrap_err();
+    assert!(
+        error.contains("Naming and placement never grant"),
+        "{error}"
+    );
 }
 
 fn legacy_block(roles_and_tuples: &[(&str, &str, &str, &str)]) -> String {
@@ -1255,7 +1318,7 @@ fn tc09_managed_block_migration_is_complete_preserving_and_fail_closed() {
 
 #[test]
 fn tc10_risk_routing_blind_testing_and_debugger_authority_are_explicit() {
-    let delivery = shipped(".agents/skills/delivery/SKILL.md");
+    let delivery = delivery_guidance();
     adaptive_testing_policy(&delivery).unwrap();
     blind_testing_policy(&delivery).unwrap();
     debugger_policy(&delivery).unwrap();
@@ -1284,7 +1347,7 @@ fn tc10_risk_routing_blind_testing_and_debugger_authority_are_explicit() {
 
 #[test]
 fn tc11_source_surfaces_agree_and_stale_copies_fail() {
-    let delivery = shipped(".agents/skills/delivery/SKILL.md");
+    let delivery = delivery_guidance();
     let setup = shipped(".agents/skills/delivery-setup/SKILL.md");
     let docs = repository_file("docs/delivery.md");
     validate_stale_surfaces(&delivery, &setup, &docs).unwrap();

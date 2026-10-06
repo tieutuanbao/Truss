@@ -1,6 +1,6 @@
 # Truss launch mechanics
 
-Use `../SKILL.md` § CLI identity and preflight for the canonical CLI
+Use [Execution](execution.md) § CLI identity and preflight for the canonical CLI
 commands, consumer Git-root and HEAD checks, binary-identity boundary, and
 no-fallback rule.
 
@@ -10,12 +10,12 @@ For installation setup, register the CLI in Orca desktop under
 Before dispatch, confirm that the Orca Run/worktree selector resolves to the
 validated consumer root. Record the exact worktree path and baseline
 SHA. Released terminals do not prove child worktrees were removed; follow
-`../SKILL.md` § Failure and recovery before cleanup or another Run.
+[Release and recovery](release-and-recovery.md) § Failure and recovery before cleanup or another Run.
 
 Read only the launch reference for each resolved truss used in this run.
 Shared readiness, permission-posture, dispatch completion, and retry rules
-remain in `../SKILL.md`. Every dispatch, wait, acknowledgement, and recovery
-command is copied from [`references/command-recipes.md`](../command-recipes.md);
+remain in [Execution](execution.md). Every dispatch, wait, acknowledgement, and recovery
+command is copied from [`references/command-recipes.md`](command-recipes.md);
 argv is never composed from memory or from live help alone.
 
 ## Truss normalization
@@ -31,12 +31,13 @@ dispatches with `--terminal` only; `unresolved` stops with
 | Truss (managed-block name) | Orca agent ID | CLI executable | Launch classification |
 | --- | --- | --- | --- |
 | Claude Code | `claude` | `claude` | native |
+| Codex | `codex` | `codex` | native |
 | Codex CLI | `codex` | `codex` | native |
 | Cursor Agent CLI | `cursor` | `cursor-agent` | native |
 | Antigravity CLI | `antigravity` | `agy` | native (composed fallback) |
 | Pi | `pi` | `pi` | composed |
 | OpenCode | `opencode` | `opencode` | composed |
-| Zcode | `zcode` (verify live) | resolved standalone client | native when advertised; else low-level |
+| Zcode | `zcode` | resolved standalone client | native when advertised; else low-level |
 | Grok Build | `grok` | `grok` | unresolved |
 | Kiro CLI | `kiro` | `kiro-cli` | unresolved |
 | GitHub Copilot CLI | `copilot` | `copilot` | unresolved |
@@ -49,6 +50,7 @@ support.
 | Truss | Launch reference |
 | --- | --- |
 | Claude Code | [Claude Code](trusses/claude.md) |
+| Codex | [Codex CLI](trusses/codex.md) |
 | Codex CLI | [Codex CLI](trusses/codex.md) |
 | Grok Build | [Grok Build](trusses/grok.md) |
 | Kiro CLI | [Kiro CLI](trusses/kiro.md) |

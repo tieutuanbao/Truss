@@ -17,5 +17,5 @@ Omit `--effort` when the tuple's Effort is `default`. `--effort` requires
 `launch.requested` equals the tuple and `launch.effective` names the resolved
 model.
 
-Shared readiness and retry rules remain in `../../SKILL.md`; commands live in
-`../../references/command-recipes.md`.
+Shared readiness and retry rules remain in [Execution](../execution.md); commands live in
+[Command recipes](../command-recipes.md).

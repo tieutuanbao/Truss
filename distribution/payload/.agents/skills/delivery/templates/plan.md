@@ -60,7 +60,7 @@ whose filename suggests relevance but whose contents do not.
 
 ## Execution envelope
 
-Record the approved common envelope from `../SKILL.md` § Execution envelope.
+Record the approved common envelope from [Execution](../references/execution.md) § Execution envelope.
 Use this plan's Allowed scope, Forbidden scope, Acceptance, and Closure gates
 sections by reference; do not duplicate their contents.
 
@@ -83,8 +83,10 @@ record that the worktree was clean at baseline.
 Git target: exact worktree, feature branch, baseline, base, remote, and
 pull-request target. For local delivery, state that publishing is not authorized.
 
-Resolved role pins: the truss, model, and effort for each dispatched role,
-taken from `AGENTS.md` and resolved against the live truss surface.
+Resolved role pins: freeze one `Role | Truss | Model | Effort` table containing
+all nine configured roles in the immutable approved envelope, taken from
+`AGENTS.md` and resolved against the live truss surface. The pre-dispatch helper
+compares current disk rows with that table; progress never rewrites it.
 
 Authority: record only granted branch, owned-path commit, gate, push, and
 pull-request actions. Local delivery explicitly excludes push and pull-request
@@ -130,13 +132,11 @@ work is serialized in one checkout.
 
 **Wave.** The parallel wave that may run this task, and which tasks share it.
 
-**Review owner.** The fresh `tester-debugger` session expected to review only
-this task's acceptance criteria and mapped test cases. It is not the acceptance
-owner.
-
-**Acceptance owner.** A different fresh `tester-debugger` session expected to
-accept this task. The author, fixer, planner, advisor, or reviewer for a
-candidate cannot accept it.
+**Risk route and task gate.** Reference Architect's approved `risk.level` and
+`tester_task_gate` with its reason. For `required`, name one fresh `tester`
+`risk-review` session that returns the task's single independent disposition.
+For `not_required`, write `Task gate: none`; Implementer still supplies
+`SELF_VERIFIED` evidence. Do not add separate review and acceptance sessions.
 
 **Document impact.** Which owning documents this task obliges you to reconcile, and
 why each one — ownership, not habit.
@@ -149,8 +149,10 @@ why each one — ownership, not habit.
   and which are serialized because they share a checkout or a path.
 - **Conflict and recovery:** how overlapping or failing work is recovered from
   the task's base and recorded commits, without reset, stash, or clean.
-- **Acceptance owner:** the fresh `tester-debugger` session for integration
-  acceptance of the combined candidate at its exact final HEAD.
+- **Release acceptance owner:** one fresh `tester` `integration-acceptance`
+  session at the exact final HEAD, only for an authorized release-triggering
+  request. Without that request, write `Integration acceptance: not triggered`
+  and report `IMPLEMENTED_NOT_INTEGRATION_ACCEPTED` after required local gates.
 
 ## Out-of-scope review backlog
 

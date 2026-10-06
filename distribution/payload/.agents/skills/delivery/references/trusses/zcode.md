@@ -3,7 +3,7 @@
 Orca agent ID: resolve from live `orchestration worker-start --help` before launch.
 CLI executable: resolve a standalone terminal client as below.
 Launch classification: native when live help advertises the `zcode` agent ID; otherwise the low-level path below. No other launch may be improvised.
-Permission posture: native launch uses the Orca-registered agent preference; the standalone composed TUI uses `--mode yolo`.
+Permission posture: native launch uses the Orca-registered agent preference. The standalone TUI must preserve that posture; this recipe grants no yolo mode.
 Forbidden headless forms: `--prompt`, `-p`, and `--print`.
 
 ## Zcode CLI resolution
@@ -21,7 +21,9 @@ Verify the candidate before launch:
 ```
 
 The doctor result must identify process name `zcode-cli`. Start its interactive
-surface with `tui --mode yolo --cwd <exact-worktree>`, then require
+surface with `tui --cwd <exact-worktree>`, using only already-authorized
+permission settings verified from live help. If those settings cannot preserve
+the configured posture, stop with `NEEDS_INPUT`. Then require
 `terminal wait --for tui-idle` and inspect the rendered screen. Readiness means
 the editor is idle and a model is shown; a setup, login, or trust picker is not
 ready. Settle that picker outside orchestration, close the bootstrap terminal,
@@ -66,5 +68,5 @@ normal `worker-start` supports this Zcode launch.
    orchestration worker contract for messages, `worker_done`, and outcome.
    Record the lane's unsupervised ownership/recovery limits in the envelope.
 
-Shared readiness and retry rules remain in `../../SKILL.md`; commands live in
-`../../references/command-recipes.md`.
+Shared readiness and retry rules remain in [Execution](../execution.md); commands live in
+[Command recipes](../command-recipes.md).

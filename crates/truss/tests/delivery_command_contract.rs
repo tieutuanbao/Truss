@@ -271,7 +271,14 @@ fn policy_and_index_point_readers_at_the_cookbook() {
     );
     // Normalization table: managed-block truss names map to Orca agent IDs.
     for truss in ["Claude Code", "Codex", "Pi", "OpenCode", "Zcode"] {
-        assert_contains(&index, truss, "references/trusses.md");
+        assert!(
+            index.lines().any(|line| {
+                let cells: Vec<_> = line.split('|').map(str::trim).collect();
+                cells.get(1) == Some(&truss)
+                    && cells.get(2).is_some_and(|cell| cell.starts_with('`'))
+            }),
+            "references/trusses.md: managed-block name {truss:?} has no exact mapping"
+        );
     }
     assert_contains(&index, "agent ID", "references/trusses.md");
 }
@@ -327,6 +334,37 @@ fn zcode_low_level_fallback_discloses_unsupervised_ownership() {
     assert_contains(&zcode, "unsupervised low-level Dispatch", "zcode.md");
     assert_contains(&zcode, "--inject", "zcode.md");
     assert_contains(&zcode, "UNSUPPORTED_LAUNCH", "zcode.md");
+}
+
+#[test]
+fn composed_antigravity_builds_pinned_argv_without_granting_permission_bypass() {
+    let reference = read("references/trusses/antigravity.md");
+    let section = reference
+        .split("## Launch (composed fallback)")
+        .nth(1)
+        .unwrap();
+    let code = section
+        .split("```bash\n")
+        .nth(1)
+        .unwrap()
+        .split("```")
+        .next()
+        .unwrap();
+    // Execute the actual shipped argv builder. Stop before the external Orca
+    // boundary; this test must never launch a terminal or an agent.
+    let builder = code.split("DELIVERY_COMPOSED_ARGV=").next().unwrap();
+    let result = std::process::Command::new("bash")
+        .arg("-c")
+        .arg(format!(
+            "{builder}\nprintf '%s\\n' \"${{DELIVERY_AGENT_ARGV[@]}}\""
+        ))
+        .env("DELIVERY_MODEL", "approved-model")
+        .env("DELIVERY_EFFORT", "high")
+        .output()
+        .unwrap();
+    assert!(result.status.success());
+    let actual = String::from_utf8(result.stdout).unwrap();
+    assert_eq!(actual, "agy\n--model\napproved-model\n--effort\nhigh\n");
 }
 
 fn read(rel: &str) -> String {

@@ -62,6 +62,15 @@ Orca for the dispatch-bound command, output, and outcome. Orca owns transcript
 selection and cursor mechanics. For each cited read, report its source,
 exactness, completeness, and any fallback or clipping the response identifies.
 
+A claim attributed to a dispatched worker cites an artifact that demonstrably
+belongs to that worker: resolve the path and confirm it carries the worker's
+dispatch or terminal id, for example `grep -l -a "ctx_<id>" <artifact>`. A
+control-session transcript, checkpoint, or handoff is not worker evidence and
+must be labelled as Control's own account. Before reporting that a worker
+invented a term or a quantity, search the artifacts that worker actually read;
+an invented-sounding token is often present in its input, which makes the claim
+wrong rather than the worker.
+
 When required evidence is unavailable, Control must name the missing item
 and label the worker's account unverified. Neither a clipped terminal tail
 nor worker_done proves an unseen command, output, or counterexample check.

@@ -34,4 +34,8 @@ Repository plans remain durable memory and authority. When an explicitly
 installed workflow uses an execution plane, its Runs, Tasks, and Dispatches are
 permitted transient execution state; they do not replace repository authority or
 create a second durable source of truth.
+
+That boundary records where durable authority is kept; it is not a finding that
+a dispatched worker lacks authority. A task dispatched under an approved
+contract is authorized, and its dispatch is the record of that authorization.
 <!-- TRUSS:END -->

@@ -66,6 +66,17 @@ requests and ordinary local completion do not trigger release acceptance.
 
 ## Authority and stopping conditions
 
+- In an approved run, the gate-1 approval record together with the dispatch of a
+  plan task is the authorization for that task. A dispatched worker holds it:
+  there is no separate per-task authorization object, and its absence is not a
+  blocking condition.
+- A dispatched worker never audits its own authorization, and an execution-plane
+  payload is not an approval verdict. `check.result.deliveryId` is the
+  message-batch id consumed by `check --ack`; a null or empty value means no
+  batch is pending for that terminal, not that the run is unapproved. Absence of
+  a plane record never blocks a dispatched task. A worker that still believes a
+  written rule blocks it reports the exact file path, line number and quoted
+  sentence; a paraphrase or summary is not grounds to stop.
 - Freeze scope, ownership, prerequisites, Git targets, deployment and granted
   actions in the approved envelope. Preserve pre-existing dirty changes.
 - Use the consumer checkout unless the approved envelope authorizes relocation.

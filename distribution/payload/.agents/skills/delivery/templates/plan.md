@@ -53,6 +53,15 @@ State which searches yielded nothing — checked, not assumed. Report each
 enumeration command and its output. Check all proposed paths against
 protected pre-existing dirty changes under the execution envelope.
 
+This section and Forbidden scope are a dispatched worker's task authority: the
+dispatch prompt tells the worker to read the plan as authoritative. Write them
+as settled facts about approved work, never as outstanding directives aimed at
+Control. A line such as "Control must incorporate these paths into gate 1" or
+"approve the cross-reference destinations before a later task" reads to a
+dispatched worker as a gate still owed to it, and stops the task. Record each
+pre-approval step as complete with its evidence path; keep anything genuinely
+open in the envelope's prerequisites or in Stop conditions, not here.
+
 ## Forbidden scope
 
 Paths a reader might expect to be included, with why they are not. Name anything
